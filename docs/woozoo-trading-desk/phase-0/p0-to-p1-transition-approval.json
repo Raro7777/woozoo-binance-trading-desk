@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "approval_id": "P0-TO-P1-20260719-01",
+  "from_phase": 0,
+  "to_phase": 1,
+  "approval_status": "approved",
+  "evidence_manifest": "docs/woozoo-trading-desk/phase-0/p0-acceptance-evidence-manifest.json",
+  "acceptance_evidence_digest": "9efd487cf4878528df89cc19c2951e7d61f8fad99e704ccfe1dff03fa7c79571",
+  "approval_prompt": "Phase 1 \uc804\ud658 \uc2b9\uc778: P0 acceptance digest 9efd487cf4878528df89cc19c2951e7d61f8fad99e704ccfe1dff03fa7c79571 \uc2b9\uc778",
+  "user_response": "\uc2b9\uc778 \ud569\ub2c8\ub2e4",
+  "binding_interpretation": "The user explicitly approved the immediately preceding, digest-specific Phase 1 transition request. This envelope binds only the stated P0 acceptance evidence digest and does not authorize later phase transitions or prohibited capabilities.",
+  "approved_by": "user",
+  "approved_at": "2026-07-19T02:56:00Z",
+  "recorded_by": "codex-orchestrator",
+  "recorded_at": "2026-07-19T02:56:00Z"
+}

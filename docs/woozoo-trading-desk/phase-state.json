@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
   "project": "woozoo-binance-trading-desk",
-  "current_phase": 0,
+  "current_phase": 1,
   "status": "active",
-  "updated_at": "2026-07-19T08:03:41+09:00",
+  "updated_at": "2026-07-19T02:56:00Z",
   "transition_policy": "monotonic_explicit_approval_only",
-  "acceptance_contract_ref": "woozoo-phase-gates#phase-0",
+  "acceptance_contract_ref": "woozoo-phase-gates#phase-1",
   "acceptance_contract_runtime_paths": {
-    "codex": ".agents/skills/woozoo-phase-gates/references/phase-contract.md#phase-0",
-    "claude": ".claude/skills/woozoo-phase-gates/references/phase-contract.md#phase-0"
+    "codex": ".agents/skills/woozoo-phase-gates/references/phase-contract.md#phase-1",
+    "claude": ".claude/skills/woozoo-phase-gates/references/phase-contract.md#phase-1"
   },
   "acceptance_evidence_digest": null,
   "phase_approval": {
@@ -23,17 +23,26 @@
     "same_engine_codex_counts_as_external": false,
     "evidence_ref": null
   },
+  "phase_scope_ref": "docs/woozoo-trading-desk/phase-0/phase-1-scope-and-phase-0-report.md",
   "allowed_change_scope": [
-    "documentation",
-    "harness_configuration",
-    "architecture_and_contract_design",
-    "test_design"
+    "platform_foundation_implementation",
+    "workspace_toolchain_and_lockfiles",
+    "health_and_config_shells",
+    "postgres_redis_docker_compose",
+    "platform_only_migrations_and_seeds",
+    "platform_contracts_and_generated_bindings",
+    "observability_redaction",
+    "phase_1_tests_ci_and_documentation"
   ],
   "forbidden_change_scope": [
-    "application_implementation",
-    "trading_logic_implementation",
-    "paper_broker_implementation",
-    "binance_order_execution",
+    "market_data_or_binance_public_client_implementation",
+    "evidence_or_feature_domain_implementation",
+    "paper_broker_or_trading_logic_implementation",
+    "risk_approval_or_kill_switch_domain_implementation",
+    "ai_agent_or_trade_proposal_implementation",
+    "trading_room_domain_controls",
+    "testnet_or_private_exchange_capability",
+    "mainnet_private_live_withdrawal_futures_margin_leverage_or_short",
     "credential_request_or_storage"
   ],
   "advance_requires": [
@@ -49,6 +58,14 @@
       "event": "initialized",
       "at": "2026-07-19T00:00:00+09:00",
       "evidence_digest": null
+    },
+    {
+      "from_phase": 0,
+      "to_phase": 1,
+      "event": "advanced_after_digest_bound_user_approval",
+      "at": "2026-07-19T02:56:00Z",
+      "evidence_digest": "9efd487cf4878528df89cc19c2951e7d61f8fad99e704ccfe1dff03fa7c79571",
+      "approval_ref": "docs/woozoo-trading-desk/phase-0/p0-to-p1-transition-approval.json"
     }
   ]
 }
