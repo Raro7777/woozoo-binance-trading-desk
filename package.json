@@ -21,6 +21,9 @@
     "test:contracts": "node scripts/quality.mjs test:contracts",
     "test:safety": "node scripts/quality.mjs test:safety",
     "test:integration": "node scripts/quality.mjs test:integration",
+    "test:property": "node scripts/quality.mjs test:property",
+    "test:replay": "node scripts/quality.mjs test:replay",
+    "test:failure": "node scripts/quality.mjs test:failure",
     "build": "node scripts/quality.mjs build",
     "ci": "node scripts/quality.mjs ci"
   },

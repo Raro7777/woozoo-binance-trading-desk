@@ -8,7 +8,7 @@ export const productRoots = [
   "scripts",
   "services",
   "packages/contracts",
-  "packages/python/platform-core",
+  "packages/python",
   "packages/typescript",
   "db/migrations",
   "infra",
@@ -22,7 +22,6 @@ export const productRoots = [
 const dependencyMetadata = ["pnpm-lock.yaml", "uv.lock"];
 const insensitive = (...parts) => new RegExp(parts.join(""), "i");
 const forbidden = [
-  insensitive("bin", "ance"),
   insensitive("test", "net"),
   insensitive("main", "net"),
   insensitive("exchange[_-]?", "client"),
@@ -40,6 +39,21 @@ const forbidden = [
   insensitive("priv", "ate[_-]?acc", "ount"),
   insensitive("acc", "ount"),
 ];
+const publicOrigins = new Set([
+  "https://data-" + "api.bin" + "ance.vision",
+  "wss://data-" + "stream.bin" + "ance.vision",
+]);
+const approvedRestPaths = new Set([
+  "/api/v3/" + "ping",
+  "/api/v3/" + "time",
+  "/api/v3/" + "exchangeInfo",
+  "/api/v3/" + "trades",
+  "/api/v3/" + "klines",
+  "/api/v3/" + "ticker/" + "bookTicker",
+]);
+const urlPattern = /(?:https|wss):\/\/[a-z0-9.-]+(?::\d+)?/gi;
+const restPathPattern = /\/api\/v3\/[A-Za-z][A-Za-z0-9/]*/g;
+const forbiddenPublicPath = insensitive("/api/v3/(?:or", "der|acc", "ount|user", "DataStream)");
 const dependencyPattern = insensitive(
   "bin",
   "ance|ccxt|exchange[_-]?client|broker[_-]?adapter|priv",
@@ -127,9 +141,18 @@ export async function scanPaths(paths = productRoots.map((path) => resolve(root,
     for (const pattern of forbidden) {
       if (pattern.test(inspected)) findings.push(`${projectPath}:${pattern}`);
     }
+    for (const candidate of inspected.match(urlPattern) ?? []) {
+      if (candidate.toLowerCase().includes("bin" + "ance") && !publicOrigins.has(candidate)) {
+        findings.push(`${projectPath}:unapproved-public-origin`);
+      }
+    }
+    for (const candidate of inspected.match(restPathPattern) ?? []) {
+      if (!approvedRestPaths.has(candidate)) findings.push(`${projectPath}:unapproved-public-path`);
+    }
+    if (forbiddenPublicPath.test(inspected)) findings.push(`${projectPath}:forbidden-public-path`);
   }
   if (findings.length > 0) {
-    throw new Error(`Phase 1 capability-zero violation: ${findings.join(", ")}`);
+    throw new Error(`Phase 2 public-only capability violation: ${findings.join(", ")}`);
   }
 
   if (paths.length === productRoots.length) await scanDependencyMetadata();
@@ -153,13 +176,15 @@ export async function verifyCanaryFailure() {
   ].map((path) => resolve(root, path));
   const metadataCanary = resolve(root, ".capability-zero-package.json");
   const privateCanary = resolve(root, "scripts/.private-" + "acc" + "ount-capability-canary.mjs");
+  const hostCanary = resolve(root, "scripts/.public-host-capability-canary.mjs");
+  const pathCanary = resolve(root, "scripts/.public-path-capability-canary.mjs");
   try {
     for (const candidate of directoryCanaries) {
       await writeFile(candidate, "exchange" + "_client = object()\n", "utf8");
       try {
         await scanPaths();
       } catch (error) {
-        if (String(error.message).includes("capability-zero violation")) continue;
+        if (String(error.message).includes("capability violation")) continue;
         throw error;
       } finally {
         await rm(candidate, { force: true });
@@ -171,15 +196,37 @@ export async function verifyCanaryFailure() {
     try {
       await scanPaths();
     } catch (error) {
-      if (!String(error.message).includes("capability-zero violation")) throw error;
+      if (!String(error.message).includes("capability violation")) throw error;
       privateCapabilityDetected = true;
     }
     if (!privateCapabilityDetected) {
       throw new Error("capability scanner accepted its private-capability canary");
     }
+    await writeFile(hostCanary, "export const origin = 'https://api.bin" + "ance.com';\n", "utf8");
+    let hostDetected = false;
+    try {
+      await scanPaths();
+    } catch (error) {
+      if (!String(error.message).includes("public-only capability violation")) throw error;
+      hostDetected = true;
+    }
+    if (!hostDetected) throw new Error("capability scanner accepted an unapproved public host");
+    await writeFile(
+      pathCanary,
+      "export const endpoint = 'https://data-api.bin" + "ance.vision/api/" + "v3/de" + "pth';\n",
+      "utf8",
+    );
+    let pathDetected = false;
+    try {
+      await scanPaths();
+    } catch (error) {
+      if (!String(error.message).includes("public-only capability violation")) throw error;
+      pathDetected = true;
+    }
+    if (!pathDetected) throw new Error("capability scanner accepted an unapproved public path");
     await writeFile(
       metadataCanary,
-      JSON.stringify({ scripts: { unsafe: "curl https://api.bin" + "ance.com/api/v3/order" } }),
+      JSON.stringify({ scripts: { unsafe: "curl https://api.bin" + "ance.com/api/" + "v3/or" + "der" } }),
       "utf8",
     );
     try {
@@ -194,6 +241,8 @@ export async function verifyCanaryFailure() {
       ...directoryCanaries,
       metadataCanary,
       privateCanary,
+      hostCanary,
+      pathCanary,
     ].map((candidate) => rm(candidate, { force: true })));
   }
 }

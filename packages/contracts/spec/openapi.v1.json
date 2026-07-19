@@ -27,6 +27,45 @@
           }
         }
       }
+    },
+    "/api/v1/markets/{symbol}/status": {
+      "get": {
+        "operationId": "getMarketStatus",
+        "parameters": [
+          {
+            "name": "symbol",
+            "in": "path",
+            "required": true,
+            "schema": {"enum": ["BTCUSDT", "ETHUSDT"]}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "current durable market status projection",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/MarketStatusEnvelopeV1"}
+              }
+            }
+          },
+          "404": {
+            "description": "market projection not found",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/MarketErrorEnvelopeV1"}
+              }
+            }
+          },
+          "503": {
+            "description": "market projection unavailable",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/MarketErrorEnvelopeV1"}
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -111,6 +150,66 @@
           "correlation_id": {"type": "string"},
           "served_at": {"type": "string", "format": "date-time"},
           "error": {"$ref": "#/components/schemas/ErrorV1"},
+          "meta": {"$ref": "#/components/schemas/MetaV1"}
+        }
+      },
+      "MarketWatermarkV1": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["session_id", "stream", "last_sequence", "observed_at"],
+        "properties": {
+          "session_id": {"type": "string"},
+          "stream": {"type": "string"},
+          "last_sequence": {"type": "integer", "minimum": 0},
+          "observed_at": {"type": "string", "format": "date-time"}
+        }
+      },
+      "MarketStatusDataV1": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["symbol", "price", "event_time", "received_at", "quality", "quality_reasons", "watermark"],
+        "properties": {
+          "symbol": {"enum": ["BTCUSDT", "ETHUSDT"]},
+          "price": {"type": "string", "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$"},
+          "event_time": {"type": "string", "format": "date-time"},
+          "received_at": {"type": "string", "format": "date-time"},
+          "quality": {"enum": ["healthy", "degraded", "stale", "invalid", "reconnecting"]},
+          "quality_reasons": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+          "watermark": {"$ref": "#/components/schemas/MarketWatermarkV1"}
+        }
+      },
+      "MarketErrorV1": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "message"],
+        "properties": {
+          "code": {"enum": ["MARKET_NOT_FOUND", "MARKET_PROJECTION_UNAVAILABLE"]},
+          "message": {"type": "string"}
+        }
+      },
+      "MarketStatusEnvelopeV1": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["api_version", "request_id", "correlation_id", "served_at", "data", "meta"],
+        "properties": {
+          "api_version": {"const": "v1"},
+          "request_id": {"type": "string"},
+          "correlation_id": {"type": "string"},
+          "served_at": {"type": "string", "format": "date-time"},
+          "data": {"$ref": "#/components/schemas/MarketStatusDataV1"},
+          "meta": {"$ref": "#/components/schemas/MetaV1"}
+        }
+      },
+      "MarketErrorEnvelopeV1": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["api_version", "request_id", "correlation_id", "served_at", "error", "meta"],
+        "properties": {
+          "api_version": {"const": "v1"},
+          "request_id": {"type": "string"},
+          "correlation_id": {"type": "string"},
+          "served_at": {"type": "string", "format": "date-time"},
+          "error": {"$ref": "#/components/schemas/MarketErrorV1"},
           "meta": {"$ref": "#/components/schemas/MetaV1"}
         }
       }

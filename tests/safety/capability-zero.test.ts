@@ -15,7 +15,7 @@ test("SAFE-002 through SAFE-004 keep Phase 1 capability-zero", async () => {
     "scripts",
     "services",
     "packages/contracts",
-    "packages/python/platform-core",
+    "packages/python",
     "packages/typescript",
     "db/migrations",
     "infra",

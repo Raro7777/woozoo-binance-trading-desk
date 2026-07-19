@@ -24,7 +24,7 @@
     "event_version": {"type": "integer", "minimum": 1},
     "occurred_at": {"type": "string", "format": "date-time"},
     "published_at": {"type": ["string", "null"], "format": "date-time"},
-    "producer": {"enum": ["control-api", "outbox-relay"]},
+    "producer": {"enum": ["control-api", "outbox-relay", "market-data-worker"]},
     "correlation_id": {"type": "string"},
     "causation_id": {"type": ["string", "null"]},
     "aggregate": {
@@ -37,7 +37,7 @@
         "version": {"type": "integer", "minimum": 0}
       }
     },
-    "data": {"type": "object", "additionalProperties": false},
+    "data": {"type": "object"},
     "payload_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
   }
 }

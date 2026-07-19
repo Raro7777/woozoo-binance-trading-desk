@@ -1,9 +1,15 @@
 {
   "api_version": "v1",
   "event_spec_version": "woozoo.event/v1",
+  "market_event_spec_version": "woozoo.market-event/v1",
+  "market_domain_event_spec_version": "woozoo.market-domain-events/v1",
+  "market_source": "binance_spot_public",
   "health_path": "/api/v1/health",
+  "market_status_path_template": "/api/v1/markets/{symbol}/status",
   "sources": {
-    "openapi.v1.json": "c566313d1f163856e0f2c1df40fd61c91b752b18e31a4ef1efdf9bd693c3957c",
-    "event-envelope.v1.json": "ed1155b1fa397b0d108674aaf9c2231af69f0e659d53c9763b68cbfed206e5f3"
+    "openapi.v1.json": "37f871ea62d06b8266079ba92d16c140ee49dd5623f9b97182b00e6c8fc89a07",
+    "event-envelope.v1.json": "1bca200d85e9e177b74c3f12ccab1b705a54e104cd85557cdb23e1c83073bad9",
+    "market-event.v1.json": "6eedfb52b8d28748542a5851df6960b4b495e520f1386a0b4efca933069511dd",
+    "market-domain-events.v1.json": "c0e883dc53c6394355c9baa70e4ef642307eb2a0f13ef0fe9cb581f6dcf2dfc4"
   }
 }

@@ -1,8 +1,15 @@
 import { createHash } from "node:crypto";
 
-import { API_VERSION, EVENT_SPEC_VERSION, HEALTH_PATH } from "./generated-schema-manifest.js";
+import {
+  API_VERSION,
+  EVENT_SPEC_VERSION,
+  HEALTH_PATH,
+  MARKET_EVENT_SPEC_VERSION,
+  MARKET_SOURCE,
+  MARKET_STATUS_PATH_TEMPLATE,
+} from "./generated-schema-manifest.js";
 
-export { API_VERSION, EVENT_SPEC_VERSION, HEALTH_PATH };
+export { API_VERSION, EVENT_SPEC_VERSION, HEALTH_PATH, MARKET_EVENT_SPEC_VERSION, MARKET_SOURCE, MARKET_STATUS_PATH_TEMPLATE };
 
 export type HealthDataV1 = {
   service: "control-api";

@@ -11,12 +11,15 @@ const validate = (text) => {
     .split(/\r?\n/)
     .filter(Boolean)
     .map((line) => line.split("=", 1)[0]);
-  const expected = ["TRADING_MODE", "DATABASE_URL", "REDIS_URL"];
+  const expected = ["TRADING_MODE", "DATABASE_URL", "MARKET_DATABASE_URL", "REDIS_URL", "MARKET_DATA_SOURCE"];
   if (keys.length !== expected.length || keys.some((key, index) => key !== expected[index])) {
-    throw new Error("environment schema must contain only the approved Phase 1 keys");
+    throw new Error("environment schema must contain only the approved Phase 2 keys");
   }
   if (!text.startsWith("TRADING_MODE=paper\n")) {
     throw new Error("environment schema must explicitly select paper mode");
+  }
+  if (!text.endsWith("MARKET_DATA_SOURCE=recorded\n")) {
+    throw new Error("environment schema must default public collection to recorded input");
   }
 };
 

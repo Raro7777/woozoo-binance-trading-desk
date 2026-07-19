@@ -65,7 +65,10 @@ def test_plat_001_exposes_only_the_paper_health_shell() -> None:
     assert response.status_code == 200
     assert response.json()["data"]["trading_mode"] == "paper"
     assert "sentinel-api-key" not in response.text
-    assert {route.path for route in app.routes} == {"/api/v1/health"}
+    assert {route.path for route in app.routes} == {
+        "/api/v1/health",
+        "/api/v1/markets/{symbol}/status",
+    }
 
 
 def test_required_postgres_failure_is_fail_closed() -> None:
