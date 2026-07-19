@@ -455,9 +455,7 @@ class PaperEngine:
             if self.held.get("USDT", Decimal(0)) < debit:
                 raise ValueError("HELD_BALANCE_UNDERFLOW")
             next_held = subtract(self.held.get("USDT", Decimal(0)), debit)
-            next_received_available = add(
-                self.available.get(base, Decimal(0)), fill.quantity
-            )
+            next_received_available = add(self.available.get(base, Decimal(0)), fill.quantity)
             planned_lots = (
                 FifoLot(
                     fill.fill_id,
@@ -486,9 +484,7 @@ class PaperEngine:
             next_held = subtract(self.held.get(base, Decimal(0)), fill.quantity)
             basis, planned_consumptions = self._plan_fifo(base, fill.quantity, fill.fill_id)
             proceeds = subtract(principal, fill.fee_amount)
-            next_received_available = add(
-                self.available.get("USDT", Decimal(0)), proceeds
-            )
+            next_received_available = add(self.available.get("USDT", Decimal(0)), proceeds)
             entries = (
                 LedgerEntry("exchange.clearing", base, fill.quantity, Decimal(0)),
                 LedgerEntry("paper.held", base, Decimal(0), fill.quantity),
@@ -553,12 +549,8 @@ class PaperEngine:
         release_available = Decimal(0)
         if release:
             next_held = subtract(next_held, release)
-            release_available = add(
-                self.available.get(updated.held_asset, Decimal(0)), release
-            )
-            release_journal = self._release_journal(
-                updated.order_id, release, updated.held_asset
-            )
+            release_available = add(self.available.get(updated.held_asset, Decimal(0)), release)
+            release_journal = self._release_journal(updated.order_id, release, updated.held_asset)
             self._validate_journal(release_journal)
         if order.side == OrderSide.BUY:
             self.held["USDT"] = next_held
@@ -713,9 +705,7 @@ class PaperEngine:
         return updated
 
     def position(self, asset: str) -> Decimal:
-        acquired = add(
-            *(lot.acquired_quantity for lot in self.lots if lot.asset == asset)
-        )
+        acquired = add(*(lot.acquired_quantity for lot in self.lots if lot.asset == asset))
         consumed = add(
             *(
                 item.quantity
