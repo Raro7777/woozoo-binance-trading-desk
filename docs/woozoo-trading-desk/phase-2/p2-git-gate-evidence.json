@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "phase": 2,
-  "status": "UNVERIFIED",
+  "status": "PASS",
   "frozen_code_commit": "05484fbd6fa27f077a9cc2d55c3bac8ee672942d",
   "frozen_code_tree": "5061f52a8440edf58f5bad5570e6f2a23de449bb",
   "branch": "codex/phase-2-public-data",
@@ -13,14 +13,15 @@
     "verified_at": "2026-07-19T06:40:01.8361735Z"
   },
   "draft_pr": {
-    "status": "UNVERIFIED",
+    "status": "PASS",
     "compare_url": "https://github.com/Raro7777/woozoo-binance-trading-desk/compare/main...codex/phase-2-public-data?expand=1",
     "url": "https://github.com/Raro7777/woozoo-binance-trading-desk/pull/3",
     "number": 3,
     "state": "open",
-    "draft": false,
-    "head_sha": "ad634b97d2f4c118de6f3957eff4f3c7282c2bbf",
-    "verified_at": "2026-07-19T07:11:01Z",
+    "draft": true,
+    "head_sha": "a3f02dbd0d2370307ce4c15adb52bb8d2f898b34",
+    "mergeable": true,
+    "verified_at": "2026-07-19T07:15:24Z",
     "attempts": [
       {
         "method": "gh pr create",
@@ -49,5 +50,5 @@
       }
     ]
   },
-  "gate_effect": "PR #3 targets main from the correct Phase 2 branch and head, but draft=false. P2-12 remains UNVERIFIED. No Phase 2 acceptance digest may be issued and Phase 3 may not start until PR #3 is converted to Draft and reverified."
+  "gate_effect": "PASS. PR #3 is open as a Draft, targets main from the correct Phase 2 branch, and contains the frozen implementation commit. Phase 2 acceptance evidence may now be frozen for digest-bound user approval."
 }
