@@ -3,25 +3,25 @@
   "project": "woozoo-binance-trading-desk",
   "current_phase": 3,
   "status": "active",
-  "updated_at": "2026-07-19T07:21:51Z",
+  "updated_at": "2026-07-19T10:17:36Z",
   "transition_policy": "monotonic_explicit_approval_only",
   "acceptance_contract_ref": "woozoo-phase-gates#phase-3",
   "acceptance_contract_runtime_paths": {
     "codex": ".agents/skills/woozoo-phase-gates/references/phase-contract.md#phase-3",
     "claude": ".claude/skills/woozoo-phase-gates/references/phase-contract.md#phase-3"
   },
-  "acceptance_evidence_digest": null,
+  "acceptance_evidence_digest": "a85fa86194bf7c3b8fc52a36199b2206244b71ef5e6575d3b754de6a0a5e076c",
   "phase_approval": {
     "required": true,
-    "status": "not_requested",
-    "artifact_digest": null,
+    "status": "requested",
+    "artifact_digest": "a85fa86194bf7c3b8fc52a36199b2206244b71ef5e6575d3b754de6a0a5e076c",
     "approved_at": null,
     "approved_by": null
   },
   "review_gate": {
     "major_change_requirement": "external_review_completed_or_external_review_unavailable_recorded",
     "same_engine_codex_counts_as_external": false,
-    "evidence_ref": null
+    "evidence_ref": "docs/woozoo-trading-desk/phase-3/external-review-status.json"
   },
   "phase_scope_ref": "docs/woozoo-trading-desk/mvp-plan-and-acceptance.md",
   "allowed_change_scope": [
