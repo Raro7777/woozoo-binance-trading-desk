@@ -12,7 +12,8 @@ import json
 import psycopg
 from psycopg.types.json import Jsonb
 
-from .engine import PARTICIPATION_RATE, PaperEngine
+from .decimal_policy import canonical, floor_step
+from .engine import PARTICIPATION_RATE, SYMBOL_RULES, PaperEngine
 from .models import (
     CommandReceipt,
     FifoLot,
@@ -72,6 +73,9 @@ class BrokerInputWrite:
     payload_hash: str
     observed_at: datetime
     available_quantity: Decimal | None = None
+    symbol: str | None = None
+    best_bid: Decimal | None = None
+    best_ask: Decimal | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -151,6 +155,33 @@ def _digest(value: object) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _engine_id(kind: str, *parts: object) -> str:
+    raw = json.dumps([kind, *[str(part) for part in parts]], separators=(",", ":"))
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
+def _validate_broker_input(item: BrokerInputWrite) -> None:
+    observation_fields = (item.symbol, item.best_bid, item.best_ask, item.available_quantity)
+    if item.source_kind == "TEST_COMMAND":
+        if any(field is not None for field in observation_fields):
+            raise ValueError("INVALID_TEST_COMMAND_INPUT")
+        return
+    if item.source_kind != "RECORDED_BOOK" or any(field is None for field in observation_fields):
+        raise ValueError("INVALID_RECORDED_BOOK_INPUT")
+    assert item.symbol is not None
+    assert item.best_bid is not None and item.best_ask is not None
+    assert item.available_quantity is not None
+    expected = _engine_id(
+        "observation",
+        item.symbol,
+        canonical(item.best_bid),
+        canonical(item.best_ask),
+        canonical(item.available_quantity),
+    )
+    if item.symbol not in SYMBOL_RULES or item.payload_hash != expected:
+        raise ValueError("RECORDED_BOOK_HASH_CONFLICT")
+
+
 def _validate_outbox(item: OutboxWrite) -> None:
     payload = item.payload
     required = {
@@ -174,6 +205,15 @@ def _validate_outbox(item: OutboxWrite) -> None:
         "paper.order.rejected.v1": {"request_hash", "reason"},
         "paper.authorization.attempted.v1": {"authorization_id", "outcome"},
         "ledger.transaction.posted.v1": {"transaction_id"},
+    }
+    aggregate_types = {
+        "paper.order.accepted.v1": "paper_order",
+        "paper.order.partially-filled.v1": "paper_order",
+        "paper.order.filled.v1": "paper_order",
+        "paper.order.cancelled.v1": "paper_order",
+        "paper.order.rejected.v1": "paper_request",
+        "paper.authorization.attempted.v1": "paper_authorization",
+        "ledger.transaction.posted.v1": "paper_ledger",
     }
     if set(payload) != required or item.event_type not in data_fields:
         raise ValueError("INVALID_PAPER_OUTBOX_CONTRACT")
@@ -205,6 +245,7 @@ def _validate_outbox(item: OutboxWrite) -> None:
         or payload["aggregate_version"] != item.aggregate_version
         or payload["payload_hash"] != item.payload_hash
         or item.payload_hash != expected_hash
+        or item.aggregate_type != aggregate_types[item.event_type]
         or len(item.event_id) != 64
         or any(character not in "0123456789abcdef" for character in item.event_id)
         or len(item.aggregate_id) != 64
@@ -246,7 +287,8 @@ class PostgresPaperStore:
             elif write.broker_inputs:
                 prior_inputs = connection.execute(
                     "SELECT source_key,broker_seq,account_id,source_kind,payload_hash,"
-                    "available_quantity FROM paper_broker_inputs WHERE source_key=ANY(%s)",
+                    "available_quantity,symbol,best_bid,best_ask FROM paper_broker_inputs "
+                    "WHERE source_key=ANY(%s)",
                     ([item.source_key for item in write.broker_inputs],),
                 ).fetchall()
                 if prior_inputs:
@@ -258,6 +300,9 @@ class PostgresPaperStore:
                             item.source_kind,
                             item.payload_hash,
                             item.available_quantity,
+                            item.symbol,
+                            item.best_bid,
+                            item.best_ask,
                         )
                         for item in write.broker_inputs
                     }
@@ -291,10 +336,12 @@ class PostgresPaperStore:
             if account != (write.namespace,):
                 raise ValueError("ACCOUNT_NAMESPACE_CONFLICT")
             for item in write.broker_inputs:
+                _validate_broker_input(item)
                 connection.execute(
                     "INSERT INTO paper_broker_inputs"
                     "(broker_seq,account_id,source_kind,source_key,payload_hash,observed_at,"
-                    "available_quantity) VALUES (%s,%s,%s,%s,%s,%s,%s) "
+                    "available_quantity,symbol,best_bid,best_ask) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
                     "ON CONFLICT (source_key) DO NOTHING",
                     (
                         item.broker_seq,
@@ -304,10 +351,14 @@ class PostgresPaperStore:
                         item.payload_hash,
                         item.observed_at,
                         item.available_quantity,
+                        item.symbol,
+                        item.best_bid,
+                        item.best_ask,
                     ),
                 )
                 persisted_input = connection.execute(
-                    "SELECT broker_seq,account_id,source_kind,payload_hash,available_quantity "
+                    "SELECT broker_seq,account_id,source_kind,payload_hash,available_quantity,"
+                    "symbol,best_bid,best_ask "
                     "FROM paper_broker_inputs WHERE source_key=%s",
                     (item.source_key,),
                 ).fetchone()
@@ -317,6 +368,9 @@ class PostgresPaperStore:
                     item.source_kind,
                     item.payload_hash,
                     item.available_quantity,
+                    item.symbol,
+                    item.best_bid,
+                    item.best_ask,
                 ):
                     raise ValueError("BROKER_INPUT_CONFLICT")
             if receipt is not None:
@@ -602,7 +656,8 @@ class PostgresPaperStore:
                     "ORDER BY authorization_id"
                 ),
                 "input": (
-                    "SELECT broker_seq,source_kind,source_key,payload_hash FROM "
+                    "SELECT broker_seq,source_kind,source_key,payload_hash,symbol,"
+                    "best_bid,best_ask,available_quantity FROM "
                     "paper_broker_inputs WHERE account_id=%s ORDER BY broker_seq"
                 ),
                 "balance": (
@@ -761,17 +816,39 @@ class PostgresPaperStore:
                     (account_id,),
                 ).fetchall()
             }
-            for source_key, payload_hash, available_quantity, allocated in connection.execute(
+            for (
+                source_key,
+                payload_hash,
+                available_quantity,
+                symbol,
+                best_bid,
+                best_ask,
+                allocated,
+            ) in connection.execute(
                 "SELECT input.source_key,input.payload_hash,input.available_quantity,"
+                "input.symbol,input.best_bid,input.best_ask,"
                 "COALESCE(sum(fill.quantity),0) FROM paper_broker_inputs input LEFT JOIN "
                 "paper_fills fill ON fill.source_key=input.source_key "
                 "WHERE input.account_id=%s AND input.source_kind='RECORDED_BOOK' "
-                "GROUP BY input.source_key,input.payload_hash,input.available_quantity",
+                "GROUP BY input.source_key,input.payload_hash,input.available_quantity,"
+                "input.symbol,input.best_bid,input.best_ask",
                 (account_id,),
             ).fetchall():
+                if symbol not in SYMBOL_RULES or payload_hash != _engine_id(
+                    "observation",
+                    symbol,
+                    canonical(best_bid),
+                    canonical(best_ask),
+                    canonical(available_quantity),
+                ):
+                    raise ValueError("CORRUPT_RECORDED_BOOK_INPUT")
                 engine.observation_budgets[source_key] = (
                     payload_hash,
-                    available_quantity * PARTICIPATION_RATE - allocated,
+                    floor_step(
+                        available_quantity * PARTICIPATION_RATE,
+                        SYMBOL_RULES[symbol]["step"],
+                    )
+                    - allocated,
                 )
             engine.outbox = tuple(
                 row[0]
@@ -842,6 +919,21 @@ class PostgresPaperStore:
             }
             if ledger_assets != {row[0] for row in balance_rows}:
                 mismatches.append("BALANCE_COMMODITY_COVERAGE_MISMATCH")
+            for payload_hash, symbol, best_bid, best_ask, available_quantity in connection.execute(
+                "SELECT payload_hash,symbol,best_bid,best_ask,available_quantity "
+                "FROM paper_broker_inputs WHERE account_id=%s "
+                "AND source_kind='RECORDED_BOOK'",
+                (account_id,),
+            ).fetchall():
+                if symbol not in SYMBOL_RULES or payload_hash != _engine_id(
+                    "observation",
+                    symbol,
+                    canonical(best_bid),
+                    canonical(best_ask),
+                    canonical(available_quantity),
+                ):
+                    mismatches.append("BROKER_INPUT_HASH_MISMATCH")
+                    break
             status = "FAILED" if mismatches else "HEALTHY"
             output_digest = _digest({"input": state_digest, "mismatches": mismatches})
             connection.execute(

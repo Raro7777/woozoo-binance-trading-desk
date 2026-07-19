@@ -224,6 +224,7 @@ const actions = {
       "tests/replay/test_paper_restart_replay.py::test_ord_002_restart_replay_has_identical_digest_and_single_effect",
       "tests/integration/test_paper_postgres_persistence.py::test_restart_continues_existing_order_with_distinct_cancel_command",
       "tests/integration/test_paper_postgres_persistence.py::test_restart_applies_and_idempotently_replays_observation_fill",
+      "tests/integration/test_paper_postgres_persistence.py::test_restart_restores_floor_stepped_observation_budget_and_hash",
       "tests/integration/test_paper_postgres_persistence.py::test_rejected_command_is_durable_orderless_and_restart_idempotent",
     ], await paperMetadata());
     await dataScenario("replay", "ATOM-002", [

@@ -39,6 +39,7 @@ from paper_engine.persistence import (
 ROOT = Path(__file__).resolve().parents[2]
 DATABASE_URL = "postgresql://postgres@127.0.0.1:5433/woozoo"
 PAPER_WRITER_URL = "postgresql://woozoo_paper_engine@127.0.0.1:5433/woozoo"
+EVIDENCE_WRITER_URL = "postgresql://woozoo_evidence_writer@127.0.0.1:5433/woozoo"
 ENVIRONMENT = {"TRADING_MODE": "paper", "DATABASE_URL": DATABASE_URL}
 NOW = datetime(2026, 7, 19, 12, 0, tzinfo=UTC)
 
@@ -104,6 +105,10 @@ def stable_id(value: str) -> str:
     return digest(value)
 
 
+def engine_id(kind: str, *parts: object) -> str:
+    return digest(json.dumps([kind, *[str(part) for part in parts]], separators=(",", ":")))
+
+
 def outbox(event_type: str, aggregate_id: str, version: int, data: dict[str, str]) -> OutboxWrite:
     event_id = stable_id(f"paper:{event_type}:{aggregate_id}:{version}")
     payload_hash = stable_id(
@@ -131,10 +136,19 @@ def outbox(event_type: str, aggregate_id: str, version: int, data: dict[str, str
         "payload_hash": payload_hash,
         "data": data,
     }
+    aggregate_type = (
+        "paper_authorization"
+        if event_type == "paper.authorization.attempted.v1"
+        else "paper_request"
+        if event_type == "paper.order.rejected.v1"
+        else "paper_ledger"
+        if event_type == "ledger.transaction.posted.v1"
+        else "paper_order"
+    )
     return OutboxWrite(
         event_id=event_id,
         event_type=event_type,
-        aggregate_type="paper_order",
+        aggregate_type=aggregate_type,
         aggregate_id=aggregate_id,
         aggregate_version=version,
         payload=payload,
@@ -152,6 +166,13 @@ def complete_write(*, suffix: str = "base") -> AtomicPaperWrite:
     command_key = f"create-{suffix}"
     command_source = f"command:{suffix}"
     book_source = f"book:{suffix}"
+    book_payload_hash = engine_id(
+        "observation",
+        "BTCUSDT",
+        "99.000000000000000000",
+        "100.000000000000000000",
+        "0.100000000000000000",
+    )
     receipt = CommandReceiptWrite(
         scope="paper.create.v1",
         idempotency_key=command_key,
@@ -270,9 +291,12 @@ def complete_write(*, suffix: str = "base") -> AtomicPaperWrite:
                 account_id,
                 "RECORDED_BOOK",
                 book_source,
-                digest(book_source),
+                book_payload_hash,
                 NOW,
                 Decimal("0.100000000000000000"),
+                "BTCUSDT",
+                Decimal("99.000000000000000000"),
+                Decimal("100.000000000000000000"),
             ),
         ),
         balances=(
@@ -556,6 +580,28 @@ def test_restart_applies_and_idempotently_replays_observation_fill() -> None:
     assert len(rehydrated.fills) == 1
 
 
+def test_restart_restores_floor_stepped_observation_budget_and_hash() -> None:
+    write = complete_write(suffix="floor-budget")
+    book = replace(
+        write.broker_inputs[1],
+        available_quantity=Decimal("0.100090000000000000"),
+        payload_hash=engine_id(
+            "observation",
+            "BTCUSDT",
+            "99.000000000000000000",
+            "100.000000000000000000",
+            "0.100090000000000000",
+        ),
+    )
+    write = replace(write, broker_inputs=(write.broker_inputs[0], book))
+    PostgresPaperStore(PAPER_WRITER_URL).commit(write)
+    hydrated = PostgresPaperStore(PAPER_WRITER_URL).hydrate_engine(write.account_id)
+    assert hydrated.observation_budgets[book.source_key] == (
+        book.payload_hash,
+        Decimal("0.005000000000000000"),
+    )
+
+
 def test_rejected_command_is_durable_orderless_and_restart_idempotent() -> None:
     write = rejected_write(suffix="durable")
     first = PostgresPaperStore(PAPER_WRITER_URL).commit(write)
@@ -583,7 +629,17 @@ def test_database_rejects_incomplete_financial_state_and_liquidity_overallocatio
     with pytest.raises(psycopg.errors.RaiseException):
         PostgresPaperStore(DATABASE_URL).commit(missing)
     over = complete_write(suffix="overallocated")
-    book = replace(over.broker_inputs[1], available_quantity=Decimal("0.04"))
+    book = replace(
+        over.broker_inputs[1],
+        available_quantity=Decimal("0.04"),
+        payload_hash=engine_id(
+            "observation",
+            "BTCUSDT",
+            "99.000000000000000000",
+            "100.000000000000000000",
+            "0.040000000000000000",
+        ),
+    )
     over = replace(over, broker_inputs=(over.broker_inputs[0], book))
     with pytest.raises(psycopg.errors.RaiseException):
         PostgresPaperStore(DATABASE_URL).commit(over)
@@ -728,6 +784,36 @@ def test_writer_commit_succeeds_and_unledgered_balance_update_is_rejected() -> N
             connection.execute(
                 "UPDATE paper_orders SET client_order_id='forbidden' WHERE order_id=%s",
                 (write.order.order_id,),
+            )
+    with pytest.raises(psycopg.errors.InsufficientPrivilege):
+        with psycopg.connect(EVIDENCE_WRITER_URL) as connection:
+            connection.execute(
+                "SELECT append_paper_outbox(%s,%s,%s::jsonb,%s,%s,%s,%s,%s)",
+                (
+                    "f" * 64,
+                    "paper.order.accepted.v1",
+                    "{}",
+                    "e" * 64,
+                    NOW,
+                    "paper_order",
+                    "d" * 64,
+                    1,
+                ),
+            )
+    with pytest.raises(psycopg.errors.RaiseException, match="closed Paper outbox"):
+        with psycopg.connect(PAPER_WRITER_URL) as connection:
+            connection.execute(
+                "SELECT append_paper_outbox(%s,%s,%s::jsonb,%s,%s,%s,%s,%s)",
+                (
+                    "f" * 64,
+                    "paper.forged.v1",
+                    json.dumps({"event_id": "f" * 64}),
+                    "e" * 64,
+                    NOW,
+                    "paper_order",
+                    "d" * 64,
+                    1,
+                ),
             )
 
 

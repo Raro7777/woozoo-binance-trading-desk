@@ -140,6 +140,9 @@ def upgrade() -> None:
         sa.Column("payload_hash", sa.String(64), nullable=False),
         sa.Column("observed_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("available_quantity", MONEY, nullable=True),
+        sa.Column("symbol", sa.String(16), nullable=True),
+        sa.Column("best_bid", MONEY, nullable=True),
+        sa.Column("best_ask", MONEY, nullable=True),
         sa.ForeignKeyConstraint(
             ["account_id"],
             ["paper_accounts.account_id"],
@@ -153,8 +156,11 @@ def upgrade() -> None:
         ),
         sa.CheckConstraint("length(payload_hash)=64", name="ck_paper_input_hash"),
         sa.CheckConstraint(
-            "(source_kind='TEST_COMMAND' AND available_quantity IS NULL) OR "
-            "(source_kind='RECORDED_BOOK' AND available_quantity>0)",
+            "(source_kind='TEST_COMMAND' AND available_quantity IS NULL "
+            "AND symbol IS NULL AND best_bid IS NULL AND best_ask IS NULL) OR "
+            "(source_kind='RECORDED_BOOK' AND available_quantity>0 "
+            "AND symbol IN ('BTCUSDT','ETHUSDT') AND best_bid>0 AND best_ask>0 "
+            "AND best_bid<=best_ask)",
             name="ck_paper_input_liquidity",
         ),
     )
@@ -722,7 +728,13 @@ def upgrade() -> None:
                OR NOT EXISTS (
                     SELECT 1 FROM paper_symbol_rule_versions rule
                     WHERE rule.rule_version=fill.symbol_rule_version
-                      AND rule.symbol=paper_order.symbol)
+                      AND rule.symbol=paper_order.symbol
+                      AND mod(paper_order.limit_price,rule.tick_size)=0
+                      AND mod(paper_order.quantity,rule.step_size)=0
+                      AND paper_order.quantity>=rule.min_quantity
+                      AND paper_order.quantity*paper_order.limit_price>=rule.min_notional
+                      AND mod(fill.quantity,rule.step_size)=0
+                      AND fill.price=paper_order.limit_price)
           ) OR EXISTS (
             SELECT 1 FROM paper_broker_inputs input
             JOIN paper_policy_versions policy ON policy.policy_version='quote-fee-v1'
@@ -843,7 +855,11 @@ def upgrade() -> None:
           p_aggregate_type varchar, p_aggregate_id varchar, p_aggregate_version bigint
         ) RETURNS void AS $$
         BEGIN
-          IF (p_event_type NOT LIKE 'paper.%' AND p_event_type<>'ledger.transaction.posted.v1')
+          IF p_event_type NOT IN (
+               'paper.order.accepted.v1','paper.order.partially-filled.v1',
+               'paper.order.filled.v1','paper.order.cancelled.v1',
+               'paper.order.rejected.v1','paper.authorization.attempted.v1',
+               'ledger.transaction.posted.v1')
              OR p_event_id !~ '^[a-f0-9]{64}$'
              OR p_payload_hash !~ '^[a-f0-9]{64}$'
              OR p_payload->>'event_id' IS DISTINCT FROM p_event_id
@@ -855,8 +871,43 @@ def upgrade() -> None:
              OR NOT (p_payload ? 'data')
              OR p_payload->>'aggregate_id' IS DISTINCT FROM p_aggregate_id
              OR (p_payload->>'aggregate_version')::bigint IS DISTINCT FROM p_aggregate_version
+             OR jsonb_typeof(p_payload->'data')<>'object'
           THEN
             RAISE EXCEPTION 'Invalid closed Paper outbox envelope';
+          END IF;
+          IF (p_event_type IN (
+                'paper.order.accepted.v1','paper.order.partially-filled.v1',
+                'paper.order.filled.v1','paper.order.cancelled.v1')
+              AND p_aggregate_type IS DISTINCT FROM 'paper_order')
+             OR (p_event_type='paper.order.rejected.v1'
+                 AND p_aggregate_type IS DISTINCT FROM 'paper_request')
+             OR (p_event_type='paper.authorization.attempted.v1'
+                 AND p_aggregate_type IS DISTINCT FROM 'paper_authorization')
+             OR (p_event_type='ledger.transaction.posted.v1'
+                 AND p_aggregate_type IS DISTINCT FROM 'paper_ledger')
+          THEN
+            RAISE EXCEPTION 'Invalid closed Paper outbox aggregate type';
+          END IF;
+          IF (p_event_type='paper.order.accepted.v1' AND
+                (NOT ((p_payload->'data') ? 'order_id') OR
+                 (SELECT count(*) FROM jsonb_object_keys(p_payload->'data'))<>1))
+             OR (p_event_type IN ('paper.order.partially-filled.v1','paper.order.filled.v1')
+                 AND (NOT ((p_payload->'data') ?& ARRAY['order_id','fill_id']) OR
+                      (SELECT count(*) FROM jsonb_object_keys(p_payload->'data'))<>2))
+             OR (p_event_type='paper.order.cancelled.v1' AND
+                 (NOT ((p_payload->'data') ?& ARRAY['order_id','cancel_id']) OR
+                  (SELECT count(*) FROM jsonb_object_keys(p_payload->'data'))<>2))
+             OR (p_event_type='paper.order.rejected.v1' AND
+                 (NOT ((p_payload->'data') ?& ARRAY['request_hash','reason']) OR
+                  (SELECT count(*) FROM jsonb_object_keys(p_payload->'data'))<>2))
+             OR (p_event_type='paper.authorization.attempted.v1' AND
+                 (NOT ((p_payload->'data') ?& ARRAY['authorization_id','outcome']) OR
+                  (SELECT count(*) FROM jsonb_object_keys(p_payload->'data'))<>2))
+             OR (p_event_type='ledger.transaction.posted.v1' AND
+                 (NOT ((p_payload->'data') ? 'transaction_id') OR
+                  (SELECT count(*) FROM jsonb_object_keys(p_payload->'data'))<>1))
+          THEN
+            RAISE EXCEPTION 'Invalid closed Paper outbox event data';
           END IF;
           INSERT INTO outbox_events
             (event_id,event_type,payload,payload_hash,occurred_at,
@@ -867,6 +918,10 @@ def upgrade() -> None:
         END;
         $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public
     """)
+    op.execute(
+        "REVOKE ALL ON FUNCTION append_paper_outbox(varchar,varchar,jsonb,varchar,"
+        "timestamptz,varchar,varchar,bigint) FROM PUBLIC"
+    )
 
     op.execute("""
         DO $$
