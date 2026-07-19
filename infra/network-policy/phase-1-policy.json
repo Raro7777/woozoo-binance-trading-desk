@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "phase": 1,
+  "external_service_configuration": [],
+  "internal_services": ["postgres", "redis"],
+  "browser_direct_data_stores": false
+}

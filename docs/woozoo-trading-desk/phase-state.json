@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "project": "woozoo-binance-trading-desk",
+  "current_phase": 4,
+  "status": "active",
+  "updated_at": "2026-07-19T10:32:03Z",
+  "transition_policy": "monotonic_explicit_approval_only",
+  "acceptance_contract_ref": "woozoo-phase-gates#phase-4",
+  "acceptance_contract_runtime_paths": {
+    "codex": ".agents/skills/woozoo-phase-gates/references/phase-contract.md#phase-4",
+    "claude": ".claude/skills/woozoo-phase-gates/references/phase-contract.md#phase-4"
+  },
+  "acceptance_evidence_digest": null,
+  "phase_approval": {
+    "required": true,
+    "status": "not_requested",
+    "artifact_digest": null,
+    "approved_at": null,
+    "approved_by": null
+  },
+  "review_gate": {
+    "major_change_requirement": "external_review_completed_or_external_review_unavailable_recorded",
+    "same_engine_codex_counts_as_external": false,
+    "evidence_ref": null
+  },
+  "phase_scope_ref": "docs/woozoo-trading-desk/mvp-plan-and-acceptance.md",
+  "allowed_change_scope": [
+    "deterministic_internal_paper_limit_order_lifecycle",
+    "partial_fills_fees_and_cancellation",
+    "long_and_cash_positions_fifo_cost_basis_and_pnl",
+    "multi_commodity_double_entry_ledger_and_holds",
+    "immutable_ledger_reversal_and_replacement",
+    "idempotent_atomic_inbox_domain_ledger_and_outbox",
+    "deterministic_restart_replay_and_reconciliation",
+    "phase_4_contracts_migrations_tests_ci_and_documentation"
+  ],
+  "forbidden_change_scope": [
+    "risk_approval_or_kill_switch_domain_implementation",
+    "trading_room_domain_controls",
+    "ai_agent_or_trade_proposal_input_or_implementation",
+    "production_activation_of_phase_7_authorized_paper_routes",
+    "public_derivatives_telemetry",
+    "testnet_or_private_exchange_capability",
+    "mainnet_private_live_withdrawal_futures_margin_leverage_or_short",
+    "credential_request_or_storage"
+  ],
+  "advance_requires": [
+    "current_phase_acceptance_criteria_pass",
+    "safety_qa_pass",
+    "major_change_external_review_completed_or_external_review_unavailable_recorded",
+    "explicit_user_approval_bound_to_acceptance_evidence_digest"
+  ],
+  "transition_history": [
+    {
+      "from_phase": null,
+      "to_phase": 0,
+      "event": "initialized",
+      "at": "2026-07-19T00:00:00+09:00",
+      "evidence_digest": null
+    },
+    {
+      "from_phase": 0,
+      "to_phase": 1,
+      "event": "advanced_after_digest_bound_user_approval",
+      "at": "2026-07-19T02:56:00Z",
+      "evidence_digest": "9efd487cf4878528df89cc19c2951e7d61f8fad99e704ccfe1dff03fa7c79571",
+      "approval_ref": "docs/woozoo-trading-desk/phase-0/p0-to-p1-transition-approval.json"
+    },
+    {
+      "from_phase": 1,
+      "to_phase": 2,
+      "event": "advanced_after_digest_bound_user_approval",
+      "at": "2026-07-19T04:29:45Z",
+      "evidence_digest": "f27e59b5e308ebd121eefa86824750a857ffb7ae70d02b724e92d1995b98c4c8",
+      "approval_ref": "docs/woozoo-trading-desk/phase-1/p1-to-p2-transition-approval.json"
+    },
+    {
+      "from_phase": 2,
+      "to_phase": 3,
+      "event": "advanced_after_digest_bound_user_approval",
+      "at": "2026-07-19T07:21:51Z",
+      "evidence_digest": "2d9c8158b12de3ebe55f040fccfe0872d6a39e5368b737182bb500c96bb3368f",
+      "approval_ref": "docs/woozoo-trading-desk/phase-2/p2-to-p3-transition-approval.json"
+    },
+    {
+      "from_phase": 3,
+      "to_phase": 4,
+      "event": "advanced_after_digest_bound_user_approval",
+      "at": "2026-07-19T10:32:03Z",
+      "evidence_digest": "a85fa86194bf7c3b8fc52a36199b2206244b71ef5e6575d3b754de6a0a5e076c",
+      "approval_ref": "docs/woozoo-trading-desk/phase-3/p3-to-p4-transition-approval.json"
+    }
+  ]
+}
