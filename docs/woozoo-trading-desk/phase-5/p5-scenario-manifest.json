@@ -5,8 +5,8 @@
   "risk_input_schema_version": "woozoo.risk-input/v1",
   "risk_decision_schema_version": "woozoo.risk-decision/v1",
   "fixture_source": "tests/unit/test_risk_engine.py::risk_input",
-  "fixture_source_sha256": "29a39728590aeaa8f624348c74ab239475e506a025c7893d60f150cd035daf5c",
-  "risk_input_schema_sha256": "be41adc8400db7da57a21b6b1630aaf1582183a4785cbaa0d3a65ad1eb42d92f",
+  "fixture_source_sha256": "1e4482198b2d715fa58d85ce459d17d3eed6686e8136410b5a8fa5ae98b46456",
+  "risk_input_schema_sha256": "2a64c7c3f4362c73bfddcd8a994a6f0d19268c277114bd2a638b642540652504",
   "risk_decision_schema_sha256": "4c8287c8d0fddbcda1b9c2687a078d2ee477d8392f1c711d473e6b29bed3d6cd",
   "kill_switch_schema_sha256": "dc30f1f1f696d4251933a6d88e2155b0f22c6515c060c08405e4aaa7cec3a89b",
   "implementation_contract_sha256": "ade42c96142cec7ad104410e2413842b8e950ce7899e53f057acf980411fa616",
@@ -28,7 +28,7 @@
         "tests/replay/test_risk_replay.py::test_reason_message_or_recording_metadata_cannot_enter_decision_hash"
       ],
       "source_sha256": [
-        "29a39728590aeaa8f624348c74ab239475e506a025c7893d60f150cd035daf5c",
+        "1e4482198b2d715fa58d85ce459d17d3eed6686e8136410b5a8fa5ae98b46456",
         "e4acee48a3bf51c1b1255eab1bc44abf2cf59e1e6ed1fdf9cb154c6e43ab80eb"
       ],
       "oracle": "Same complete canonical input is byte-identical across replay, locale and process identity; each bound input mutation changes risk_input_digest."
@@ -42,11 +42,16 @@
         "tests/unit/test_risk_engine.py::test_risk_002_closed_reason_precedence_collects_all_applicable_reasons",
         "tests/unit/test_risk_engine.py::test_invalid_or_non_fixture_input_fails_closed_without_approval_dependency",
         "tests/unit/test_risk_engine.py::test_nested_unknowns_policy_rebinding_and_cross_snapshot_mismatch_fail_closed",
+        "tests/unit/test_risk_engine.py::test_complete_input_schema_rejects_nested_type_and_range_counterexamples[numeric_proposal_id]",
+        "tests/unit/test_risk_engine.py::test_complete_input_schema_rejects_nested_type_and_range_counterexamples[negative_kill_version]",
         "tests/unit/test_risk_engine.py::test_decimal_thresholds_use_unrounded_values_and_documented_comparators",
         "tests/property/test_risk_properties.py::test_spread_and_directional_slippage_boundaries",
         "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[order_notional_below]",
         "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[order_notional_equal]",
         "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[order_notional_above]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[sell_order_notional_below]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[sell_order_notional_equal]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[sell_order_notional_above]",
         "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[realized_loss_below]",
         "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[realized_loss_equal]",
         "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[realized_loss_above]",
@@ -68,12 +73,27 @@
         "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[portfolio_exposure_below]",
         "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[portfolio_exposure_equal]",
         "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[portfolio_exposure_above]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[sell_btc_exposure_below]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[sell_btc_exposure_equal]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[sell_btc_exposure_above]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[sell_eth_exposure_below]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[sell_eth_exposure_equal]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[sell_eth_exposure_above]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[sell_portfolio_exposure_below]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[sell_portfolio_exposure_equal]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[sell_portfolio_exposure_above]",
         "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[sell_reduces_long]",
         "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[evidence_missing]",
         "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[data_stale]",
         "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[future_contamination]",
         "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[watermark_incomplete]",
         "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[data_invalid]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[expired]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[duplicate_proposal]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[duplicate_order_intent]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[equity_invalid]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[bid_missing]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[ask_missing]",
         "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[bid_zero]",
         "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[ask_zero]",
         "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[ledger_mismatch]",
@@ -81,13 +101,16 @@
         "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[loss_scale_edge_below]"
       ],
       "source_sha256": [
-        "29a39728590aeaa8f624348c74ab239475e506a025c7893d60f150cd035daf5c",
+        "1e4482198b2d715fa58d85ce459d17d3eed6686e8136410b5a8fa5ae98b46456",
         "3d5e90741c120a0b85f24bf81712ba7cb1e1c4378fb1458f9e52b85af8c3c58f"
       ],
       "boundary_cases": {
         "order_notional_below": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[order_notional_below]",
         "order_notional_equal": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[order_notional_equal]",
         "order_notional_above": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[order_notional_above]",
+        "sell_order_notional_below": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[sell_order_notional_below]",
+        "sell_order_notional_equal": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[sell_order_notional_equal]",
+        "sell_order_notional_above": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[sell_order_notional_above]",
         "realized_loss_below": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[realized_loss_below]",
         "realized_loss_equal": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[realized_loss_equal]",
         "realized_loss_above": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[realized_loss_above]",
@@ -109,12 +132,27 @@
         "portfolio_exposure_below": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[portfolio_exposure_below]",
         "portfolio_exposure_equal": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[portfolio_exposure_equal]",
         "portfolio_exposure_above": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[portfolio_exposure_above]",
+        "sell_btc_exposure_below": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[sell_btc_exposure_below]",
+        "sell_btc_exposure_equal": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[sell_btc_exposure_equal]",
+        "sell_btc_exposure_above": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[sell_btc_exposure_above]",
+        "sell_eth_exposure_below": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[sell_eth_exposure_below]",
+        "sell_eth_exposure_equal": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[sell_eth_exposure_equal]",
+        "sell_eth_exposure_above": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[sell_eth_exposure_above]",
+        "sell_portfolio_exposure_below": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[sell_portfolio_exposure_below]",
+        "sell_portfolio_exposure_equal": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[sell_portfolio_exposure_equal]",
+        "sell_portfolio_exposure_above": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[sell_portfolio_exposure_above]",
         "sell_reduces_long": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[sell_reduces_long]",
         "evidence_missing": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[evidence_missing]",
         "data_stale": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[data_stale]",
         "future_contamination": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[future_contamination]",
         "watermark_incomplete": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[watermark_incomplete]",
         "data_invalid": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[data_invalid]",
+        "expired": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[expired]",
+        "duplicate_proposal": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[duplicate_proposal]",
+        "duplicate_order_intent": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[duplicate_order_intent]",
+        "equity_invalid": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[equity_invalid]",
+        "bid_missing": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[bid_missing]",
+        "ask_missing": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[ask_missing]",
         "bid_zero": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[bid_zero]",
         "ask_zero": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[ask_zero]",
         "ledger_mismatch": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[ledger_mismatch]",
@@ -140,7 +178,7 @@
         "tests/failure/test_kill_cancel_identity.py::test_kill_cancel_id_binds_full_activation_and_order_ids"
       ],
       "source_sha256": [
-        "5d2e9d7d2f2d7a23a84c1991fb4db5de492cb4a16877a6a13a519b61cb4d8cc5",
+        "4f2b6ae8bc663255836132ad55b13109e4f4af0dcccf7abcbeaa6dff7ef4e010",
         "d52c59ec96c32ca1b66508c404f726f08646a0ac0f20183d1c3e48c983a8e277"
       ],
       "fault_cases": {
@@ -169,7 +207,7 @@
         "tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_attempt_keeps_postgres_active[redis_expiry]",
         "tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_attempt_keeps_postgres_active[unauthenticated_actor]"
       ],
-      "source_sha256": ["c65095a9cb7b04214effa2c0299cd8d5d6c35b70115b95dbfb5806fe61fcbec5"],
+      "source_sha256": ["278dee7dd68c405ae86603b16db0625363a44dc8e8b99cfa891bda83c8fd0629"],
       "attempt_cases": {
         "timer": "tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_attempt_keeps_postgres_active[timer]",
         "ai": "tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_attempt_keeps_postgres_active[ai]",
@@ -202,8 +240,8 @@
         "tests/integration/test_risk_migration_contract.py::test_phase_four_to_five_to_four_to_five_migration_cycle_is_recoverable"
       ],
       "source_sha256": [
-        "4359f7a87467e08b88d5f5ead0aca3a1c215d386f62bd754fc89a551d0203244",
-        "dbab61e55809631d2c7a92754076e887ee3d4baae550f488ee17ae7590fbb295"
+        "0d9ae8493ca2643512f2ccedd9aeb40dbff7c379b8d60e79bd1a2549c932128f",
+        "2705f6d73eaf567a274d34ab64be776ba797b22dc7ff27e1e4be90662d8602b8"
       ],
       "oracle": "Unique immutable Risk input authority, least privilege, Kill barrier locking, atomic outbox and Paper cancel saga survive migration cycle and rollback."
     },

@@ -10,6 +10,9 @@ from typing import Iterator
 
 import psycopg
 
+from paper_engine.persistence import PostgresPaperStore
+from test_paper_postgres_persistence import complete_write
+
 
 ROOT = Path(__file__).resolve().parents[2]
 MIGRATION = ROOT / "db/migrations/versions/20260719_0005_risk_engine.py"
@@ -71,6 +74,8 @@ def test_risk_migration_001_closes_authority_and_barrier_boundaries() -> None:
         "REVOKE ALL ON FUNCTION paper_lock_kill_barrier() FROM PUBLIC",
         "enforce_kill_state_activation_only",
         "Kill state permits monotonic activation only",
+        "assert_kill_activation_consistency",
+        "Kill activation transaction is incomplete",
         "paper_kill_inbox",
         "paper_kill_cancel_batches",
         "paper_kill_cancel_items",
@@ -90,6 +95,7 @@ def test_phase_four_to_five_to_four_to_five_migration_cycle_is_recoverable() -> 
     with infrastructure_lock():
         run("docker", "compose", "up", "-d", "--wait", "postgres")
         try:
+            run(sys.executable, "-m", "alembic", "upgrade", "head")
             run(sys.executable, "-m", "alembic", "downgrade", "20260719_0004")
             with psycopg.connect(DATABASE_URL) as connection:
                 assert connection.execute("SELECT to_regclass('paper_orders')").fetchone() == (
@@ -98,12 +104,50 @@ def test_phase_four_to_five_to_four_to_five_migration_cycle_is_recoverable() -> 
                 assert connection.execute("SELECT to_regclass('kill_switch_state')").fetchone() == (
                     None,
                 )
+                connection.execute("""
+                    CREATE OR REPLACE FUNCTION paper_lock_kill_barrier()
+                    RETURNS TABLE(active boolean, version bigint,
+                                  last_activation_event_id varchar) AS $$
+                      SELECT false,0::bigint,NULL::varchar
+                    $$ LANGUAGE sql
+                """)
+
+            paper_write = complete_write(suffix="p4-p5-cycle-authority")
+            store = PostgresPaperStore(DATABASE_URL)
+            store.commit(paper_write)
+            baseline_digest = store.semantic_digest(paper_write.account_id)
+            with psycopg.connect(DATABASE_URL) as connection:
+                connection.execute("DROP FUNCTION paper_lock_kill_barrier()")
+                phase4_authority = connection.execute(
+                    "SELECT "
+                    "(SELECT count(*) FROM paper_accounts WHERE account_id=%s),"
+                    "(SELECT count(*) FROM paper_orders WHERE account_id=%s),"
+                    "(SELECT count(*) FROM paper_asset_balances "
+                    " WHERE account_id=%s AND held>0),"
+                    "(SELECT count(*) FROM paper_ledger_transactions "
+                    " WHERE account_id=%s AND business_event_type='paper.hold'),"
+                    "(SELECT count(*) FROM paper_ledger_transactions WHERE account_id=%s),"
+                    "(SELECT count(*) FROM paper_outbox_events_v1 WHERE account_id=%s),"
+                    "to_regprocedure('append_paper_outbox(varchar,varchar,jsonb,varchar,"
+                    "timestamptz,varchar,varchar,bigint)') IS NOT NULL,"
+                    "has_table_privilege('woozoo_paper_engine','paper_orders','SELECT'),"
+                    "has_column_privilege('woozoo_paper_engine','paper_orders',"
+                    "'filled_quantity','UPDATE')",
+                    (paper_write.account_id,) * 6,
+                ).fetchone()
+            assert phase4_authority == (1, 1, 1, 1, 4, 2, True, True, True)
 
             run(sys.executable, "-m", "alembic", "upgrade", "20260719_0005")
             with psycopg.connect(DATABASE_URL) as connection:
                 assert connection.execute(
                     "SELECT active,version FROM kill_switch_state WHERE scope='paper-global'"
                 ).fetchone() == (False, 0)
+                assert connection.execute(
+                    "SELECT to_regprocedure('paper_lock_kill_barrier()') IS NOT NULL,"
+                    "has_function_privilege('woozoo_paper_engine',"
+                    "'paper_lock_kill_barrier()','EXECUTE')"
+                ).fetchone() == (True, True)
+            assert store.semantic_digest(paper_write.account_id) == baseline_digest
 
             run(sys.executable, "-m", "alembic", "downgrade", "20260719_0004")
             with psycopg.connect(DATABASE_URL) as connection:
@@ -113,6 +157,17 @@ def test_phase_four_to_five_to_four_to_five_migration_cycle_is_recoverable() -> 
                 assert connection.execute(
                     "SELECT count(*) FROM outbox_events WHERE payload->>'producer'='risk-engine'"
                 ).fetchone() == (0,)
+                assert (
+                    connection.execute(
+                        "SELECT to_regprocedure('append_paper_outbox(varchar,varchar,jsonb,varchar,"
+                        "timestamptz,varchar,varchar,bigint)') IS NOT NULL,"
+                        "has_table_privilege('woozoo_paper_engine','paper_orders','SELECT'),"
+                        "has_column_privilege('woozoo_paper_engine','paper_orders',"
+                        "'filled_quantity','UPDATE')"
+                    ).fetchone()
+                    == phase4_authority[6:]
+                )
+            assert store.semantic_digest(paper_write.account_id) == baseline_digest
 
             run(sys.executable, "-m", "alembic", "upgrade", "20260719_0005")
             with psycopg.connect(DATABASE_URL) as connection:
@@ -123,6 +178,21 @@ def test_phase_four_to_five_to_four_to_five_migration_cycle_is_recoverable() -> 
                     "SELECT has_function_privilege('woozoo_paper_engine',"
                     "'paper_lock_kill_barrier()','EXECUTE')"
                 ).fetchone() == (True,)
+                assert (
+                    connection.execute(
+                        "SELECT (SELECT count(*) FROM paper_accounts WHERE account_id=%s),"
+                        "(SELECT count(*) FROM paper_orders WHERE account_id=%s),"
+                        "(SELECT count(*) FROM paper_asset_balances "
+                        " WHERE account_id=%s AND held>0),"
+                        "(SELECT count(*) FROM paper_ledger_transactions "
+                        " WHERE account_id=%s AND business_event_type='paper.hold'),"
+                        "(SELECT count(*) FROM paper_ledger_transactions WHERE account_id=%s),"
+                        "(SELECT count(*) FROM paper_outbox_events_v1 WHERE account_id=%s)",
+                        (paper_write.account_id,) * 6,
+                    ).fetchone()
+                    == phase4_authority[:6]
+                )
+            assert store.semantic_digest(paper_write.account_id) == baseline_digest
         finally:
             run(sys.executable, "-m", "alembic", "upgrade", "head")
-            run("docker", "compose", "stop", "postgres")
+            run("docker", "compose", "down", "-v")

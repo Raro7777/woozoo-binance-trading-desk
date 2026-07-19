@@ -254,6 +254,36 @@ def test_risk_decision_persistence_is_atomic_unique_and_replay_stable() -> None:
 
 
 def test_risk_writer_cannot_reset_or_decrease_the_kill_barrier() -> None:
+    partial_event_id = "e" * 64
+    with psycopg.connect(RISK_WRITER_URL) as connection:
+        connection.execute(
+            "INSERT INTO kill_switch_events"
+            "(activation_event_id,scope,request_id,request_hash,trigger_kind,actor_id,"
+            "reason_code,reason,observed_at,context_digest,prior_version,new_version) "
+            "VALUES (%s,'paper-global','partial-activation',%s,'MANUAL',"
+            "'operator:partial-test','MANUAL_SAFETY_STOP','must rollback',%s,%s,0,1)",
+            (partial_event_id, "f" * 64, NOW, "a" * 64),
+        )
+        connection.execute(
+            "UPDATE kill_switch_state SET active=true,version=1,last_activation_event_id=%s "
+            "WHERE scope='paper-global'",
+            (partial_event_id,),
+        )
+        with pytest.raises(
+            psycopg.errors.RaiseException, match="activation transaction is incomplete"
+        ):
+            connection.commit()
+        connection.rollback()
+
+    with psycopg.connect(DATABASE_URL) as connection:
+        assert connection.execute(
+            "SELECT active,version FROM kill_switch_state WHERE scope='paper-global'"
+        ).fetchone() == (False, 0)
+        assert connection.execute(
+            "SELECT count(*) FROM kill_switch_events WHERE activation_event_id=%s",
+            (partial_event_id,),
+        ).fetchone() == (0,)
+
     activation = PostgresKillSwitch(DATABASE_URL).activate(
         KillActivation(
             request_id="db-monotonic-kill",

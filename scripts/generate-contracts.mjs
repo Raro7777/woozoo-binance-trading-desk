@@ -440,6 +440,12 @@ export type RiskDecisionBindingV1 = { decision_schema_version: "woozoo.risk-deci
 export type KillSwitchBindingV1 = { scope: "paper-global"; active: true; prior_version: number; version: number; activation_event_id: string; trigger_kind: "MANUAL" | "INVARIANT"; actor_id: string; reason_code: "MANUAL_SAFETY_STOP" | "LEDGER_IMBALANCE" | "PHYSICAL_LEDGER_MISMATCH" | "AUTHORIZATION_RECEIPT_MISMATCH"; reason: string; observed_at: string; context_digest: string };
 export type RiskDomainEventBindingV1 = { spec_version: "woozoo.event/v1"; event_id: string; event_type: "risk.decision.recorded.v1" | "kill-switch.activated.v1"; event_version: 1; occurred_at: string; producer: "risk-engine"; activation_phase: 7; aggregate_id: string; aggregate_version: number; payload_hash: string; data: RiskDecisionBindingV1 | KillSwitchBindingV1 };
 `;
+const riskSchemaPyBindings = `
+import json
+
+RISK_INPUT_SCHEMA: dict[str, object] = json.loads(${JSON.stringify(JSON.stringify(riskInput))})
+`;
+
 const riskPyBindings = `
 RiskVerdictBindingV1 = Literal["ALLOWED", "DENIED", "ERROR"]
 
@@ -487,7 +493,7 @@ const outputs = new Map([
   [resolve(root, "packages/typescript/contract-bindings/src/generated.ts"), `${tsBindings}${marketTsBindings}${domainTsBindings}${strictEvidenceTsBindings}${paperTsBindings}${riskTsBindings}`],
   [
     resolve(root, "packages/python/platform-core/src/platform_core/generated_contracts.py"),
-    `${strictPyBindings}${evidencePyBindings}${paperPyBindings}${paperPyEventBindings}${riskPyBindings}`
+    `${strictPyBindings}${riskSchemaPyBindings}${evidencePyBindings}${paperPyBindings}${paperPyEventBindings}${riskPyBindings}`
       .replace(
         'Literal["SCHEMA_INVALID", "IDEMPOTENCY_CONFLICT"]',
         'Literal["SCHEMA_INVALID", "IDEMPOTENCY_CONFLICT", "CALLER_UNAUTHORIZED"]',

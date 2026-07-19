@@ -250,6 +250,23 @@ def test_nested_unknowns_policy_rebinding_and_cross_snapshot_mismatch_fail_close
     assert "PORTFOLIO_SNAPSHOT_MISMATCH" in evaluate_risk(count).ordered_reason_codes
 
 
+@pytest.mark.parametrize("case", ["numeric_proposal_id", "negative_kill_version"])
+def test_complete_input_schema_rejects_nested_type_and_range_counterexamples(case: str) -> None:
+    payload = risk_input()
+    if case == "numeric_proposal_id":
+        payload["proposal"]["payload"]["proposal_id"] = 7  # type: ignore[index]
+        payload["proposal"]["proposal_hash"] = canonical_hash(  # type: ignore[index]
+            payload["proposal"]["payload"]  # type: ignore[index]
+        )
+    else:
+        payload["kill_switch"]["version"] = -1  # type: ignore[index]
+
+    decision = evaluate_risk(payload)
+
+    assert decision.verdict == "ERROR"
+    assert decision.ordered_reason_codes == ("INPUT_SCHEMA_INVALID",)
+
+
 def test_decimal_thresholds_use_unrounded_values_and_documented_comparators() -> None:
     payload = risk_input()
     preview = payload["order_preview"]  # type: ignore[assignment]
@@ -287,6 +304,9 @@ RISK_BOUNDARY_CASES = [
     ("order_notional_below", "ORDER_NOTIONAL_LIMIT_EXCEEDED", False),
     ("order_notional_equal", "ORDER_NOTIONAL_LIMIT_EXCEEDED", False),
     ("order_notional_above", "ORDER_NOTIONAL_LIMIT_EXCEEDED", True),
+    ("sell_order_notional_below", "ORDER_NOTIONAL_LIMIT_EXCEEDED", False),
+    ("sell_order_notional_equal", "ORDER_NOTIONAL_LIMIT_EXCEEDED", False),
+    ("sell_order_notional_above", "ORDER_NOTIONAL_LIMIT_EXCEEDED", True),
     ("realized_loss_below", "REALIZED_LOSS_LIMIT_EXCEEDED", False),
     ("realized_loss_equal", "REALIZED_LOSS_LIMIT_EXCEEDED", True),
     ("realized_loss_above", "REALIZED_LOSS_LIMIT_EXCEEDED", True),
@@ -308,12 +328,27 @@ RISK_BOUNDARY_CASES = [
     ("portfolio_exposure_below", "PORTFOLIO_EXPOSURE_LIMIT_EXCEEDED", False),
     ("portfolio_exposure_equal", "PORTFOLIO_EXPOSURE_LIMIT_EXCEEDED", False),
     ("portfolio_exposure_above", "PORTFOLIO_EXPOSURE_LIMIT_EXCEEDED", True),
+    ("sell_btc_exposure_below", "SYMBOL_EXPOSURE_LIMIT_EXCEEDED", False),
+    ("sell_btc_exposure_equal", "SYMBOL_EXPOSURE_LIMIT_EXCEEDED", False),
+    ("sell_btc_exposure_above", "SYMBOL_EXPOSURE_LIMIT_EXCEEDED", True),
+    ("sell_eth_exposure_below", "SYMBOL_EXPOSURE_LIMIT_EXCEEDED", False),
+    ("sell_eth_exposure_equal", "SYMBOL_EXPOSURE_LIMIT_EXCEEDED", False),
+    ("sell_eth_exposure_above", "SYMBOL_EXPOSURE_LIMIT_EXCEEDED", True),
+    ("sell_portfolio_exposure_below", "PORTFOLIO_EXPOSURE_LIMIT_EXCEEDED", False),
+    ("sell_portfolio_exposure_equal", "PORTFOLIO_EXPOSURE_LIMIT_EXCEEDED", False),
+    ("sell_portfolio_exposure_above", "PORTFOLIO_EXPOSURE_LIMIT_EXCEEDED", True),
     ("sell_reduces_long", "SYMBOL_EXPOSURE_LIMIT_EXCEEDED", False),
     ("evidence_missing", "EVIDENCE_MISSING", True),
     ("data_stale", "DATA_STALE", True),
     ("future_contamination", "FUTURE_CONTAMINATION", True),
     ("watermark_incomplete", "WATERMARK_INCOMPLETE", True),
     ("data_invalid", "DATA_INVALID", True),
+    ("expired", "DATA_STALE", True),
+    ("duplicate_proposal", "DUPLICATE_PROPOSAL", True),
+    ("duplicate_order_intent", "DUPLICATE_ORDER_INTENT", True),
+    ("equity_invalid", "EQUITY_INVALID", True),
+    ("bid_missing", "EXECUTION_QUALITY_UNKNOWN", True),
+    ("ask_missing", "EXECUTION_QUALITY_UNKNOWN", True),
     ("bid_zero", "EXECUTION_QUALITY_UNKNOWN", True),
     ("ask_zero", "EXECUTION_QUALITY_UNKNOWN", True),
     ("ledger_mismatch", "LEDGER_IMBALANCE", True),
@@ -329,14 +364,23 @@ RISK_BOUNDARY_CASES = [
 )
 def test_risk_002_complete_boundary_matrix(case: str, reason: str, present: bool) -> None:
     payload = risk_input()
-    if case.startswith("order_notional_"):
+    if case.startswith("order_notional_") or case.startswith("sell_order_notional_"):
         quantity = {"below": "0.2499", "equal": "0.25", "above": "0.2501"}[case.rsplit("_", 1)[1]]
         notional = format(Decimal(quantity) * Decimal(100), "f")
+        if case.startswith("sell_"):
+            payload["proposal"]["payload"]["side"] = "SELL"  # type: ignore[index]
+            payload["proposal"]["proposal_hash"] = canonical_hash(  # type: ignore[index]
+                payload["proposal"]["payload"]  # type: ignore[index]
+            )
+            payload["portfolio"]["positions"]["BTCUSDT"]["available"] = "1"  # type: ignore[index]
+            payload["portfolio"]["available_quote"] = "9900"  # type: ignore[index]
+            rehash_section(payload, "portfolio", "snapshot_hash")
         set_preview(
             payload,
+            side="SELL" if case.startswith("sell_") else "BUY",
             quantity=quantity,
             worst_case_fee="0",
-            worst_case_hold=notional,
+            worst_case_hold=quantity if case.startswith("sell_") else notional,
             worst_case_notional=notional,
         )
     elif case.startswith("realized_loss_"):
@@ -376,8 +420,59 @@ def test_risk_002_complete_boundary_matrix(case: str, reason: str, present: bool
         set_preview(payload, symbol="ETHUSDT")
         add_open_buy_commitment(payload, "ETHUSDT", quote)
     elif case.startswith("portfolio_exposure_"):
-        quote = {"below": "2489.98", "equal": "2489.99", "above": "2490"}[case.rsplit("_", 1)[1]]
-        add_open_buy_commitment(payload, "BTCUSDT", quote)
+        total = {"below": "2499.99", "equal": "2500", "above": "2500.01"}[case.rsplit("_", 1)[1]]
+        btc = Decimal("1489.99")
+        eth = Decimal(total) - Decimal("10.01") - btc
+        add_open_buy_commitment(payload, "BTCUSDT", format(btc, "f"))
+        portfolio = payload["portfolio"]
+        exposure = payload["exposure_snapshot"]
+        portfolio["open_orders"].append(  # type: ignore[index,union-attr]
+            {
+                "client_order_id": "open-ethusdt",
+                "symbol": "ETHUSDT",
+                "side": "BUY",
+                "remaining_quantity": format(eth / 100, "f"),
+                "limit_price": "100",
+                "remaining_worst_case_quote_fee": "0",
+                "status": "OPEN",
+                "accepted_broker_seq": 2,
+            }
+        )
+        exposure["open_order_count"] = 2  # type: ignore[index]
+        rehash_section(payload, "portfolio", "snapshot_hash")
+        rehash_section(payload, "exposure_snapshot", "snapshot_hash")
+    elif case.startswith("sell_btc_exposure_") or case.startswith("sell_eth_exposure_"):
+        symbol = "BTCUSDT" if case.startswith("sell_btc") else "ETHUSDT"
+        level = case.rsplit("_", 1)[1]
+        exposure = {
+            "BTCUSDT": {"below": "1499.99", "equal": "1500", "above": "1500.01"},
+            "ETHUSDT": {"below": "999.99", "equal": "1000", "above": "1000.01"},
+        }[symbol][level]
+        payload["proposal"]["payload"].update({"symbol": symbol, "side": "SELL"})  # type: ignore[index]
+        payload["proposal"]["proposal_hash"] = canonical_hash(  # type: ignore[index]
+            payload["proposal"]["payload"]  # type: ignore[index]
+        )
+        midpoint = Decimal(100) if symbol == "BTCUSDT" else Decimal(50)
+        payload["portfolio"]["positions"][symbol]["available"] = format(  # type: ignore[index]
+            Decimal(exposure) / midpoint, "f"
+        )
+        payload["portfolio"]["available_quote"] = format(Decimal(10000) - Decimal(exposure), "f")  # type: ignore[index]
+        rehash_section(payload, "portfolio", "snapshot_hash")
+        set_preview(payload, symbol=symbol, side="SELL", worst_case_hold="0.1")
+    elif case.startswith("sell_portfolio_exposure_"):
+        level = case.rsplit("_", 1)[1]
+        total = {"below": "2499.99", "equal": "2500", "above": "2500.01"}[level]
+        btc = Decimal("1500")
+        eth = Decimal(total) - btc
+        payload["proposal"]["payload"]["side"] = "SELL"  # type: ignore[index]
+        payload["proposal"]["proposal_hash"] = canonical_hash(  # type: ignore[index]
+            payload["proposal"]["payload"]  # type: ignore[index]
+        )
+        payload["portfolio"]["positions"]["BTCUSDT"]["available"] = format(btc / 100, "f")  # type: ignore[index]
+        payload["portfolio"]["positions"]["ETHUSDT"]["available"] = format(eth / 50, "f")  # type: ignore[index]
+        payload["portfolio"]["available_quote"] = format(Decimal(10000) - Decimal(total), "f")  # type: ignore[index]
+        rehash_section(payload, "portfolio", "snapshot_hash")
+        set_preview(payload, side="SELL", worst_case_hold="0.1")
     elif case == "sell_reduces_long":
         payload["proposal"]["payload"]["side"] = "SELL"  # type: ignore[index]
         payload["proposal"]["proposal_hash"] = canonical_hash(  # type: ignore[index]
@@ -396,6 +491,21 @@ def test_risk_002_complete_boundary_matrix(case: str, reason: str, present: bool
         payload["data"]["watermark_complete"] = False  # type: ignore[index]
     elif case == "data_invalid":
         payload["data"]["quality"] = "INVALID"  # type: ignore[index]
+    elif case == "expired":
+        payload["data"]["freshness"] = "STALE"  # type: ignore[index]
+    elif case == "duplicate_proposal":
+        payload["duplicate"]["proposal_seen"] = True  # type: ignore[index]
+    elif case == "duplicate_order_intent":
+        payload["duplicate"]["order_intent_seen"] = True  # type: ignore[index]
+    elif case == "equity_invalid":
+        payload["portfolio"]["available_quote"] = "0"  # type: ignore[index]
+        rehash_section(payload, "portfolio", "snapshot_hash")
+    elif case == "bid_missing":
+        del payload["order_preview"]["best_bid"]  # type: ignore[index]
+        rehash_section(payload, "order_preview", "paper_order_preview_hash")
+    elif case == "ask_missing":
+        del payload["order_preview"]["best_ask"]  # type: ignore[index]
+        rehash_section(payload, "order_preview", "paper_order_preview_hash")
     elif case == "bid_zero":
         set_preview(payload, best_bid="0")
     elif case == "ask_zero":
@@ -416,5 +526,24 @@ def test_risk_002_complete_boundary_matrix(case: str, reason: str, present: bool
     else:
         raise AssertionError(case)
 
-    reasons = evaluate_risk(payload).ordered_reason_codes
+    decision = evaluate_risk(payload)
+    reasons = decision.ordered_reason_codes
     assert (reason in reasons) is present
+    if case == "ledger_mismatch":
+        expected = ("LEDGER_IMBALANCE", "RECONCILIATION_UNHEALTHY")
+    elif case in {"portfolio_exposure_above", "sell_portfolio_exposure_above"}:
+        expected = ("PORTFOLIO_EXPOSURE_LIMIT_EXCEEDED", "SYMBOL_EXPOSURE_LIMIT_EXCEEDED")
+    elif present:
+        expected = (reason,)
+    else:
+        expected = ("RISK_ALLOWED",)
+    assert reasons == expected
+    assert decision.verdict == (
+        "ERROR"
+        if reason in {"EQUITY_INVALID", "INPUT_SCHEMA_INVALID"}
+        else "DENIED"
+        if present
+        else "ALLOWED"
+    )
+    if case.startswith("drawdown_"):
+        assert payload["kill_switch"] == {"active": False, "version": 0, "event_id": None}

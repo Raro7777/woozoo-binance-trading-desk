@@ -17,7 +17,7 @@ import pytest
 from paper_engine.persistence import KillCancelStage, PostgresPaperStore
 from risk_engine import KillActivation, PostgresKillSwitch
 from test_kill_switch_atomicity import OPEN_ORDER_COUNT, open_order_write
-from test_paper_postgres_persistence import complete_write
+from test_paper_postgres_persistence import split_open_and_fill
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -42,7 +42,8 @@ def run(*command: str) -> None:
 
 @contextmanager
 def isolated_postgres() -> Iterator[None]:
-    lock_path = ROOT / ".p1-integration.lock"
+    lock_path = ROOT / "_workspace/p5-kill-fault.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
     with lock_path.open("a+b") as lock:
         lock.seek(0)
         lock.write(b"0")
@@ -116,11 +117,11 @@ def test_kill_001_fault_matrix(fault: str) -> None:
         kill = PostgresKillSwitch(DATABASE_URL)
 
         if fault in {"paper_create_lock_before_activation", "paper_fill_lock_before_activation"}:
-            write = (
-                open_order_write(1)
-                if fault == "paper_create_lock_before_activation"
-                else complete_write(suffix="kill-001-fill-before")
-            )
+            if fault == "paper_create_lock_before_activation":
+                write = open_order_write(1)
+            else:
+                opened, write = split_open_and_fill(suffix="kill-001-fill-before")
+                assert paper.commit(opened).created is True
             acquired = Event()
             release = Event()
 
@@ -143,12 +144,12 @@ def test_kill_001_fault_matrix(fault: str) -> None:
             return
 
         if fault in {"activation_lock_before_paper_create", "activation_lock_before_paper_fill"}:
+            if fault == "activation_lock_before_paper_fill":
+                opened, write = split_open_and_fill(suffix="kill-001-fill-after")
+                assert paper.commit(opened).created is True
+            else:
+                write = open_order_write(1)
             assert kill.activate(activation(fault)).created is True
-            write = (
-                open_order_write(1)
-                if fault == "activation_lock_before_paper_create"
-                else complete_write(suffix="kill-001-fill-after")
-            )
             with pytest.raises(RuntimeError, match="PAPER_KILL_SWITCH_ACTIVE"):
                 paper.commit(write)
             assert_active()
@@ -183,6 +184,29 @@ def test_kill_001_fault_matrix(fault: str) -> None:
                     "(SELECT count(*) FROM paper_kill_cancel_batches),"
                     "(SELECT count(*) FROM paper_kill_cancel_items)"
                 ).fetchone() == (0, 0, 0)
+            restarted_consumer = PostgresPaperStore(DATABASE_URL)
+            resumed = restarted_consumer.consume_kill_activation(
+                activated.activation_event_id, event_hash, received_at=NOW
+            )
+            replay = restarted_consumer.consume_kill_activation(
+                activated.activation_event_id, event_hash, received_at=NOW
+            )
+            assert resumed.batch_created is True and resumed.cancelled_count == 1
+            assert replay.batch_created is False and replay.cancelled_count == 0
+            with psycopg.connect(DATABASE_URL) as connection:
+                assert connection.execute(
+                    "SELECT "
+                    "(SELECT count(*) FROM paper_kill_inbox),"
+                    "(SELECT count(*) FROM paper_kill_cancel_batches),"
+                    "(SELECT count(*) FROM paper_kill_cancel_items),"
+                    "(SELECT count(*) FROM paper_order_events "
+                    " WHERE event_type='paper.order.cancelled.v1'),"
+                    "(SELECT count(*) FROM paper_ledger_transactions "
+                    " WHERE business_event_type='paper.hold-release'),"
+                    "(SELECT count(*) FROM outbox_events "
+                    " WHERE event_type='paper.order.cancelled.v1'),"
+                    "(SELECT count(*) FROM paper_orders WHERE status='CANCELLED')"
+                ).fetchone() == (1, 1, 1, 1, 1, 1, 1)
         elif fault == "crash_after_batch_commit_before_ack":
             paper.consume_kill_activation(
                 activated.activation_event_id, event_hash, received_at=NOW

@@ -21,7 +21,7 @@ export const CONTRACT_SOURCE_DIGESTS = {
   "evidence-domain-events.v1.json": "af113814267e596fa453b5036a8f5d6e579fce133ee03efee9cca785d3f1d749",
   "paper-order.v1.json": "3c536d1e011c6f847a78c42bf43c56aef2b9be8352a32d20fd200c812dc9a081",
   "paper-domain-events.v1.json": "4ff361b3acd58174bd5d4ec394e58da66089df87d6be9873587cf7c5083d12a5",
-  "risk-input.v1.json": "f2613b09cc0cc8c4c288703bb9ec57c691bd1076523afbdf0860b32eab43b605",
+  "risk-input.v1.json": "92bcaf8af96a4676eef5ed0777622e8933337d68d5f3c623b65c380ea3aa33a2",
   "risk-decision.v1.json": "3d3d8b34052fbcf21ec557051bffb5b713cfc6d95c220ee5ff35bc046e2bc1db",
   "kill-switch.v1.json": "c70ff8c0d61994a2400df4efe79bcadfeef65661591097e371959b232aadbc93",
   "risk-domain-events.v1.json": "51558ea615fafb3827c251f6a19f1800881b31740619b1378f8a68bdb5be9ee3"

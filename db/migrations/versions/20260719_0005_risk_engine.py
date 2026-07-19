@@ -169,9 +169,7 @@ def upgrade() -> None:
             ["paper_account_id"], ["paper_accounts.account_id"], ondelete="RESTRICT"
         ),
         sa.CheckConstraint("batch_key ~ '^[a-f0-9]{64}$'", name="ck_paper_kill_batch_hash"),
-        sa.CheckConstraint(
-            "cancelled_count BETWEEN 1 AND 100", name="ck_paper_kill_batch_bound"
-        ),
+        sa.CheckConstraint("cancelled_count BETWEEN 1 AND 100", name="ck_paper_kill_batch_bound"),
     )
     op.create_table(
         "paper_kill_cancel_items",
@@ -233,6 +231,66 @@ def upgrade() -> None:
         BEFORE UPDATE ON kill_switch_state FOR EACH ROW
         EXECUTE FUNCTION enforce_kill_state_activation_only()
     """)
+    op.execute("""
+        CREATE FUNCTION assert_kill_activation_consistency() RETURNS trigger AS $$
+        BEGIN
+          IF EXISTS (
+            SELECT 1 FROM kill_switch_events event
+            LEFT JOIN risk_kill_command_receipts receipt
+              ON receipt.request_id=event.request_id
+             AND receipt.request_hash=event.request_hash
+             AND receipt.activation_event_id=event.activation_event_id
+            LEFT JOIN risk_outbox_links link
+              ON link.aggregate_kind='kill-switch'
+             AND link.aggregate_id=event.activation_event_id
+            LEFT JOIN outbox_events outbox ON outbox.event_id=link.event_id
+            WHERE receipt.request_id IS NULL OR link.event_id IS NULL OR outbox.event_id IS NULL
+               OR outbox.event_type<>'kill-switch.activated.v1'
+               OR outbox.aggregate_type<>'kill_switch'
+               OR outbox.aggregate_id<>event.activation_event_id
+               OR outbox.aggregate_version<>event.new_version
+               OR outbox.payload->>'producer'<>'risk-engine'
+               OR outbox.payload->'data'->>'activation_event_id'<>event.activation_event_id
+          ) OR EXISTS (
+            SELECT 1 FROM kill_switch_state state
+            LEFT JOIN kill_switch_events event
+              ON event.activation_event_id=state.last_activation_event_id
+             AND event.scope=state.scope AND event.new_version=state.version
+            WHERE state.active AND event.activation_event_id IS NULL
+          ) OR EXISTS (
+            SELECT 1 FROM risk_kill_command_receipts receipt
+            LEFT JOIN kill_switch_events event
+              ON event.activation_event_id=receipt.activation_event_id
+             AND event.request_id=receipt.request_id
+             AND event.request_hash=receipt.request_hash
+            WHERE event.activation_event_id IS NULL
+          ) OR EXISTS (
+            SELECT 1 FROM risk_outbox_links link
+            LEFT JOIN kill_switch_events event
+              ON event.activation_event_id=link.aggregate_id
+            LEFT JOIN outbox_events outbox ON outbox.event_id=link.event_id
+            WHERE link.aggregate_kind='kill-switch'
+              AND (event.activation_event_id IS NULL OR outbox.event_id IS NULL)
+          ) THEN
+            RAISE EXCEPTION 'Kill activation transaction is incomplete';
+          END IF;
+          RETURN NULL;
+        END;
+        $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public
+    """)
+    op.execute("REVOKE ALL ON FUNCTION assert_kill_activation_consistency() FROM PUBLIC")
+    for table in (
+        "kill_switch_events",
+        "kill_switch_state",
+        "risk_kill_command_receipts",
+        "risk_outbox_links",
+    ):
+        op.execute(f"""
+            CREATE CONSTRAINT TRIGGER {table}_kill_activation_consistency
+            AFTER INSERT OR UPDATE OR DELETE ON {table}
+            DEFERRABLE INITIALLY DEFERRED
+            FOR EACH ROW EXECUTE FUNCTION assert_kill_activation_consistency()
+        """)
     op.execute("""
         CREATE FUNCTION paper_lock_kill_barrier()
         RETURNS TABLE(active boolean, version bigint, last_activation_event_id varchar) AS $$
@@ -429,6 +487,7 @@ def downgrade() -> None:
     )
     op.execute("DROP TABLE phase5_outbox_cleanup")
     op.execute("DROP FUNCTION enforce_kill_state_activation_only()")
+    op.execute("DROP FUNCTION assert_kill_activation_consistency()")
     # Alembic may continue directly into the Phase 4 downgrade in the same
     # transaction. Drain deferred outbox consistency triggers before that
     # migration alters the shared outbox table.

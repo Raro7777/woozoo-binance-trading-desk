@@ -112,7 +112,7 @@
     },
     "preview": {
       "type": "object", "additionalProperties": false,
-      "required": ["symbol", "side", "order_type", "time_in_force", "quantity", "limit_price", "worst_case_fee", "worst_case_hold", "worst_case_notional", "best_bid", "best_ask", "expected_slippage_inputs", "paper_order_preview_hash"],
+      "required": ["symbol", "side", "order_type", "time_in_force", "quantity", "limit_price", "worst_case_fee", "worst_case_hold", "worst_case_notional", "expected_slippage_inputs", "paper_order_preview_hash"],
       "properties": {
         "symbol": {"enum": ["BTCUSDT", "ETHUSDT"]}, "side": {"enum": ["BUY", "SELL"]},
         "order_type": {"const": "LIMIT"}, "time_in_force": {"const": "GTC"},

@@ -13,7 +13,10 @@ from hashlib import sha256
 import json
 import re
 
+from jsonschema import Draft202012Validator, FormatChecker
+from jsonschema.exceptions import ValidationError
 from platform_core import canonical_hash
+from platform_core.generated_contracts import RISK_INPUT_SCHEMA
 
 from .models import RiskDecision
 
@@ -25,6 +28,27 @@ POLICY_VERSION = "woozoo.risk-policy/v1"
 _DECIMAL = re.compile(r"^(0|[1-9][0-9]*)(\.[0-9]+)?$")
 _SIGNED_DECIMAL = re.compile(r"^-?(0|[1-9][0-9]*)(\.[0-9]+)?$")
 _HASH = re.compile(r"^[0-9a-f]{64}$")
+_INPUT_VALIDATOR = Draft202012Validator(RISK_INPUT_SCHEMA, format_checker=FormatChecker())
+
+
+def _is_semantic_schema_error(error: ValidationError) -> bool:
+    """Keep closed transport validation while preserving stable business reason codes."""
+    path = tuple(error.absolute_path)
+    if path[:2] == ("policy", "limits") or path == ("policy", "policy_hash"):
+        return True
+    if path in {
+        ("proposal", "payload", "symbol"),
+        ("proposal", "payload", "side"),
+        ("order_preview", "symbol"),
+        ("order_preview", "side"),
+        ("order_preview", "order_type"),
+        ("order_preview", "time_in_force"),
+        ("data", "freshness"),
+        ("data", "quality"),
+    }:
+        return error.validator in {"enum", "const"}
+    return path == ("data", "evidence_id") and error.validator == "minLength"
+
 
 REASON_PRIORITY: dict[str, int] = {
     "RISK_POLICY_MISSING": 10,
@@ -247,6 +271,9 @@ def evaluate_risk(risk_input: object) -> RiskDecision:
         reasons.add("INPUT_SCHEMA_INVALID")
     if reasons:
         return _finish(digest, reasons)
+    schema_errors = tuple(_INPUT_VALIDATOR.iter_errors(root))
+    if any(not _is_semantic_schema_error(error) for error in schema_errors):
+        return _finish(digest, {"INPUT_SCHEMA_INVALID"})
     if root["risk_input_schema_version"] != INPUT_VERSION or root["namespace"] != "test":
         reasons.add("INPUT_SCHEMA_INVALID")
 
@@ -317,24 +344,6 @@ def evaluate_risk(risk_input: object) -> RiskDecision:
                 "watermark_complete",
             },
         ),
-        (
-            preview,
-            {
-                "symbol",
-                "side",
-                "order_type",
-                "time_in_force",
-                "quantity",
-                "limit_price",
-                "worst_case_fee",
-                "worst_case_hold",
-                "worst_case_notional",
-                "best_bid",
-                "best_ask",
-                "expected_slippage_inputs",
-                "paper_order_preview_hash",
-            },
-        ),
         (policy, {"version", "calculators", "limits", "policy_hash"}),
         (kill, {"active", "version", "event_id"}),
         (reconciliation, {"checkpoint_id", "checkpoint_hash", "health", "mismatch_codes"}),
@@ -343,6 +352,24 @@ def evaluate_risk(risk_input: object) -> RiskDecision:
         (exposure_snapshot, {"snapshot_id", "snapshot_hash", "open_order_count"}),
     )
     if any(not _exact_fields(item, fields) for item, fields in shapes):
+        return _finish(digest, {"INPUT_SCHEMA_INVALID"})
+    preview_required = {
+        "symbol",
+        "side",
+        "order_type",
+        "time_in_force",
+        "quantity",
+        "limit_price",
+        "worst_case_fee",
+        "worst_case_hold",
+        "worst_case_notional",
+        "expected_slippage_inputs",
+        "paper_order_preview_hash",
+    }
+    if not preview_required <= set(preview) or set(preview) - preview_required > {
+        "best_bid",
+        "best_ask",
+    }:
         return _finish(digest, {"INPUT_SCHEMA_INVALID"})
 
     proposal_payload = _object(proposal["payload"])
@@ -462,8 +489,6 @@ def evaluate_risk(risk_input: object) -> RiskDecision:
         worst_fee = _decimal(preview["worst_case_fee"])
         worst_hold = _decimal(preview["worst_case_hold"])
         worst_notional = _decimal(preview["worst_case_notional"])
-        best_bid = _decimal(preview["best_bid"])
-        best_ask = _decimal(preview["best_ask"])
         max_order_ratio = _decimal(limits["max_order_notional_ratio"])
         max_portfolio_ratio = _decimal(limits["max_portfolio_exposure_ratio"])
         max_loss_ratio = _decimal(limits["realized_loss_ratio"])
@@ -581,6 +606,12 @@ def evaluate_risk(risk_input: object) -> RiskDecision:
         if base_quantities.get(symbol, Decimal(0)) < quantity:
             reasons.add("SELL_EXCEEDS_POSITION")
 
+    try:
+        best_bid = _decimal(preview["best_bid"])
+        best_ask = _decimal(preview["best_ask"])
+    except (KeyError, ValueError):
+        best_bid = Decimal(0)
+        best_ask = Decimal(0)
     if best_bid <= 0 or best_ask <= 0 or best_bid > best_ask:
         reasons.add("EXECUTION_QUALITY_UNKNOWN")
     else:

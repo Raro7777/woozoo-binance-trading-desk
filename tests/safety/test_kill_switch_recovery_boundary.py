@@ -25,7 +25,8 @@ def run(*command: str) -> None:
 
 @contextmanager
 def infrastructure_lock() -> Iterator[None]:
-    path = ROOT / ".p1-integration.lock"
+    path = ROOT / "_workspace/p5-kill-safety.lock"
+    path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a+b") as lock:
         lock.seek(0)
         lock.write(b"0")

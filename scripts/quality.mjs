@@ -12,6 +12,7 @@ const policyVersion = "woozoo.market.collector-policy/v1";
 const evidenceRecipeVersion = "woozoo.evidence.closed-candles-approved-features/v1";
 const riskBoundaryCases = [
   "order_notional_below", "order_notional_equal", "order_notional_above",
+  "sell_order_notional_below", "sell_order_notional_equal", "sell_order_notional_above",
   "realized_loss_below", "realized_loss_equal", "realized_loss_above",
   "drawdown_below", "drawdown_equal", "drawdown_above",
   "spread_below", "spread_equal", "spread_above",
@@ -19,8 +20,13 @@ const riskBoundaryCases = [
   "btc_exposure_below", "btc_exposure_equal", "btc_exposure_above",
   "eth_exposure_below", "eth_exposure_equal", "eth_exposure_above",
   "portfolio_exposure_below", "portfolio_exposure_equal", "portfolio_exposure_above",
+  "sell_btc_exposure_below", "sell_btc_exposure_equal", "sell_btc_exposure_above",
+  "sell_eth_exposure_below", "sell_eth_exposure_equal", "sell_eth_exposure_above",
+  "sell_portfolio_exposure_below", "sell_portfolio_exposure_equal", "sell_portfolio_exposure_above",
   "sell_reduces_long", "evidence_missing", "data_stale", "future_contamination",
-  "watermark_incomplete", "data_invalid", "bid_zero", "ask_zero", "ledger_mismatch",
+  "watermark_incomplete", "data_invalid", "expired", "duplicate_proposal",
+  "duplicate_order_intent", "equity_invalid", "bid_missing", "ask_missing",
+  "bid_zero", "ask_zero", "ledger_mismatch",
   "invalid_open_order_state", "loss_scale_edge_below",
 ];
 const killFaults = [
@@ -255,6 +261,8 @@ const actions = {
       "tests/unit/test_risk_engine.py::test_risk_002_closed_reason_precedence_collects_all_applicable_reasons",
       "tests/unit/test_risk_engine.py::test_invalid_or_non_fixture_input_fails_closed_without_approval_dependency",
       "tests/unit/test_risk_engine.py::test_nested_unknowns_policy_rebinding_and_cross_snapshot_mismatch_fail_closed",
+      "tests/unit/test_risk_engine.py::test_complete_input_schema_rejects_nested_type_and_range_counterexamples[numeric_proposal_id]",
+      "tests/unit/test_risk_engine.py::test_complete_input_schema_rejects_nested_type_and_range_counterexamples[negative_kill_version]",
       "tests/unit/test_risk_engine.py::test_decimal_thresholds_use_unrounded_values_and_documented_comparators",
       "tests/property/test_risk_properties.py::test_spread_and_directional_slippage_boundaries",
       ...riskBoundaryCases.map((name) => `tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[${name}]`),
