@@ -1,5 +1,14 @@
 _workspace/
 _workspace_*/
 .staging_backup/
+.env.local
+.venv/
+.next/
+node_modules/
+dist/
+*.tsbuildinfo
+coverage/
+artifacts/
+.p1-integration.lock
 __pycache__/
 *.py[cod]

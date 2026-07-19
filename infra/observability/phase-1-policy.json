@@ -1,0 +1,6 @@
+{
+  "schema_version": 1,
+  "phase": 1,
+  "structured_fields": ["request_id", "correlation_id", "route", "status"],
+  "value_policy": "allowlist_before_emission"
+}
