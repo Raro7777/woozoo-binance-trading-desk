@@ -1,5 +1,9 @@
 # P0-07 Versioned API·Event 계약
 
+> Phase schedule amendment: Phase 5 Approval/Authorization creation references below are
+> superseded by `../phase-5/phase-0-contract-amendment.md`; their routes remain inactive and
+> their schemas and handlers are created in Phase 7.
+
 - 상태: `POLICY_APPROVED — consumer review/evidence digest pending`
 - 계약 major: HTTP `/api/v1`, event envelope `woozoo.event/v1`
 - 제품 Phase: `0` (OpenAPI/JSON Schema, generated binding, route, broker를 만들지 않는 문서 설계)

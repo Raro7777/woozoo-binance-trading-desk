@@ -1,5 +1,9 @@
 # P0-04·P0-05·P0-10 아키텍처와 안전 경계
 
+> Phase schedule amendment: Phase 5 Approval/Authorization creation references below are
+> superseded by `../phase-5/phase-0-contract-amendment.md`; those objects and AUTH scenarios
+> are reassigned to Phase 7. RiskDecision and Kill Switch remain Phase 5.
+
 - 상태: `POLICY_APPROVED — final review and evidence digest pending`
 - 제품 Phase: `0` (문서 전용; 아래 경로와 프로세스는 해당 creation phase 전에는 만들지 않는다)
 - 대상: Phase 1~7 Paper MVP, Phase 8 Testnet은 격리된 미래 확장

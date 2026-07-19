@@ -1,0 +1,171 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "woozoo.risk-input/v1",
+  "title": "Dormant Phase 5 canonical Risk input",
+  "type": "object",
+  "additionalProperties": false,
+  "x-creation-phase": 5,
+  "x-activation-phase": 7,
+  "required": ["risk_input_schema_version", "namespace", "proposal", "portfolio", "data", "order_preview", "policy", "kill_switch", "reconciliation", "decision_clock", "duplicate", "exposure_snapshot"],
+  "properties": {
+    "risk_input_schema_version": {"const": "woozoo.risk-input/v1"},
+    "namespace": {"const": "test"},
+    "proposal": {"$ref": "#/$defs/proposal"},
+    "portfolio": {"$ref": "#/$defs/portfolio"},
+    "data": {"$ref": "#/$defs/data"},
+    "order_preview": {"$ref": "#/$defs/preview"},
+    "policy": {"$ref": "#/$defs/policy"},
+    "kill_switch": {"$ref": "#/$defs/kill"},
+    "reconciliation": {"$ref": "#/$defs/reconciliation"},
+    "decision_clock": {"$ref": "#/$defs/clock"},
+    "duplicate": {"$ref": "#/$defs/duplicate"},
+    "exposure_snapshot": {"$ref": "#/$defs/exposure"}
+  },
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "decimal": {"type": "string", "pattern": "^(0|[1-9][0-9]{0,19})(\\.[0-9]{1,18})?$"},
+    "signedDecimal": {"type": "string", "pattern": "^-?(0|[1-9][0-9]{0,19})(\\.[0-9]{1,18})?$"},
+    "proposalPayload": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "proposal_id", "symbol", "side"],
+      "properties": {
+        "schema_version": {"const": "woozoo.trade-proposal/v1"},
+        "proposal_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "symbol": {"enum": ["BTCUSDT", "ETHUSDT"]},
+        "side": {"enum": ["BUY", "SELL"]}
+      }
+    },
+    "proposal": {
+      "type": "object", "additionalProperties": false,
+      "required": ["fixture_contract", "schema_version", "payload", "proposal_hash"],
+      "properties": {
+        "fixture_contract": {"const": "p6-trade-proposal-consumer/v1"},
+        "schema_version": {"const": "woozoo.trade-proposal/v1"},
+        "payload": {"$ref": "#/$defs/proposalPayload"},
+        "proposal_hash": {"$ref": "#/$defs/hash"}
+      }
+    },
+    "position": {
+      "type": "object", "additionalProperties": false,
+      "required": ["available", "held", "midpoint"],
+      "properties": {"available": {"$ref": "#/$defs/decimal"}, "held": {"$ref": "#/$defs/decimal"}, "midpoint": {"$ref": "#/$defs/decimal"}}
+    },
+    "positions": {
+      "type": "object", "additionalProperties": false,
+      "required": ["BTCUSDT", "ETHUSDT"],
+      "properties": {"BTCUSDT": {"$ref": "#/$defs/position"}, "ETHUSDT": {"$ref": "#/$defs/position"}}
+    },
+    "fifoLot": {
+      "type": "object", "additionalProperties": false,
+      "required": ["lot_id", "symbol", "remaining_quantity", "quote_basis", "source_fill_id"],
+      "properties": {
+        "lot_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "symbol": {"enum": ["BTCUSDT", "ETHUSDT"]},
+        "remaining_quantity": {"$ref": "#/$defs/decimal"},
+        "quote_basis": {"$ref": "#/$defs/decimal"},
+        "source_fill_id": {"type": "string", "minLength": 1, "maxLength": 128}
+      }
+    },
+    "openOrder": {
+      "type": "object", "additionalProperties": false,
+      "required": ["client_order_id", "symbol", "side", "remaining_quantity", "limit_price", "remaining_worst_case_quote_fee", "status", "accepted_broker_seq"],
+      "properties": {
+        "client_order_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "symbol": {"enum": ["BTCUSDT", "ETHUSDT"]},
+        "side": {"enum": ["BUY", "SELL"]},
+        "remaining_quantity": {"$ref": "#/$defs/decimal"},
+        "limit_price": {"$ref": "#/$defs/decimal"},
+        "remaining_worst_case_quote_fee": {"$ref": "#/$defs/decimal"},
+        "status": {"enum": ["OPEN", "PARTIALLY_FILLED"]},
+        "accepted_broker_seq": {"type": "integer", "minimum": 1}
+      }
+    },
+    "portfolio": {
+      "type": "object", "additionalProperties": false,
+      "required": ["snapshot_id", "snapshot_hash", "available_quote", "held_quote", "fee_liabilities", "positions", "fifo_lots", "realized_pnl_24h", "high_water_equity", "open_orders"],
+      "properties": {
+        "snapshot_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "snapshot_hash": {"$ref": "#/$defs/hash"},
+        "available_quote": {"$ref": "#/$defs/decimal"},
+        "held_quote": {"$ref": "#/$defs/decimal"},
+        "fee_liabilities": {"$ref": "#/$defs/decimal"},
+        "positions": {"$ref": "#/$defs/positions"},
+        "fifo_lots": {"type": "array", "items": {"$ref": "#/$defs/fifoLot"}},
+        "realized_pnl_24h": {"$ref": "#/$defs/signedDecimal"},
+        "high_water_equity": {"$ref": "#/$defs/decimal"},
+        "open_orders": {"type": "array", "items": {"$ref": "#/$defs/openOrder"}}
+      }
+    },
+    "data": {
+      "type": "object", "additionalProperties": false,
+      "required": ["evidence_id", "evidence_hash", "as_of", "knowledge_cutoff", "freshness", "quality", "future_contamination", "watermark_complete"],
+      "properties": {
+        "evidence_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "evidence_hash": {"$ref": "#/$defs/hash"},
+        "as_of": {"type": "string", "format": "date-time"},
+        "knowledge_cutoff": {"type": "string", "format": "date-time"},
+        "freshness": {"enum": ["FRESH", "STALE"]},
+        "quality": {"enum": ["HEALTHY", "DEGRADED", "STALE", "INVALID", "RECONNECTING"]},
+        "future_contamination": {"type": "boolean"},
+        "watermark_complete": {"type": "boolean"}
+      }
+    },
+    "preview": {
+      "type": "object", "additionalProperties": false,
+      "required": ["symbol", "side", "order_type", "time_in_force", "quantity", "limit_price", "worst_case_fee", "worst_case_hold", "worst_case_notional", "best_bid", "best_ask", "expected_slippage_inputs", "paper_order_preview_hash"],
+      "properties": {
+        "symbol": {"enum": ["BTCUSDT", "ETHUSDT"]}, "side": {"enum": ["BUY", "SELL"]},
+        "order_type": {"const": "LIMIT"}, "time_in_force": {"const": "GTC"},
+        "quantity": {"$ref": "#/$defs/decimal"}, "limit_price": {"$ref": "#/$defs/decimal"},
+        "worst_case_fee": {"$ref": "#/$defs/decimal"}, "worst_case_hold": {"$ref": "#/$defs/decimal"},
+        "worst_case_notional": {"$ref": "#/$defs/decimal"}, "best_bid": {"$ref": "#/$defs/decimal"},
+        "best_ask": {"$ref": "#/$defs/decimal"},
+        "expected_slippage_inputs": {"type": "object", "additionalProperties": false, "required": ["method"], "properties": {"method": {"const": "limit-vs-book-v1"}}},
+        "paper_order_preview_hash": {"$ref": "#/$defs/hash"}
+      }
+    },
+    "calculator": {
+      "type": "object", "additionalProperties": false, "required": ["name", "version", "hash"],
+      "properties": {"name": {"type": "string", "minLength": 1, "maxLength": 64}, "version": {"type": "string", "minLength": 1, "maxLength": 64}, "hash": {"$ref": "#/$defs/hash"}}
+    },
+    "calculators": {
+      "type": "object", "additionalProperties": false, "required": ["decimal", "fee", "valuation", "spread", "slippage"],
+      "properties": {"decimal": {"$ref": "#/$defs/calculator"}, "fee": {"$ref": "#/$defs/calculator"}, "valuation": {"$ref": "#/$defs/calculator"}, "spread": {"$ref": "#/$defs/calculator"}, "slippage": {"$ref": "#/$defs/calculator"}}
+    },
+    "limits": {
+      "type": "object", "additionalProperties": false,
+      "required": ["symbols", "order_types", "sides", "time_in_force", "max_order_notional_ratio", "symbol_exposure_ratios", "max_portfolio_exposure_ratio", "realized_loss_ratio", "drawdown_ratio", "max_spread_bps", "max_expected_slippage_bps", "duplicate_window_seconds"],
+      "properties": {
+        "symbols": {"const": ["BTCUSDT", "ETHUSDT"]}, "order_types": {"const": ["LIMIT"]}, "sides": {"const": ["BUY", "SELL"]}, "time_in_force": {"const": ["GTC"]},
+        "max_order_notional_ratio": {"const": "0.0025"},
+        "symbol_exposure_ratios": {"type": "object", "additionalProperties": false, "required": ["BTCUSDT", "ETHUSDT"], "properties": {"BTCUSDT": {"const": "0.15"}, "ETHUSDT": {"const": "0.10"}}},
+        "max_portfolio_exposure_ratio": {"const": "0.25"}, "realized_loss_ratio": {"const": "0.01"}, "drawdown_ratio": {"const": "0.05"},
+        "max_spread_bps": {"const": "25"}, "max_expected_slippage_bps": {"const": "25"}, "duplicate_window_seconds": {"const": 900}
+      }
+    },
+    "policy": {
+      "type": "object", "additionalProperties": false, "required": ["version", "calculators", "limits", "policy_hash"],
+      "properties": {"version": {"const": "woozoo.risk-policy/v1"}, "calculators": {"$ref": "#/$defs/calculators"}, "limits": {"$ref": "#/$defs/limits"}, "policy_hash": {"$ref": "#/$defs/hash"}}
+    },
+    "kill": {
+      "type": "object", "additionalProperties": false, "required": ["active", "version", "event_id"],
+      "properties": {"active": {"type": "boolean"}, "version": {"type": "integer", "minimum": 0}, "event_id": {"oneOf": [{"type": "null"}, {"type": "string", "minLength": 1, "maxLength": 128}]}}
+    },
+    "reconciliation": {
+      "type": "object", "additionalProperties": false, "required": ["checkpoint_id", "checkpoint_hash", "health", "mismatch_codes"],
+      "properties": {"checkpoint_id": {"type": "string", "minLength": 1, "maxLength": 128}, "checkpoint_hash": {"$ref": "#/$defs/hash"}, "health": {"enum": ["HEALTHY", "FAILED"]}, "mismatch_codes": {"type": "array", "uniqueItems": true, "items": {"enum": ["LEDGER_IMBALANCE", "PORTFOLIO_SNAPSHOT_MISMATCH", "ORDER_FILL_MISMATCH", "HOLD_MISMATCH"]}}}
+    },
+    "clock": {
+      "type": "object", "additionalProperties": false, "required": ["decision_as_of", "source", "version"],
+      "properties": {"decision_as_of": {"type": "string", "format": "date-time"}, "source": {"type": "string", "minLength": 1, "maxLength": 64}, "version": {"type": "string", "minLength": 1, "maxLength": 64}}
+    },
+    "duplicate": {
+      "type": "object", "additionalProperties": false, "required": ["key", "window_seconds", "proposal_seen", "order_intent_seen"],
+      "properties": {"key": {"type": "string", "minLength": 1, "maxLength": 128}, "window_seconds": {"const": 900}, "proposal_seen": {"type": "boolean"}, "order_intent_seen": {"type": "boolean"}}
+    },
+    "exposure": {
+      "type": "object", "additionalProperties": false, "required": ["snapshot_id", "snapshot_hash", "open_order_count"],
+      "properties": {"snapshot_id": {"type": "string", "minLength": 1, "maxLength": 128}, "snapshot_hash": {"$ref": "#/$defs/hash"}, "open_order_count": {"type": "integer", "minimum": 0}}
+    }
+  }
+}

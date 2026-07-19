@@ -11,6 +11,10 @@ const evidenceSnapshotPath = resolve(root, "packages/contracts/spec/evidence-sna
 const evidenceDomainEventsPath = resolve(root, "packages/contracts/spec/evidence-domain-events.v1.json");
 const paperOrderPath = resolve(root, "packages/contracts/spec/paper-order.v1.json");
 const paperDomainEventsPath = resolve(root, "packages/contracts/spec/paper-domain-events.v1.json");
+const riskInputPath = resolve(root, "packages/contracts/spec/risk-input.v1.json");
+const riskDecisionPath = resolve(root, "packages/contracts/spec/risk-decision.v1.json");
+const killSwitchPath = resolve(root, "packages/contracts/spec/kill-switch.v1.json");
+const riskDomainEventsPath = resolve(root, "packages/contracts/spec/risk-domain-events.v1.json");
 const check = process.argv.includes("--check");
 
 const stable = (value) => {
@@ -30,6 +34,10 @@ const evidenceSnapshot = JSON.parse(await readFile(evidenceSnapshotPath, "utf8")
 const evidenceDomainEvents = JSON.parse(await readFile(evidenceDomainEventsPath, "utf8"));
 const paperOrder = JSON.parse(await readFile(paperOrderPath, "utf8"));
 const paperDomainEvents = JSON.parse(await readFile(paperDomainEventsPath, "utf8"));
+const riskInput = JSON.parse(await readFile(riskInputPath, "utf8"));
+const riskDecision = JSON.parse(await readFile(riskDecisionPath, "utf8"));
+const killSwitch = JSON.parse(await readFile(killSwitchPath, "utf8"));
+const riskDomainEvents = JSON.parse(await readFile(riskDomainEventsPath, "utf8"));
 
 if (
   Object.keys(openApi.paths).join(",") !==
@@ -76,6 +84,24 @@ if (
   paperDomainEvents.oneOf.length !== 7
 ) {
   throw new Error("P4 Paper contracts must remain closed and dormant until Phase 7");
+}
+if (
+  riskInput.$id !== "woozoo.risk-input/v1" ||
+  riskDecision.$id !== "woozoo.risk-decision/v1" ||
+  killSwitch.$id !== "woozoo.kill-switch/v1" ||
+  riskDomainEvents.$id !== "woozoo.risk-domain-events/v1" ||
+  riskInput.additionalProperties !== false ||
+  riskDecision.additionalProperties !== false ||
+  killSwitch.additionalProperties !== false ||
+  riskInput["x-creation-phase"] !== 5 ||
+  riskInput["x-activation-phase"] !== 7 ||
+  riskDecision["x-activation-phase"] !== 7 ||
+  killSwitch["x-activation-phase"] !== 7 ||
+  riskDomainEvents["x-activation-phase"] !== 7 ||
+  !Array.isArray(riskDomainEvents.oneOf) ||
+  riskDomainEvents.oneOf.length !== 2
+) {
+  throw new Error("P5 Risk contracts must remain closed and dormant until Phase 7");
 }
 
 const schemas = openApi.components?.schemas;
@@ -215,6 +241,11 @@ const manifest = {
   paper_order_spec_version: paperOrder.$id,
   paper_domain_event_spec_version: paperDomainEvents.$id,
   paper_activation_phase: 7,
+  risk_input_spec_version: riskInput.$id,
+  risk_decision_spec_version: riskDecision.$id,
+  kill_switch_spec_version: killSwitch.$id,
+  risk_domain_event_spec_version: riskDomainEvents.$id,
+  risk_activation_phase: 7,
   market_source: marketEvent.properties.source.const,
   health_path: "/api/v1/health",
   market_status_path_template: "/api/v1/markets/{symbol}/status",
@@ -229,6 +260,10 @@ const manifest = {
     "evidence-domain-events.v1.json": digest(evidenceDomainEvents),
     "paper-order.v1.json": digest(paperOrder),
     "paper-domain-events.v1.json": digest(paperDomainEvents),
+    "risk-input.v1.json": digest(riskInput),
+    "risk-decision.v1.json": digest(riskDecision),
+    "kill-switch.v1.json": digest(killSwitch),
+    "risk-domain-events.v1.json": digest(riskDomainEvents),
   },
 };
 const manifestJson = `${JSON.stringify(manifest, null, 2)}\n`;
@@ -400,13 +435,59 @@ export type PaperDomainEventBindingV1 =
 const paperPyBindings = `\nclass PaperOrderBindingV1(TypedDict):\n    order_id: str\n    client_order_id: str\n    authorization_id: str\n    authorization_namespace: Literal["test"]\n    symbol: Literal["BTCUSDT", "ETHUSDT"]\n    side: Literal["BUY", "SELL"]\n    order_type: Literal["LIMIT"]\n    time_in_force: Literal["GTC"]\n    quantity: str\n    limit_price: str\n    filled_quantity: str\n    status: Literal["OPEN", "PARTIALLY_FILLED", "FILLED", "CANCELLED"]\n    version: int\n`;
 const paperPyEventBindings = `\nclass PaperDomainEventBindingV1(TypedDict):\n    spec_version: Literal["woozoo.event/v1"]\n    event_id: str\n    event_type: Literal[\n        "paper.order.accepted.v1",\n        "paper.order.partially-filled.v1",\n        "paper.order.filled.v1",\n        "paper.order.cancelled.v1",\n        "paper.order.rejected.v1",\n        "paper.authorization.attempted.v1",\n        "ledger.transaction.posted.v1",\n    ]\n    event_version: Literal[1]\n    occurred_at: str\n    producer: Literal["paper-engine"]\n    activation_phase: Literal[7]\n    aggregate_id: str\n    aggregate_version: int\n    payload_hash: str\n    data: dict[str, str]\n`;
 
+const riskTsBindings = `export type RiskVerdictBindingV1 = "ALLOWED" | "DENIED" | "ERROR";
+export type RiskDecisionBindingV1 = { decision_schema_version: "woozoo.risk-decision/v1"; decision_id: string; risk_input_digest: string; decision_hash: string; verdict: RiskVerdictBindingV1; primary_reason: string; ordered_reason_codes: string[]; policy_version: string; proposal_hash: string; portfolio_snapshot_hash: string; data_state_hash: string; paper_order_preview_hash: string; reconciliation_checkpoint_hash: string; kill_switch_version: number; decision_as_of: string };
+export type KillSwitchBindingV1 = { scope: "paper-global"; active: true; prior_version: number; version: number; activation_event_id: string; trigger_kind: "MANUAL" | "INVARIANT"; actor_id: string; reason_code: "MANUAL_SAFETY_STOP" | "LEDGER_IMBALANCE" | "PHYSICAL_LEDGER_MISMATCH" | "AUTHORIZATION_RECEIPT_MISMATCH"; reason: string; observed_at: string; context_digest: string };
+export type RiskDomainEventBindingV1 = { spec_version: "woozoo.event/v1"; event_id: string; event_type: "risk.decision.recorded.v1" | "kill-switch.activated.v1"; event_version: 1; occurred_at: string; producer: "risk-engine"; activation_phase: 7; aggregate_id: string; aggregate_version: number; payload_hash: string; data: RiskDecisionBindingV1 | KillSwitchBindingV1 };
+`;
+const riskPyBindings = `
+RiskVerdictBindingV1 = Literal["ALLOWED", "DENIED", "ERROR"]
+
+class RiskDecisionBindingV1(TypedDict):
+    decision_schema_version: Literal["woozoo.risk-decision/v1"]
+    decision_id: str
+    risk_input_digest: str
+    decision_hash: str
+    verdict: RiskVerdictBindingV1
+    primary_reason: str
+    ordered_reason_codes: list[str]
+    policy_version: str
+    proposal_hash: str
+    portfolio_snapshot_hash: str
+    data_state_hash: str
+    paper_order_preview_hash: str
+    reconciliation_checkpoint_hash: str
+    kill_switch_version: int
+    decision_as_of: str
+
+class KillSwitchBindingV1(TypedDict):
+    scope: Literal["paper-global"]
+    active: Literal[True]
+    prior_version: int
+    version: int
+    activation_event_id: str
+    trigger_kind: Literal["MANUAL", "INVARIANT"]
+    actor_id: str
+    reason_code: Literal["MANUAL_SAFETY_STOP", "LEDGER_IMBALANCE", "PHYSICAL_LEDGER_MISMATCH", "AUTHORIZATION_RECEIPT_MISMATCH"]
+    reason: str
+    observed_at: str
+    context_digest: str
+`;
+
+const riskTsManifest = `export const RISK_INPUT_SPEC_VERSION = ${JSON.stringify(manifest.risk_input_spec_version)} as const;
+export const RISK_DECISION_SPEC_VERSION = ${JSON.stringify(manifest.risk_decision_spec_version)} as const;
+export const KILL_SWITCH_SPEC_VERSION = ${JSON.stringify(manifest.kill_switch_spec_version)} as const;
+export const RISK_DOMAIN_EVENT_SPEC_VERSION = ${JSON.stringify(manifest.risk_domain_event_spec_version)} as const;
+export const RISK_ACTIVATION_PHASE = ${JSON.stringify(manifest.risk_activation_phase)} as const;
+`;
+
 const outputs = new Map([
   [resolve(root, "packages/contracts/schema-manifest.json"), manifestJson],
-  [resolve(root, "packages/contracts/src/generated-schema-manifest.ts"), tsManifest],
-  [resolve(root, "packages/typescript/contract-bindings/src/generated.ts"), `${tsBindings}${marketTsBindings}${domainTsBindings}${strictEvidenceTsBindings}${paperTsBindings}`],
+  [resolve(root, "packages/contracts/src/generated-schema-manifest.ts"), `${tsManifest}${riskTsManifest}`],
+  [resolve(root, "packages/typescript/contract-bindings/src/generated.ts"), `${tsBindings}${marketTsBindings}${domainTsBindings}${strictEvidenceTsBindings}${paperTsBindings}${riskTsBindings}`],
   [
     resolve(root, "packages/python/platform-core/src/platform_core/generated_contracts.py"),
-    `${strictPyBindings}${evidencePyBindings}${paperPyBindings}${paperPyEventBindings}`
+    `${strictPyBindings}${evidencePyBindings}${paperPyBindings}${paperPyEventBindings}${riskPyBindings}`
       .replace(
         'Literal["SCHEMA_INVALID", "IDEMPOTENCY_CONFLICT"]',
         'Literal["SCHEMA_INVALID", "IDEMPOTENCY_CONFLICT", "CALLER_UNAUTHORIZED"]',

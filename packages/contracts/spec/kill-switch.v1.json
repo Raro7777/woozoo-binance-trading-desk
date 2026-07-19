@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "woozoo.kill-switch/v1",
+  "title": "Dormant Phase 5 monotonic Kill barrier",
+  "type": "object",
+  "additionalProperties": false,
+  "x-creation-phase": 5,
+  "x-activation-phase": 7,
+  "required": ["scope", "active", "prior_version", "version", "activation_event_id", "trigger_kind", "actor_id", "reason_code", "reason", "observed_at", "context_digest"],
+  "properties": {
+    "scope": {"const": "paper-global"},
+    "active": {"const": true},
+    "prior_version": {"type": "integer", "minimum": 0},
+    "version": {"type": "integer", "minimum": 1},
+    "activation_event_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "trigger_kind": {"enum": ["MANUAL", "INVARIANT"]},
+    "actor_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"},
+    "reason_code": {"enum": ["MANUAL_SAFETY_STOP", "LEDGER_IMBALANCE", "PHYSICAL_LEDGER_MISMATCH", "AUTHORIZATION_RECEIPT_MISMATCH"]},
+    "reason": {"type": "string", "minLength": 1, "maxLength": 512},
+    "observed_at": {"type": "string", "format": "date-time"},
+    "context_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+  }
+}

@@ -1,5 +1,9 @@
 # P0-06 데이터 모델·ERD·보존 계약
 
+> Phase schedule amendment: Phase 5 Approval/Authorization table and FK references below are
+> superseded by `../phase-5/phase-0-contract-amendment.md`; creation moves to Phase 7 while
+> retention and immutable semantics remain unchanged.
+
 - 상태: `POLICY_APPROVED — final package review/evidence digest pending`
 - 제품 Phase: `0` (schema와 migration을 만들지 않는 문서 설계)
 - 저장 권위: Postgres. Redis는 cache/wake-up/ephemeral coordination일 뿐 권위가 아니다.

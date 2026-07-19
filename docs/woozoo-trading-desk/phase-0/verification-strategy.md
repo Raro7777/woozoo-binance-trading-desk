@@ -1,5 +1,8 @@
 # P0-09·P0-10 검증 전략과 고정 Scenario Manifest
 
+> Phase schedule amendment: `AUTH-001` and `AUTH-002` remain mandatory RED specifications
+> but move from Phase 5 to Phase 7 under `../phase-5/phase-0-contract-amendment.md`.
+
 - 상태: `P0-09 PASS 후보`, `P0-10 설계 증거 일부`
 - Phase 0 의미: 실행 가능한 테스트·fixture·scaffold를 만들지 않고 RED 시나리오, oracle, 명령과 evidence 경로를 설계한다.
 - 실행 시작: 각 제품 Phase 승인 후 해당 scenario를 RED로 추가한다.

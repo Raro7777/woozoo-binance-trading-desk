@@ -1,0 +1,77 @@
+{
+  "schema_version": "woozoo.phase-5-scenario-manifest/v1",
+  "phase": 5,
+  "policy_version": "woozoo.risk-policy/v1",
+  "risk_input_schema_version": "woozoo.risk-input/v1",
+  "risk_decision_schema_version": "woozoo.risk-decision/v1",
+  "fixture_source": "tests/unit/test_risk_engine.py::risk_input",
+  "fixture_source_sha256": "f5f4a0a2709b4440aa5445960d4b4176e2e2cbe10f9d3f349070be67d19269a8",
+  "risk_input_schema_sha256": "be41adc8400db7da57a21b6b1630aaf1582183a4785cbaa0d3a65ad1eb42d92f",
+  "risk_decision_schema_sha256": "4c8287c8d0fddbcda1b9c2687a078d2ee477d8392f1c711d473e6b29bed3d6cd",
+  "kill_switch_schema_sha256": "dc30f1f1f696d4251933a6d88e2155b0f22c6515c060c08405e4aaa7cec3a89b",
+  "implementation_contract_sha256": "ade42c96142cec7ad104410e2413842b8e950ce7899e53f057acf980411fa616",
+  "fixed_seed": 0,
+  "timezone": "UTC",
+  "decision_clock": "fixture-clock/v1",
+  "network_enabled": false,
+  "production_activation_phase": 7,
+  "scenarios": [
+    {
+      "id": "RISK-001",
+      "owner": "risk-engine",
+      "command": "corepack pnpm test:replay",
+      "artifact": "artifacts/replay/RISK-001.json",
+      "oracle": "Same complete canonical input is byte-identical across replay, locale and process identity; each bound input mutation changes risk_input_digest."
+    },
+    {
+      "id": "RISK-002",
+      "owner": "risk-engine",
+      "command": "corepack pnpm test:unit",
+      "artifact": "artifacts/unit/RISK-002.json",
+      "oracle": "Frozen below/equal/above Decimal limits, every fail-closed counterexample, and priority then lexical ordered reasons match the Phase 0 table."
+    },
+    {
+      "id": "KILL-001",
+      "owner": "risk-engine+paper-engine",
+      "command": "corepack pnpm test:failure",
+      "artifact": "artifacts/failure/KILL-001.json",
+      "oracle": "Create/fill and activation serialize on one barrier; duplicate/crashed batches resume and cancel every open order with one hold, ledger and outbox effect."
+    },
+    {
+      "id": "KILL-002",
+      "owner": "risk-engine",
+      "command": "corepack pnpm test:safety",
+      "artifact": "artifacts/safety/KILL-002.json",
+      "oracle": "Timer, AI, restart and unauthenticated recovery attempts create zero OFF transition; Phase 5 contains no recovery handler or event."
+    },
+    {
+      "id": "RISK-CONTRACT-001",
+      "owner": "contracts",
+      "command": "corepack pnpm test:contracts",
+      "artifact": "artifacts/contracts/RISK-CONTRACT-001.json",
+      "oracle": "Risk input, decisions, reasons and Kill events are closed and dormant; active Risk, Kill, Approval and Authorization paths are zero."
+    },
+    {
+      "id": "RISK-MIGRATION-001",
+      "owner": "risk-engine+paper-engine",
+      "command": "corepack pnpm test:integration",
+      "artifact": "artifacts/integration/RISK-MIGRATION-001.json",
+      "oracle": "Unique immutable Risk input authority, least privilege, Kill barrier locking, atomic outbox and Paper cancel saga survive migration cycle and rollback."
+    },
+    {
+      "id": "RISK-SAFE-001",
+      "owner": "safety-qa",
+      "command": "corepack pnpm test:safety",
+      "artifact": "artifacts/safety/RISK-SAFE-001.json",
+      "oracle": "Network, credentials, Testnet/private/live, AI, Approval and PaperExecutionAuthorization capabilities remain zero."
+    }
+  ],
+  "forbidden_capabilities": [
+    "human_approval_ingress",
+    "paper_execution_authorization",
+    "ai_trade_proposal_producer",
+    "testnet_or_private_exchange",
+    "mainnet_private_or_live",
+    "withdrawal_futures_margin_leverage_short"
+  ]
+}
