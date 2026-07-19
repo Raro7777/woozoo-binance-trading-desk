@@ -28,6 +28,8 @@ test("SAFE-002 through SAFE-004 keep Phase 1 capability-zero", async () => {
   ]));
   assert.throws(() => scanRootPackageConfiguration({ config: { live_mode: true } }));
   assert.throws(() => scanRootPackageConfiguration({ config: { exchange_client: "forbidden" } }));
+  assert.throws(() => scanRootPackageConfiguration({ config: { private_account_client: true } }));
+  assert.throws(() => scanRootPackageConfiguration({ config: { account_client: "forbidden" } }));
   await scanPaths();
   await verifyCanaryFailure();
 });

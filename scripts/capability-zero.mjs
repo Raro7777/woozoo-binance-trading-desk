@@ -37,8 +37,16 @@ const forbidden = [
   insensitive("sign", "ature"),
   insensitive("listen[_-]?", "key"),
   insensitive("live[_-]?", "mode"),
+  insensitive("priv", "ate[_-]?acc", "ount"),
+  insensitive("acc", "ount"),
 ];
-const dependencyPattern = insensitive("bin", "ance|ccxt|exchange[_-]?", "client|broker[_-]?adapter");
+const dependencyPattern = insensitive(
+  "bin",
+  "ance|ccxt|exchange[_-]?client|broker[_-]?adapter|priv",
+  "ate[_-]?acc",
+  "ount|acc",
+  "ount",
+);
 
 async function filesUnder(path) {
   const entries = await readdir(path, { withFileTypes: true });
@@ -144,6 +152,7 @@ export async function verifyCanaryFailure() {
     "infra/observability/.capability-zero-canary.json",
   ].map((path) => resolve(root, path));
   const metadataCanary = resolve(root, ".capability-zero-package.json");
+  const privateCanary = resolve(root, "scripts/.private-" + "acc" + "ount-capability-canary.mjs");
   try {
     for (const candidate of directoryCanaries) {
       await writeFile(candidate, "exchange" + "_client = object()\n", "utf8");
@@ -156,6 +165,17 @@ export async function verifyCanaryFailure() {
         await rm(candidate, { force: true });
       }
       throw new Error(`capability scanner accepted its canary: ${candidate}`);
+    }
+    await writeFile(privateCanary, "private" + "_acc" + "ount_client = object()\n", "utf8");
+    let privateCapabilityDetected = false;
+    try {
+      await scanPaths();
+    } catch (error) {
+      if (!String(error.message).includes("capability-zero violation")) throw error;
+      privateCapabilityDetected = true;
+    }
+    if (!privateCapabilityDetected) {
+      throw new Error("capability scanner accepted its private-capability canary");
     }
     await writeFile(
       metadataCanary,
@@ -170,6 +190,10 @@ export async function verifyCanaryFailure() {
     }
     throw new Error("capability scanner accepted its package metadata canary");
   } finally {
-    await Promise.all([...directoryCanaries, metadataCanary].map((candidate) => rm(candidate, { force: true })));
+    await Promise.all([
+      ...directoryCanaries,
+      metadataCanary,
+      privateCanary,
+    ].map((candidate) => rm(candidate, { force: true })));
   }
 }
