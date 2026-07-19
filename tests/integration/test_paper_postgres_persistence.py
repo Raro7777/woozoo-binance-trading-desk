@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -10,6 +11,7 @@ from pathlib import Path
 import subprocess
 import sys
 import time
+from threading import Barrier
 from typing import Iterator
 
 import psycopg
@@ -19,6 +21,7 @@ from paper_engine.models import (
     FifoLot,
     Journal,
     LedgerEntry,
+    LotConsumption,
     OrderSide,
     OrderStatus,
     PaperFill,
@@ -29,6 +32,7 @@ from paper_engine.persistence import (
     AuthorizationAttemptWrite,
     BalanceWrite,
     BrokerInputWrite,
+    CommitResult,
     CommandReceiptWrite,
     OrderEventWrite,
     OutboxWrite,
@@ -110,7 +114,7 @@ def engine_id(kind: str, *parts: object) -> str:
 
 
 def outbox(event_type: str, aggregate_id: str, version: int, data: dict[str, str]) -> OutboxWrite:
-    event_id = stable_id(f"paper:{event_type}:{aggregate_id}:{version}")
+    event_id = engine_id("event", event_type, aggregate_id, version)
     payload_hash = stable_id(
         json.dumps(
             [
@@ -449,7 +453,7 @@ def rejected_write(*, suffix: str) -> AtomicPaperWrite:
         "INSUFFICIENT_FUNDS",
         NOW,
     )
-    auth_aggregate = stable_id(f"authorization:{authorization_id}")
+    auth_aggregate = engine_id("authorization", authorization_id)
     return AtomicPaperWrite(
         account_id,
         "test",
@@ -520,6 +524,388 @@ def split_open_and_fill(*, suffix: str) -> tuple[AtomicPaperWrite, AtomicPaperWr
         outbox=(complete.outbox[1],),
     )
     return opened, fill
+
+
+def second_order_on_shared_observation(
+    initial: AtomicPaperWrite,
+) -> tuple[AtomicPaperWrite, AtomicPaperWrite]:
+    assert initial.order is not None
+    source = initial.broker_inputs[1]
+    command_seq = initial.order.accepted_broker_seq + 1
+    order_id = stable_id(f"second-order:{initial.account_id}")
+    authorization_id = f"auth-second-{initial.account_id}"
+    command_key = f"create-second-{initial.account_id}"
+    request_hash = digest(command_key)
+    command_source = f"command:{command_key}"
+    receipt = CommandReceiptWrite(
+        "paper.create.v1",
+        command_key,
+        initial.account_id,
+        request_hash,
+        "ORDER_CREATED",
+        order_id,
+        authorization_id,
+        command_seq,
+        {"order_id": order_id, "status": "OPEN"},
+        NOW,
+    )
+    attempt = AuthorizationAttemptWrite(
+        authorization_id,
+        f"nonce-{command_key}",
+        initial.account_id,
+        receipt.scope,
+        command_key,
+        "test",
+        request_hash,
+        "CONSUMED_ORDER_CREATED",
+        None,
+        NOW,
+    )
+    order = PaperOrder(
+        order_id,
+        f"client-{command_key}",
+        authorization_id,
+        "BTCUSDT",
+        OrderSide.BUY,
+        Decimal("0.005"),
+        Decimal("10000"),
+        command_seq,
+        OrderStatus.OPEN,
+        Decimal(0),
+        "USDT",
+        Decimal("50.05"),
+        1,
+    )
+    hold = Journal(
+        stable_id(f"hold-{order_id}"),
+        "paper.hold",
+        order_id,
+        "PHYSICAL",
+        (
+            LedgerEntry("paper.held", "USDT", Decimal("50.05"), Decimal(0)),
+            LedgerEntry("paper.available", "USDT", Decimal(0), Decimal("50.05")),
+        ),
+    )
+    opened = AtomicPaperWrite(
+        initial.account_id,
+        "test",
+        receipt,
+        attempt,
+        (
+            BrokerInputWrite(
+                command_seq,
+                initial.account_id,
+                "TEST_COMMAND",
+                command_source,
+                request_hash,
+                NOW,
+            ),
+        ),
+        (BalanceWrite("USDT", Decimal("49.85"), Decimal("100.1"), 2),),
+        order,
+        (
+            OrderEventWrite(
+                stable_id(f"accepted-{order_id}"),
+                order_id,
+                1,
+                "paper.order.accepted.v1",
+                command_source,
+                request_hash,
+                NOW,
+            ),
+        ),
+        (),
+        (),
+        (),
+        (hold,),
+        (outbox("paper.order.accepted.v1", order_id, 1, {"order_id": order_id}),),
+        NOW,
+    )
+    fill_id = stable_id(f"shared-fill-{order_id}")
+    filled_order = replace(
+        order,
+        status=OrderStatus.FILLED,
+        filled_quantity=Decimal("0.005"),
+        held_amount=Decimal(0),
+        version=2,
+    )
+    fill = PaperFill(
+        fill_id,
+        order_id,
+        source.source_key,
+        Decimal("0.005"),
+        Decimal("10000"),
+        "USDT",
+        Decimal("0.001"),
+        Decimal("0.05"),
+        source.broker_seq + 1,
+    )
+    lot = FifoLot(fill_id, "BTC", Decimal("0.005"), Decimal("50.05"), fill_id, NOW)
+    physical = Journal(
+        stable_id(f"physical-{fill_id}"),
+        "paper.fill",
+        fill_id,
+        "PHYSICAL",
+        (
+            LedgerEntry("paper.asset", "BTC", Decimal("0.005"), Decimal(0)),
+            LedgerEntry("exchange.clearing", "BTC", Decimal(0), Decimal("0.005")),
+            LedgerEntry("exchange.clearing", "USDT", Decimal("50"), Decimal(0)),
+            LedgerEntry("paper.fee", "USDT", Decimal("0.05"), Decimal(0)),
+            LedgerEntry("paper.held", "USDT", Decimal(0), Decimal("50.05")),
+        ),
+    )
+    valuation = Journal(
+        stable_id(f"valuation-{fill_id}"),
+        "paper.fill",
+        fill_id,
+        "VALUATION",
+        (
+            LedgerEntry("paper.inventory-basis", "USDT_VAL", Decimal("50.05"), Decimal(0)),
+            LedgerEntry("paper.acquisition-value", "USDT_VAL", Decimal(0), Decimal("50.05")),
+        ),
+    )
+    filled = AtomicPaperWrite(
+        initial.account_id,
+        "test",
+        None,
+        None,
+        (source,),
+        (
+            BalanceWrite("USDT", Decimal("49.85"), Decimal("50.05"), 3),
+            BalanceWrite("BTC", Decimal("0.01"), Decimal(0), 2),
+        ),
+        filled_order,
+        (
+            OrderEventWrite(
+                stable_id(f"filled-{order_id}"),
+                order_id,
+                2,
+                "paper.order.filled.v1",
+                source.source_key,
+                digest(fill_id),
+                NOW,
+            ),
+        ),
+        (fill,),
+        (lot,),
+        (),
+        (physical, valuation),
+        (
+            outbox(
+                "paper.order.filled.v1",
+                order_id,
+                2,
+                {"order_id": order_id, "fill_id": fill_id},
+            ),
+        ),
+        NOW,
+    )
+    return opened, filled
+
+
+def sell_order_after_cancel(
+    initial: AtomicPaperWrite,
+) -> tuple[AtomicPaperWrite, AtomicPaperWrite]:
+    assert initial.order is not None and initial.receipt is not None
+    command_seq = initial.order.accepted_broker_seq + 3
+    order_id = stable_id(f"sell-order:{initial.account_id}")
+    authorization_id = f"auth-sell-{initial.account_id}"
+    command_key = f"create-sell-{initial.account_id}"
+    request_hash = digest(command_key)
+    command_source = f"command:{command_key}"
+    receipt = CommandReceiptWrite(
+        "paper.create.v1",
+        command_key,
+        initial.account_id,
+        request_hash,
+        "ORDER_CREATED",
+        order_id,
+        authorization_id,
+        command_seq,
+        {"order_id": order_id, "status": "OPEN"},
+        NOW,
+    )
+    attempt = AuthorizationAttemptWrite(
+        authorization_id,
+        f"nonce-{command_key}",
+        initial.account_id,
+        receipt.scope,
+        command_key,
+        "test",
+        request_hash,
+        "CONSUMED_ORDER_CREATED",
+        None,
+        NOW,
+    )
+    order = PaperOrder(
+        order_id,
+        f"client-{command_key}",
+        authorization_id,
+        "BTCUSDT",
+        OrderSide.SELL,
+        Decimal("0.005"),
+        Decimal("12000"),
+        command_seq,
+        OrderStatus.OPEN,
+        Decimal(0),
+        "BTC",
+        Decimal("0.005"),
+        1,
+    )
+    hold = Journal(
+        stable_id(f"hold-{order_id}"),
+        "paper.hold",
+        order_id,
+        "PHYSICAL",
+        (
+            LedgerEntry("paper.held", "BTC", Decimal("0.005"), Decimal(0)),
+            LedgerEntry("paper.available", "BTC", Decimal(0), Decimal("0.005")),
+        ),
+    )
+    opened = AtomicPaperWrite(
+        initial.account_id,
+        "test",
+        receipt,
+        attempt,
+        (
+            BrokerInputWrite(
+                command_seq,
+                initial.account_id,
+                "TEST_COMMAND",
+                command_source,
+                request_hash,
+                NOW,
+            ),
+        ),
+        (BalanceWrite("BTC", Decimal(0), Decimal("0.005"), 3),),
+        order,
+        (
+            OrderEventWrite(
+                stable_id(f"accepted-{order_id}"),
+                order_id,
+                1,
+                "paper.order.accepted.v1",
+                command_source,
+                request_hash,
+                NOW,
+            ),
+        ),
+        (),
+        (),
+        (),
+        (hold,),
+        (outbox("paper.order.accepted.v1", order_id, 1, {"order_id": order_id}),),
+        NOW,
+    )
+    source_key = f"book:sell:{initial.account_id}"
+    book_seq = command_seq + 1
+    book = BrokerInputWrite(
+        book_seq,
+        initial.account_id,
+        "RECORDED_BOOK",
+        source_key,
+        engine_id(
+            "observation",
+            "BTCUSDT",
+            "12000.000000000000000000",
+            "12001.000000000000000000",
+            "0.050000000000000000",
+        ),
+        NOW,
+        Decimal("0.05"),
+        "BTCUSDT",
+        Decimal("12000"),
+        Decimal("12001"),
+    )
+    fill_id = stable_id(f"sell-fill:{order_id}")
+    fill = PaperFill(
+        fill_id,
+        order_id,
+        source_key,
+        Decimal("0.005"),
+        Decimal("12000"),
+        "USDT",
+        Decimal("0.001"),
+        Decimal("0.06"),
+        book_seq,
+    )
+    consumption = initial.lots[0]
+    physical = Journal(
+        stable_id(f"physical-{fill_id}"),
+        "paper.fill",
+        fill_id,
+        "PHYSICAL",
+        (
+            LedgerEntry("exchange.clearing", "BTC", Decimal("0.005"), Decimal(0)),
+            LedgerEntry("paper.held", "BTC", Decimal(0), Decimal("0.005")),
+            LedgerEntry("paper.available", "USDT", Decimal("59.94"), Decimal(0)),
+            LedgerEntry("paper.fee", "USDT", Decimal("0.06"), Decimal(0)),
+            LedgerEntry("exchange.clearing", "USDT", Decimal(0), Decimal("60")),
+        ),
+    )
+    valuation = Journal(
+        stable_id(f"valuation-{fill_id}"),
+        "paper.fill",
+        fill_id,
+        "VALUATION",
+        (
+            LedgerEntry("paper.disposal-value", "USDT_VAL", Decimal("60"), Decimal(0)),
+            LedgerEntry("paper.realized-pnl", "USDT_VAL", Decimal(0), Decimal("9.89")),
+            LedgerEntry("paper.inventory-basis", "USDT_VAL", Decimal(0), Decimal("50.05")),
+            LedgerEntry("paper.fee-value", "USDT_VAL", Decimal(0), Decimal("0.06")),
+        ),
+    )
+    filled = AtomicPaperWrite(
+        initial.account_id,
+        "test",
+        None,
+        None,
+        (book,),
+        (
+            BalanceWrite("BTC", Decimal(0), Decimal(0), 4),
+            BalanceWrite("USDT", Decimal("209.89"), Decimal(0), 3),
+        ),
+        replace(
+            order,
+            status=OrderStatus.FILLED,
+            filled_quantity=Decimal("0.005"),
+            held_amount=Decimal(0),
+            version=2,
+        ),
+        (
+            OrderEventWrite(
+                stable_id(f"filled-{order_id}"),
+                order_id,
+                2,
+                "paper.order.filled.v1",
+                source_key,
+                digest(fill_id),
+                NOW,
+            ),
+        ),
+        (fill,),
+        (),
+        (
+            LotConsumption(
+                stable_id(f"consume-{fill_id}"),
+                consumption.lot_id,
+                fill_id,
+                Decimal("0.005"),
+                Decimal("50.05"),
+            ),
+        ),
+        (physical, valuation),
+        (
+            outbox(
+                "paper.order.filled.v1",
+                order_id,
+                2,
+                {"order_id": order_id, "fill_id": fill_id},
+            ),
+        ),
+        NOW,
+    )
+    return opened, filled
 
 
 def test_atomic_write_is_durable_idempotent_and_restart_stable() -> None:
@@ -602,6 +988,134 @@ def test_restart_restores_floor_stepped_observation_budget_and_hash() -> None:
     )
 
 
+def test_restart_completes_shared_observation_for_second_order_once() -> None:
+    initial = complete_write(suffix="shared-observation")
+    observation_seq = initial.order.accepted_broker_seq + 2
+    initial = replace(
+        initial,
+        broker_inputs=(
+            initial.broker_inputs[0],
+            replace(initial.broker_inputs[1], broker_seq=observation_seq),
+        ),
+        fills=(replace(initial.fills[0], broker_seq=observation_seq),),
+    )
+    store = PostgresPaperStore(PAPER_WRITER_URL)
+    store.commit(initial)
+    opened, filled = second_order_on_shared_observation(initial)
+    store.commit(opened)
+    first = PostgresPaperStore(PAPER_WRITER_URL).commit(filled)
+    retry = PostgresPaperStore(PAPER_WRITER_URL).commit(filled)
+    assert first.created is True
+    assert retry.created is False
+    restarted = store.hydrate_engine(initial.account_id)
+    assert restarted.orders[filled.order.order_id].status == OrderStatus.FILLED
+    assert restarted.observation_budgets[initial.broker_inputs[1].source_key][1] == 0
+    with psycopg.connect(DATABASE_URL) as connection:
+        assert connection.execute(
+            "SELECT count(*),sum(quantity) FROM paper_fills WHERE source_key=%s",
+            (initial.broker_inputs[1].source_key,),
+        ).fetchone() == (2, Decimal("0.010000000000000000"))
+        assert connection.execute(
+            "SELECT count(*) FROM paper_observation_effects WHERE source_key=%s",
+            (initial.broker_inputs[1].source_key,),
+        ).fetchone() == (2,)
+
+    blocked = complete_write(suffix="non-canonical-shared")
+    blocked_seq = blocked.order.accepted_broker_seq + 2
+    blocked = replace(
+        blocked,
+        broker_inputs=(
+            blocked.broker_inputs[0],
+            replace(blocked.broker_inputs[1], broker_seq=blocked_seq),
+        ),
+        fills=(replace(blocked.fills[0], broker_seq=blocked_seq),),
+    )
+    first_open = replace(
+        blocked,
+        broker_inputs=(blocked.broker_inputs[0],),
+        balances=(BalanceWrite("USDT", Decimal("99.9"), Decimal("100.1"), 1),),
+        order=replace(
+            blocked.order,
+            status=OrderStatus.OPEN,
+            filled_quantity=Decimal(0),
+            held_amount=Decimal("100.1"),
+            version=1,
+        ),
+        order_events=(blocked.order_events[0],),
+        fills=(),
+        lots=(),
+        journals=blocked.journals[:2],
+        outbox=(blocked.outbox[0],),
+    )
+    younger_open, younger_fill = second_order_on_shared_observation(blocked)
+    younger_open = replace(
+        younger_open,
+        balances=(BalanceWrite("USDT", Decimal("49.85"), Decimal("150.15"), 2),),
+    )
+    younger_fill = replace(
+        younger_fill,
+        balances=(
+            BalanceWrite("USDT", Decimal("49.85"), Decimal("100.1"), 3),
+            BalanceWrite("BTC", Decimal("0.005"), Decimal(0), 1),
+        ),
+    )
+    store.commit(first_open)
+    store.commit(younger_open)
+    with pytest.raises(psycopg.errors.RaiseException, match="fill/order consistency"):
+        store.commit(younger_fill)
+
+
+def test_sell_fill_binds_fifo_basis_and_exact_ledger_amounts() -> None:
+    initial = complete_write(suffix="sell-exact")
+    store = PostgresPaperStore(PAPER_WRITER_URL)
+    store.commit(initial)
+    store.commit(cancel_write(initial))
+    opened, filled = sell_order_after_cancel(initial)
+    store.commit(opened)
+    assert store.commit(filled).created is True
+    restarted = store.hydrate_engine(initial.account_id)
+    assert restarted.position("BTC") == 0
+    assert restarted.realized_pnl("BTC") == Decimal("9.89")
+
+    bad_initial = complete_write(suffix="sell-basis-mismatch")
+    store.commit(bad_initial)
+    store.commit(cancel_write(bad_initial))
+    bad_opened, bad_fill = sell_order_after_cancel(bad_initial)
+    store.commit(bad_opened)
+    bad_consumption = replace(
+        bad_fill.consumptions[0], quantity=Decimal("0.001"), quote_basis=Decimal("10.01")
+    )
+    with pytest.raises(psycopg.errors.RaiseException, match="fill/order consistency"):
+        store.commit(replace(bad_fill, consumptions=(bad_consumption,)))
+
+
+def test_concurrent_command_and_observation_retries_return_one_stored_effect() -> None:
+    command = complete_write(suffix="concurrent-command")
+    command_barrier = Barrier(2)
+
+    def commit_command() -> CommitResult:
+        command_barrier.wait()
+        return PostgresPaperStore(PAPER_WRITER_URL).commit(command)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        command_results = tuple(executor.map(lambda _: commit_command(), range(2)))
+    assert sorted(result.created for result in command_results) == [False, True]
+    assert command_results[0].semantic_digest == command_results[1].semantic_digest
+
+    opened, observation = split_open_and_fill(suffix="concurrent-observation")
+    PostgresPaperStore(PAPER_WRITER_URL).commit(opened)
+    observation_barrier = Barrier(2)
+
+    def commit_observation() -> CommitResult:
+        observation_barrier.wait()
+        return PostgresPaperStore(PAPER_WRITER_URL).commit(observation)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        observation_results = tuple(executor.map(lambda _: commit_observation(), range(2)))
+    assert sorted(result.created for result in observation_results) == [False, True]
+    assert observation_results[0].semantic_digest == observation_results[1].semantic_digest
+
+
 def test_rejected_command_is_durable_orderless_and_restart_idempotent() -> None:
     write = rejected_write(suffix="durable")
     first = PostgresPaperStore(PAPER_WRITER_URL).commit(write)
@@ -643,6 +1157,64 @@ def test_database_rejects_incomplete_financial_state_and_liquidity_overallocatio
     over = replace(over, broker_inputs=(over.broker_inputs[0], book))
     with pytest.raises(psycopg.errors.RaiseException):
         PostgresPaperStore(DATABASE_URL).commit(over)
+    ineligible = complete_write(suffix="ineligible-book")
+    bad_book = replace(
+        ineligible.broker_inputs[1],
+        best_ask=Decimal("10001"),
+        payload_hash=engine_id(
+            "observation",
+            "BTCUSDT",
+            "99.000000000000000000",
+            "10001.000000000000000000",
+            "0.100000000000000000",
+        ),
+    )
+    ineligible = replace(
+        ineligible,
+        broker_inputs=(ineligible.broker_inputs[0], bad_book),
+    )
+    with pytest.raises(psycopg.errors.RaiseException, match="fill/order consistency"):
+        PostgresPaperStore(DATABASE_URL).commit(ineligible)
+    cross_symbol = complete_write(suffix="cross-symbol-book")
+    cross_book = replace(
+        cross_symbol.broker_inputs[1],
+        symbol="ETHUSDT",
+        payload_hash=engine_id(
+            "observation",
+            "ETHUSDT",
+            "99.000000000000000000",
+            "100.000000000000000000",
+            "0.100000000000000000",
+        ),
+    )
+    with pytest.raises(psycopg.errors.RaiseException, match="fill/order consistency"):
+        PostgresPaperStore(DATABASE_URL).commit(
+            replace(
+                cross_symbol,
+                broker_inputs=(cross_symbol.broker_inputs[0], cross_book),
+            )
+        )
+    bad_fee_asset = complete_write(suffix="bad-fee-asset")
+    with pytest.raises(psycopg.errors.RaiseException, match="fill/order consistency"):
+        PostgresPaperStore(DATABASE_URL).commit(
+            replace(bad_fee_asset, fills=(replace(bad_fee_asset.fills[0], fee_asset="BTC"),))
+        )
+    invalid_open, _ = split_open_and_fill(suffix="invalid-unfilled-order")
+    invalid_open = replace(
+        invalid_open,
+        order=replace(invalid_open.order, limit_price=Decimal("10000.001")),
+    )
+    with pytest.raises(psycopg.errors.RaiseException, match="fill/order consistency"):
+        PostgresPaperStore(DATABASE_URL).commit(invalid_open)
+    mismatched_lot = complete_write(suffix="mismatched-lot")
+    lot = replace(
+        mismatched_lot.lots[0],
+        acquired_quantity=Decimal("0.001"),
+        quote_cost=Decimal("10.01"),
+    )
+    mismatched_lot = replace(mismatched_lot, lots=(lot,))
+    with pytest.raises(psycopg.errors.RaiseException, match="fill/order consistency"):
+        PostgresPaperStore(DATABASE_URL).commit(mismatched_lot)
 
 
 def test_failed_reconciliation_checkpoint_holds_new_lifecycle_command() -> None:
@@ -813,6 +1385,44 @@ def test_writer_commit_succeeds_and_unledgered_balance_update_is_rejected() -> N
                     "paper_order",
                     "d" * 64,
                     1,
+                ),
+            )
+    existing = write.outbox[0]
+    extra_payload = {**existing.payload, "unexpected": "field"}
+    with pytest.raises(psycopg.errors.RaiseException, match="closed Paper outbox"):
+        with psycopg.connect(PAPER_WRITER_URL) as connection:
+            connection.execute(
+                "SELECT append_paper_outbox(%s,%s,%s::jsonb,%s,%s,%s,%s,%s)",
+                (
+                    existing.event_id,
+                    existing.event_type,
+                    json.dumps(extra_payload),
+                    existing.payload_hash,
+                    existing.occurred_at,
+                    existing.aggregate_type,
+                    existing.aggregate_id,
+                    existing.aggregate_version,
+                ),
+            )
+    unlinked = outbox(
+        "ledger.transaction.posted.v1",
+        "c" * 64,
+        1,
+        {"transaction_id": "c" * 64},
+    )
+    with pytest.raises(psycopg.errors.RaiseException, match="Unlinked Paper outbox"):
+        with psycopg.connect(PAPER_WRITER_URL) as connection:
+            connection.execute(
+                "SELECT append_paper_outbox(%s,%s,%s::jsonb,%s,%s,%s,%s,%s)",
+                (
+                    unlinked.event_id,
+                    unlinked.event_type,
+                    json.dumps(unlinked.payload),
+                    unlinked.payload_hash,
+                    unlinked.occurred_at,
+                    unlinked.aggregate_type,
+                    unlinked.aggregate_id,
+                    unlinked.aggregate_version,
                 ),
             )
 

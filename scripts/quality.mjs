@@ -194,6 +194,7 @@ const actions = {
       "tests/integration/test_paper_postgres_persistence.py::test_atomic_write_is_durable_idempotent_and_restart_stable",
       "tests/integration/test_paper_postgres_persistence.py::test_writer_commit_succeeds_and_unledgered_balance_update_is_rejected",
       "tests/integration/test_paper_postgres_persistence.py::test_database_rejects_incomplete_financial_state_and_liquidity_overallocation",
+      "tests/integration/test_paper_postgres_persistence.py::test_sell_fill_binds_fifo_basis_and_exact_ledger_amounts",
       "tests/integration/test_paper_postgres_persistence.py::test_failed_reconciliation_checkpoint_holds_new_lifecycle_command",
     ], await paperMetadata());
     await dataScenario("integration", "PAPER-MIGRATION-001", [
@@ -225,10 +226,12 @@ const actions = {
       "tests/integration/test_paper_postgres_persistence.py::test_restart_continues_existing_order_with_distinct_cancel_command",
       "tests/integration/test_paper_postgres_persistence.py::test_restart_applies_and_idempotently_replays_observation_fill",
       "tests/integration/test_paper_postgres_persistence.py::test_restart_restores_floor_stepped_observation_budget_and_hash",
+      "tests/integration/test_paper_postgres_persistence.py::test_restart_completes_shared_observation_for_second_order_once",
       "tests/integration/test_paper_postgres_persistence.py::test_rejected_command_is_durable_orderless_and_restart_idempotent",
     ], await paperMetadata());
     await dataScenario("replay", "ATOM-002", [
       "tests/replay/test_paper_restart_replay.py::test_atom_002_ack_loss_retry_returns_same_order_without_new_effect",
+      "tests/integration/test_paper_postgres_persistence.py::test_concurrent_command_and_observation_retries_return_one_stored_effect",
     ], await paperMetadata());
   },
   "test:failure": async () => {

@@ -218,7 +218,11 @@ def _validate_outbox(item: OutboxWrite) -> None:
     if set(payload) != required or item.event_type not in data_fields:
         raise ValueError("INVALID_PAPER_OUTBOX_CONTRACT")
     data = payload["data"]
-    if not isinstance(data, dict) or set(data) != data_fields[item.event_type]:
+    if (
+        not isinstance(data, dict)
+        or set(data) != data_fields[item.event_type]
+        or any(not isinstance(value, str) for value in data.values())
+    ):
         raise ValueError("INVALID_PAPER_OUTBOX_CONTRACT")
     # Engine `_id` stringifies each item before JSON encoding.
     expected_hash = hashlib.sha256(
@@ -233,6 +237,38 @@ def _validate_outbox(item: OutboxWrite) -> None:
             separators=(",", ":"),
         ).encode()
     ).hexdigest()
+    expected_event_id = _engine_id(
+        "event", item.event_type, item.aggregate_id, item.aggregate_version
+    )
+    hexadecimal_fields = {
+        "order_id",
+        "fill_id",
+        "request_hash",
+    }
+    if any(
+        len(data[field]) != 64
+        or any(character not in "0123456789abcdef" for character in data[field])
+        for field in hexadecimal_fields.intersection(data)
+    ):
+        raise ValueError("INVALID_PAPER_OUTBOX_CONTRACT")
+    if item.event_type.startswith("paper.order.") and item.event_type != "paper.order.rejected.v1":
+        linked = data["order_id"] == item.aggregate_id
+    elif item.event_type == "paper.order.rejected.v1":
+        linked = (
+            data["request_hash"] == item.aggregate_id and data["reason"] == "INSUFFICIENT_FUNDS"
+        )
+    elif item.event_type == "paper.authorization.attempted.v1":
+        linked = (
+            data["outcome"] in {"BLOCKED", "CONSUMED"}
+            and bool(data["authorization_id"])
+            and item.aggregate_id == _engine_id("authorization", data["authorization_id"])
+        )
+    else:
+        linked = (
+            bool(data["transaction_id"])
+            and len(data["transaction_id"]) <= 64
+            and data["transaction_id"] == item.aggregate_id
+        )
     if (
         payload["spec_version"] != "woozoo.event/v1"
         or payload["event_id"] != item.event_id
@@ -246,6 +282,9 @@ def _validate_outbox(item: OutboxWrite) -> None:
         or payload["payload_hash"] != item.payload_hash
         or item.payload_hash != expected_hash
         or item.aggregate_type != aggregate_types[item.event_type]
+        or item.event_id != expected_event_id
+        or item.aggregate_version < 1
+        or not linked
         or len(item.event_id) != 64
         or any(character not in "0123456789abcdef" for character in item.event_id)
         or len(item.aggregate_id) != 64
@@ -269,7 +308,21 @@ class PostgresPaperStore:
         self, write: AtomicPaperWrite, *, _fail_after: PersistenceStage | None = None
     ) -> CommitResult:
         with psycopg.connect(self.database_url) as connection:
+            for item in write.broker_inputs:
+                _validate_broker_input(item)
             receipt = write.receipt
+            lock_keys = [
+                f"observation:{item.source_key}"
+                for item in write.broker_inputs
+                if item.source_kind == "RECORDED_BOOK"
+            ]
+            if receipt is not None:
+                lock_keys.append(f"command:{receipt.scope}:{receipt.idempotency_key}")
+            for lock_key in sorted(lock_keys):
+                connection.execute(
+                    "SELECT pg_advisory_xact_lock(hashtextextended(%s,0))",
+                    (lock_key,),
+                )
             if receipt is not None:
                 prior = connection.execute(
                     "SELECT request_hash,response FROM paper_command_receipts "
@@ -306,8 +359,40 @@ class PostgresPaperStore:
                         )
                         for item in write.broker_inputs
                     }
-                    if set(prior_inputs) != expected_inputs:
+                    if not set(prior_inputs).issubset(expected_inputs):
                         raise ValueError("BROKER_INPUT_CONFLICT")
+                recorded_inputs = tuple(
+                    item for item in write.broker_inputs if item.source_kind == "RECORDED_BOOK"
+                )
+                if not recorded_inputs or write.order is None:
+                    raise ValueError("OBSERVATION_EFFECT_ORDER_REQUIRED")
+                prior_effects = connection.execute(
+                    "SELECT source_key,effect_kind,fill_id FROM paper_observation_effects "
+                    "WHERE order_id=%s AND source_key=ANY(%s)",
+                    (write.order.order_id, [item.source_key for item in recorded_inputs]),
+                ).fetchall()
+                expected_effects = {
+                    (
+                        item.source_key,
+                        "FILL" if matching_fill is not None else "NO_FILL",
+                        matching_fill.fill_id if matching_fill is not None else None,
+                    )
+                    for item in recorded_inputs
+                    for matching_fill in (
+                        next(
+                            (
+                                candidate
+                                for candidate in write.fills
+                                if candidate.order_id == write.order.order_id
+                                and candidate.observation_id == item.source_key
+                            ),
+                            None,
+                        ),
+                    )
+                }
+                if prior_effects:
+                    if set(prior_effects) != expected_effects:
+                        raise ValueError("OBSERVATION_EFFECT_CONFLICT")
                     return CommitResult(
                         False,
                         {"status": "OBSERVATION_APPLIED"},
@@ -336,7 +421,6 @@ class PostgresPaperStore:
             if account != (write.namespace,):
                 raise ValueError("ACCOUNT_NAMESPACE_CONFLICT")
             for item in write.broker_inputs:
-                _validate_broker_input(item)
                 connection.execute(
                     "INSERT INTO paper_broker_inputs"
                     "(broker_seq,account_id,source_kind,source_key,payload_hash,observed_at,"
@@ -547,6 +631,32 @@ class PostgresPaperStore:
                         write.created_at,
                     ),
                 )
+            if write.order is not None:
+                for item in write.broker_inputs:
+                    if item.source_kind != "RECORDED_BOOK":
+                        continue
+                    matching_fill = next(
+                        (
+                            fill
+                            for fill in write.fills
+                            if fill.order_id == write.order.order_id
+                            and fill.observation_id == item.source_key
+                        ),
+                        None,
+                    )
+                    connection.execute(
+                        "INSERT INTO paper_observation_effects"
+                        "(account_id,source_key,order_id,effect_kind,fill_id,applied_at) "
+                        "VALUES (%s,%s,%s,%s,%s,%s)",
+                        (
+                            write.account_id,
+                            item.source_key,
+                            write.order.order_id,
+                            "FILL" if matching_fill is not None else "NO_FILL",
+                            matching_fill.fill_id if matching_fill is not None else None,
+                            write.created_at,
+                        ),
+                    )
             self._fail(PersistenceStage.DOMAIN, _fail_after)
             for lot in write.lots:
                 connection.execute(
@@ -681,6 +791,10 @@ class PostgresPaperStore:
                     "JOIN paper_orders paper_order USING(order_id) WHERE paper_order.account_id=%s "
                     "ORDER BY fill.fill_id"
                 ),
+                "observation_effects": (
+                    "SELECT source_key,order_id,effect_kind,fill_id FROM "
+                    "paper_observation_effects WHERE account_id=%s ORDER BY source_key,order_id"
+                ),
                 "lots": (
                     "SELECT lot_id,asset,acquired_quantity,quote_cost,source_fill_id "
                     "FROM paper_inventory_lots WHERE account_id=%s ORDER BY lot_id"
@@ -758,7 +872,13 @@ class PostgresPaperStore:
             ).fetchall():
                 fill = PaperFill(*row)
                 engine.fills[fill.fill_id] = fill
-                engine.observation_effects.add((fill.order_id, fill.observation_id))
+            engine.observation_effects = {
+                (row[0], row[1])
+                for row in connection.execute(
+                    "SELECT order_id,source_key FROM paper_observation_effects WHERE account_id=%s",
+                    (account_id,),
+                ).fetchall()
+            }
             engine.lots = tuple(
                 FifoLot(*row)
                 for row in connection.execute(
@@ -859,8 +979,11 @@ class PostgresPaperStore:
                 ).fetchall()
             )
             max_sequence = connection.execute(
-                "SELECT COALESCE(max(broker_seq),0) FROM paper_broker_inputs WHERE account_id=%s",
-                (account_id,),
+                "SELECT greatest("
+                "COALESCE((SELECT max(broker_seq) FROM paper_broker_inputs WHERE account_id=%s),0),"
+                "COALESCE((SELECT max(fill.broker_seq) FROM paper_fills fill JOIN paper_orders "
+                "paper_order USING(order_id) WHERE paper_order.account_id=%s),0))",
+                (account_id, account_id),
             ).fetchone()
             assert max_sequence is not None
             engine.broker_seq = max_sequence[0]

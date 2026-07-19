@@ -354,8 +354,8 @@ def upgrade() -> None:
             ondelete="RESTRICT",
         ),
         sa.ForeignKeyConstraint(
-            ["broker_seq", "source_key"],
-            ["paper_broker_inputs.broker_seq", "paper_broker_inputs.source_key"],
+            ["source_key"],
+            ["paper_broker_inputs.source_key"],
             ondelete="RESTRICT",
             deferrable=True,
             initially="DEFERRED",
@@ -369,6 +369,37 @@ def upgrade() -> None:
         sa.CheckConstraint(
             "symbol_rule_version='spot-public-rules-2026-07-19'",
             name="ck_paper_fill_symbol_rule_version",
+        ),
+    )
+    op.create_table(
+        "paper_observation_effects",
+        sa.Column("account_id", sa.String(64), nullable=False),
+        sa.Column("source_key", sa.String(128), nullable=False),
+        sa.Column("order_id", sa.String(64), nullable=False),
+        sa.Column("effect_kind", sa.String(16), nullable=False),
+        sa.Column("fill_id", sa.String(64), nullable=True, unique=True),
+        sa.Column("applied_at", sa.DateTime(timezone=True), nullable=False),
+        sa.PrimaryKeyConstraint("source_key", "order_id"),
+        sa.ForeignKeyConstraint(["account_id"], ["paper_accounts.account_id"], ondelete="RESTRICT"),
+        sa.ForeignKeyConstraint(
+            ["source_key"],
+            ["paper_broker_inputs.source_key"],
+            ondelete="RESTRICT",
+            deferrable=True,
+            initially="DEFERRED",
+        ),
+        sa.ForeignKeyConstraint(["order_id"], ["paper_orders.order_id"], ondelete="RESTRICT"),
+        sa.ForeignKeyConstraint(
+            ["fill_id"],
+            ["paper_fills.fill_id"],
+            ondelete="RESTRICT",
+            deferrable=True,
+            initially="DEFERRED",
+        ),
+        sa.CheckConstraint(
+            "(effect_kind='FILL' AND fill_id IS NOT NULL) OR "
+            "(effect_kind='NO_FILL' AND fill_id IS NULL)",
+            name="ck_paper_observation_effect_kind",
         ),
     )
     op.create_table(
@@ -528,6 +559,7 @@ def upgrade() -> None:
         "paper_broker_inputs",
         "paper_order_events",
         "paper_fills",
+        "paper_observation_effects",
         "paper_inventory_lots",
         "paper_lot_consumptions",
         "paper_ledger_transactions",
@@ -712,16 +744,29 @@ def upgrade() -> None:
                     AND paper_order.filled_quantity<>paper_order.quantity)
                OR (paper_order.status='CANCELLED'
                     AND paper_order.filled_quantity>=paper_order.quantity)
+               OR NOT EXISTS (
+                    SELECT 1 FROM paper_symbol_rule_versions rule
+                    WHERE rule.rule_version='spot-public-rules-2026-07-19'
+                      AND rule.symbol=paper_order.symbol
+                      AND mod(paper_order.limit_price,rule.tick_size)=0
+                      AND mod(paper_order.quantity,rule.step_size)=0
+                      AND paper_order.quantity>=rule.min_quantity
+                      AND paper_order.quantity*paper_order.limit_price>=rule.min_notional)
           ) OR EXISTS (
             SELECT 1 FROM paper_fills fill
             JOIN paper_orders paper_order ON paper_order.order_id=fill.order_id
             JOIN paper_broker_inputs input
-              ON input.broker_seq=fill.broker_seq AND input.source_key=fill.source_key
+              ON input.source_key=fill.source_key
             JOIN paper_policy_versions policy
               ON policy.policy_version=fill.fee_policy_version
             WHERE fill.broker_seq<=paper_order.accepted_broker_seq
+               OR input.broker_seq<=paper_order.accepted_broker_seq
                OR input.account_id<>paper_order.account_id
                OR input.source_kind<>'RECORDED_BOOK'
+               OR input.symbol<>paper_order.symbol
+               OR (paper_order.side='BUY' AND input.best_ask>paper_order.limit_price)
+               OR (paper_order.side='SELL' AND input.best_bid<paper_order.limit_price)
+               OR fill.fee_asset<>'USDT'
                OR fill.fee_rate<>policy.fee_rate
                OR fill.fee_amount<>
                   ceil(fill.quantity*fill.price*policy.fee_rate*1e18)/1e18
@@ -761,6 +806,156 @@ def upgrade() -> None:
               SELECT 1 FROM paper_lot_consumptions item WHERE item.source_fill_id=fill.fill_id
             ))
           ) OR EXISTS (
+            SELECT 1 FROM paper_fills fill
+            JOIN paper_orders paper_order ON paper_order.order_id=fill.order_id
+            LEFT JOIN LATERAL (
+              SELECT count(entry.*) AS entry_count,
+                COALESCE(sum(entry.debit) FILTER (
+                  WHERE entry.account_code='paper.asset'
+                    AND entry.commodity=replace(paper_order.symbol,'USDT','')),0) asset_debit,
+                COALESCE(sum(entry.credit) FILTER (
+                  WHERE entry.account_code='exchange.clearing'
+                    AND entry.commodity=replace(paper_order.symbol,'USDT','')),0) clearing_base_credit,
+                COALESCE(sum(entry.debit) FILTER (
+                  WHERE entry.account_code='exchange.clearing'
+                    AND entry.commodity=replace(paper_order.symbol,'USDT','')),0) clearing_base_debit,
+                COALESCE(sum(entry.credit) FILTER (
+                  WHERE entry.account_code='paper.held'
+                    AND entry.commodity=replace(paper_order.symbol,'USDT','')),0) held_base_credit,
+                COALESCE(sum(entry.debit) FILTER (
+                  WHERE entry.account_code='exchange.clearing' AND entry.commodity='USDT'),0)
+                  clearing_quote_debit,
+                COALESCE(sum(entry.credit) FILTER (
+                  WHERE entry.account_code='exchange.clearing' AND entry.commodity='USDT'),0)
+                  clearing_quote_credit,
+                COALESCE(sum(entry.debit) FILTER (
+                  WHERE entry.account_code='paper.available' AND entry.commodity='USDT'),0)
+                  available_quote_debit,
+                COALESCE(sum(entry.debit) FILTER (
+                  WHERE entry.account_code='paper.fee' AND entry.commodity='USDT'),0)
+                  fee_quote_debit,
+                COALESCE(sum(entry.credit) FILTER (
+                  WHERE entry.account_code='paper.held' AND entry.commodity='USDT'),0)
+                  held_quote_credit
+              FROM paper_ledger_transactions tx
+              JOIN paper_ledger_entries entry USING(transaction_id)
+              WHERE tx.business_event_type='paper.fill'
+                AND tx.business_event_id=fill.fill_id AND tx.journal_kind='PHYSICAL'
+            ) physical ON true
+            LEFT JOIN LATERAL (
+              SELECT count(entry.*) AS entry_count,
+                COALESCE(sum(entry.debit) FILTER (
+                  WHERE entry.account_code='paper.inventory-basis'
+                    AND entry.commodity='USDT_VAL'),0) inventory_debit,
+                COALESCE(sum(entry.credit) FILTER (
+                  WHERE entry.account_code='paper.inventory-basis'
+                    AND entry.commodity='USDT_VAL'),0) inventory_credit,
+                COALESCE(sum(entry.credit) FILTER (
+                  WHERE entry.account_code='paper.acquisition-value'
+                    AND entry.commodity='USDT_VAL'),0) acquisition_credit,
+                COALESCE(sum(entry.debit) FILTER (
+                  WHERE entry.account_code='paper.disposal-value'
+                    AND entry.commodity='USDT_VAL'),0) disposal_debit,
+                COALESCE(sum(entry.credit) FILTER (
+                  WHERE entry.account_code='paper.fee-value'
+                    AND entry.commodity='USDT_VAL'),0) fee_value_credit,
+                COALESCE(sum(entry.credit) FILTER (
+                  WHERE entry.account_code='paper.realized-pnl'
+                    AND entry.commodity='USDT_VAL'),0) pnl_credit,
+                COALESCE(sum(entry.debit) FILTER (
+                  WHERE entry.account_code='paper.realized-loss'
+                    AND entry.commodity='USDT_VAL'),0) loss_debit
+              FROM paper_ledger_transactions tx
+              JOIN paper_ledger_entries entry USING(transaction_id)
+              WHERE tx.business_event_type='paper.fill'
+                AND tx.business_event_id=fill.fill_id AND tx.journal_kind='VALUATION'
+            ) valuation ON true
+            LEFT JOIN LATERAL (
+              SELECT count(*) lot_count,COALESCE(sum(lot.acquired_quantity),0) quantity,
+                     COALESCE(sum(lot.quote_cost),0) basis,
+                     count(*) FILTER (WHERE lot.account_id<>paper_order.account_id
+                       OR lot.asset<>replace(paper_order.symbol,'USDT','')) bad_count
+              FROM paper_inventory_lots lot WHERE lot.source_fill_id=fill.fill_id
+            ) bought ON true
+            LEFT JOIN LATERAL (
+              SELECT count(*) consumption_count,COALESCE(sum(item.quantity),0) quantity,
+                     COALESCE(sum(item.quote_basis),0) basis,
+                     count(*) FILTER (WHERE lot.account_id<>paper_order.account_id
+                       OR lot.asset<>replace(paper_order.symbol,'USDT','')) bad_count
+              FROM paper_lot_consumptions item
+              JOIN paper_inventory_lots lot USING(lot_id)
+              WHERE item.source_fill_id=fill.fill_id
+            ) sold ON true
+            WHERE (paper_order.side='BUY' AND (
+                    physical.entry_count<>5
+                    OR physical.asset_debit<>fill.quantity
+                    OR physical.clearing_base_credit<>fill.quantity
+                    OR physical.clearing_quote_debit<>fill.quantity*fill.price
+                    OR physical.fee_quote_debit<>fill.fee_amount
+                    OR physical.held_quote_credit<>fill.quantity*fill.price+fill.fee_amount
+                    OR valuation.entry_count<>2
+                    OR valuation.inventory_debit<>fill.quantity*fill.price+fill.fee_amount
+                    OR valuation.acquisition_credit<>fill.quantity*fill.price+fill.fee_amount
+                    OR bought.lot_count<>1 OR bought.bad_count<>0
+                    OR bought.quantity<>fill.quantity
+                    OR bought.basis<>fill.quantity*fill.price+fill.fee_amount
+                    OR sold.consumption_count<>0))
+               OR (paper_order.side='SELL' AND (
+                    physical.entry_count<>5
+                    OR physical.clearing_base_debit<>fill.quantity
+                    OR physical.held_base_credit<>fill.quantity
+                    OR physical.available_quote_debit<>fill.quantity*fill.price-fill.fee_amount
+                    OR physical.fee_quote_debit<>fill.fee_amount
+                    OR physical.clearing_quote_credit<>fill.quantity*fill.price
+                    OR valuation.entry_count<>
+                       CASE WHEN fill.quantity*fill.price=sold.basis+fill.fee_amount
+                            THEN 3 ELSE 4 END
+                    OR valuation.disposal_debit<>fill.quantity*fill.price
+                    OR valuation.inventory_credit<>sold.basis
+                    OR valuation.fee_value_credit<>fill.fee_amount
+                    OR valuation.pnl_credit<>
+                       greatest(fill.quantity*fill.price-sold.basis-fill.fee_amount,0)
+                    OR valuation.loss_debit<>
+                       greatest(sold.basis+fill.fee_amount-fill.quantity*fill.price,0)
+                    OR sold.consumption_count=0 OR sold.bad_count<>0
+                    OR sold.quantity<>fill.quantity OR bought.lot_count<>0))
+          ) OR EXISTS (
+            SELECT 1 FROM paper_observation_effects effect
+            JOIN paper_orders paper_order ON paper_order.order_id=effect.order_id
+            JOIN paper_broker_inputs input ON input.source_key=effect.source_key
+            LEFT JOIN paper_fills fill ON fill.fill_id=effect.fill_id
+            WHERE effect.account_id<>paper_order.account_id
+               OR effect.account_id<>input.account_id
+               OR input.source_kind<>'RECORDED_BOOK'
+               OR input.broker_seq<=paper_order.accepted_broker_seq
+               OR (effect.effect_kind='FILL' AND (
+                    fill.fill_id IS NULL OR fill.order_id<>effect.order_id
+                    OR fill.source_key<>effect.source_key))
+               OR (effect.effect_kind='NO_FILL' AND EXISTS (
+                    SELECT 1 FROM paper_fills existing
+                    WHERE existing.order_id=effect.order_id
+                      AND existing.source_key=effect.source_key))
+               OR EXISTS (
+                    SELECT 1 FROM paper_orders candidate
+                    WHERE candidate.account_id=paper_order.account_id
+                      AND candidate.symbol=paper_order.symbol
+                      AND candidate.accepted_broker_seq<input.broker_seq
+                      AND candidate.status NOT IN ('FILLED','CANCELLED')
+                      AND (candidate.accepted_broker_seq,candidate.client_order_id,candidate.order_id)
+                          < (paper_order.accepted_broker_seq,paper_order.client_order_id,
+                             paper_order.order_id)
+                      AND ((candidate.side='BUY' AND input.best_ask<=candidate.limit_price)
+                        OR (candidate.side='SELL' AND input.best_bid>=candidate.limit_price))
+                      AND NOT EXISTS (
+                        SELECT 1 FROM paper_observation_effects prior_effect
+                        WHERE prior_effect.source_key=effect.source_key
+                          AND prior_effect.order_id=candidate.order_id))
+          ) OR EXISTS (
+            SELECT 1 FROM paper_fills fill
+            WHERE NOT EXISTS (
+              SELECT 1 FROM paper_observation_effects effect
+              WHERE effect.fill_id=fill.fill_id AND effect.effect_kind='FILL')
+          ) OR EXISTS (
             SELECT 1 FROM paper_inventory_lots lot
             LEFT JOIN LATERAL (
               SELECT COALESCE(sum(quantity),0) quantity,
@@ -784,6 +979,29 @@ def upgrade() -> None:
              AND outbox.aggregate_version=event.order_version
              AND outbox.event_type=event.event_type
             WHERE outbox.event_id IS NULL
+          ) OR EXISTS (
+            SELECT 1 FROM outbox_events outbox
+            LEFT JOIN paper_outbox_links link USING(event_id)
+            WHERE outbox.payload->>'producer'='paper-engine' AND link.event_id IS NULL
+          ) OR EXISTS (
+            SELECT 1 FROM paper_outbox_links link
+            JOIN outbox_events outbox USING(event_id)
+            WHERE (outbox.aggregate_type='paper_order' AND NOT EXISTS (
+                    SELECT 1 FROM paper_orders paper_order
+                    WHERE paper_order.order_id=outbox.aggregate_id
+                      AND paper_order.account_id=link.account_id))
+               OR (outbox.aggregate_type='paper_request' AND NOT EXISTS (
+                    SELECT 1 FROM paper_command_receipts receipt
+                    WHERE receipt.request_hash=outbox.aggregate_id
+                      AND receipt.account_id=link.account_id))
+               OR (outbox.aggregate_type='paper_authorization' AND NOT EXISTS (
+                    SELECT 1 FROM paper_authorization_attempts attempt
+                    WHERE attempt.authorization_id=outbox.payload->'data'->>'authorization_id'
+                      AND attempt.account_id=link.account_id))
+               OR (outbox.aggregate_type='paper_ledger' AND NOT EXISTS (
+                    SELECT 1 FROM paper_ledger_transactions tx
+                    WHERE tx.transaction_id=outbox.aggregate_id
+                      AND tx.account_id=link.account_id))
           ) THEN
             RAISE EXCEPTION 'Paper fill/order consistency or durable outbox violation';
           END IF;
@@ -834,11 +1052,13 @@ def upgrade() -> None:
         "paper_orders",
         "paper_order_events",
         "paper_fills",
+        "paper_observation_effects",
         "paper_asset_balances",
         "paper_inventory_lots",
         "paper_lot_consumptions",
         "paper_ledger_transactions",
         "paper_ledger_entries",
+        "paper_outbox_links",
         "outbox_events",
     ):
         _constraint_trigger(
@@ -868,12 +1088,27 @@ def upgrade() -> None:
              OR p_payload->>'producer' IS DISTINCT FROM 'paper-engine'
              OR p_payload->>'spec_version' IS DISTINCT FROM 'woozoo.event/v1'
              OR p_payload->>'activation_phase' IS DISTINCT FROM '7'
-             OR NOT (p_payload ? 'data')
+             OR NOT (p_payload ?& ARRAY[
+                  'spec_version','event_id','event_type','event_version','occurred_at',
+                  'producer','activation_phase','aggregate_id','aggregate_version',
+                  'payload_hash','data'])
+             OR (SELECT count(*) FROM jsonb_object_keys(p_payload))<>11
              OR p_payload->>'aggregate_id' IS DISTINCT FROM p_aggregate_id
-             OR (p_payload->>'aggregate_version')::bigint IS DISTINCT FROM p_aggregate_version
+             OR p_aggregate_id !~ '^[a-f0-9]{64}$'
+             OR jsonb_typeof(p_payload->'event_version')<>'number'
+             OR jsonb_typeof(p_payload->'occurred_at')<>'string'
+             OR jsonb_typeof(p_payload->'activation_phase')<>'number'
+             OR jsonb_typeof(p_payload->'aggregate_version')<>'number'
              OR jsonb_typeof(p_payload->'data')<>'object'
           THEN
             RAISE EXCEPTION 'Invalid closed Paper outbox envelope';
+          END IF;
+          IF (p_payload->>'event_version')::bigint<>1
+             OR (p_payload->>'occurred_at')::timestamptz IS DISTINCT FROM p_occurred_at
+             OR (p_payload->>'aggregate_version')::bigint IS DISTINCT FROM p_aggregate_version
+             OR p_aggregate_version<1
+          THEN
+            RAISE EXCEPTION 'Invalid closed Paper outbox envelope values';
           END IF;
           IF (p_event_type IN (
                 'paper.order.accepted.v1','paper.order.partially-filled.v1',
@@ -890,24 +1125,76 @@ def upgrade() -> None:
           END IF;
           IF (p_event_type='paper.order.accepted.v1' AND
                 (NOT ((p_payload->'data') ? 'order_id') OR
+                 jsonb_typeof(p_payload->'data'->'order_id')<>'string' OR
+                 p_payload->'data'->>'order_id' !~ '^[a-f0-9]{64}$' OR
+                 p_payload->'data'->>'order_id' IS DISTINCT FROM p_aggregate_id OR
                  (SELECT count(*) FROM jsonb_object_keys(p_payload->'data'))<>1))
              OR (p_event_type IN ('paper.order.partially-filled.v1','paper.order.filled.v1')
                  AND (NOT ((p_payload->'data') ?& ARRAY['order_id','fill_id']) OR
+                      jsonb_typeof(p_payload->'data'->'order_id')<>'string' OR
+                      jsonb_typeof(p_payload->'data'->'fill_id')<>'string' OR
+                      p_payload->'data'->>'order_id' !~ '^[a-f0-9]{64}$' OR
+                      p_payload->'data'->>'fill_id' !~ '^[a-f0-9]{64}$' OR
+                      p_payload->'data'->>'order_id' IS DISTINCT FROM p_aggregate_id OR
                       (SELECT count(*) FROM jsonb_object_keys(p_payload->'data'))<>2))
              OR (p_event_type='paper.order.cancelled.v1' AND
                  (NOT ((p_payload->'data') ?& ARRAY['order_id','cancel_id']) OR
+                  jsonb_typeof(p_payload->'data'->'order_id')<>'string' OR
+                  jsonb_typeof(p_payload->'data'->'cancel_id')<>'string' OR
+                  p_payload->'data'->>'order_id' !~ '^[a-f0-9]{64}$' OR
+                  p_payload->'data'->>'order_id' IS DISTINCT FROM p_aggregate_id OR
+                  length(p_payload->'data'->>'cancel_id')<1 OR
                   (SELECT count(*) FROM jsonb_object_keys(p_payload->'data'))<>2))
              OR (p_event_type='paper.order.rejected.v1' AND
                  (NOT ((p_payload->'data') ?& ARRAY['request_hash','reason']) OR
+                  jsonb_typeof(p_payload->'data'->'request_hash')<>'string' OR
+                  jsonb_typeof(p_payload->'data'->'reason')<>'string' OR
+                  p_payload->'data'->>'request_hash' !~ '^[a-f0-9]{64}$' OR
+                  p_payload->'data'->>'request_hash' IS DISTINCT FROM p_aggregate_id OR
+                  p_payload->'data'->>'reason' IS DISTINCT FROM 'INSUFFICIENT_FUNDS' OR
                   (SELECT count(*) FROM jsonb_object_keys(p_payload->'data'))<>2))
              OR (p_event_type='paper.authorization.attempted.v1' AND
                  (NOT ((p_payload->'data') ?& ARRAY['authorization_id','outcome']) OR
+                  jsonb_typeof(p_payload->'data'->'authorization_id')<>'string' OR
+                  jsonb_typeof(p_payload->'data'->'outcome')<>'string' OR
+                  length(p_payload->'data'->>'authorization_id')<1 OR
+                  p_payload->'data'->>'outcome' NOT IN ('BLOCKED','CONSUMED') OR
                   (SELECT count(*) FROM jsonb_object_keys(p_payload->'data'))<>2))
              OR (p_event_type='ledger.transaction.posted.v1' AND
                  (NOT ((p_payload->'data') ? 'transaction_id') OR
+                  jsonb_typeof(p_payload->'data'->'transaction_id')<>'string' OR
+                  length(p_payload->'data'->>'transaction_id') NOT BETWEEN 1 AND 64 OR
+                  p_payload->'data'->>'transaction_id' IS DISTINCT FROM p_aggregate_id OR
                   (SELECT count(*) FROM jsonb_object_keys(p_payload->'data'))<>1))
           THEN
             RAISE EXCEPTION 'Invalid closed Paper outbox event data';
+          END IF;
+          IF (p_event_type IN (
+                'paper.order.accepted.v1','paper.order.partially-filled.v1',
+                'paper.order.filled.v1','paper.order.cancelled.v1') AND
+                NOT EXISTS (
+                  SELECT 1 FROM paper_order_events event
+                  WHERE event.order_id=p_aggregate_id
+                    AND event.order_version=p_aggregate_version
+                    AND event.event_type=p_event_type))
+             OR (p_event_type='paper.order.rejected.v1' AND
+                 NOT EXISTS (
+                   SELECT 1 FROM paper_command_receipts receipt
+                   WHERE receipt.request_hash=p_aggregate_id AND receipt.outcome='REJECTED'))
+             OR (p_event_type='paper.authorization.attempted.v1' AND
+                 NOT EXISTS (
+                   SELECT 1 FROM paper_authorization_attempts attempt
+                   WHERE attempt.authorization_id=p_payload->'data'->>'authorization_id'
+                     AND ((p_payload->'data'->>'outcome'='BLOCKED'
+                           AND attempt.outcome='BLOCKED')
+                       OR (p_payload->'data'->>'outcome'='CONSUMED'
+                           AND attempt.outcome LIKE 'CONSUMED_%'))))
+             OR (p_event_type='ledger.transaction.posted.v1' AND
+                 NOT EXISTS (
+                   SELECT 1 FROM paper_ledger_transactions tx
+                   WHERE tx.transaction_id=p_aggregate_id))
+          THEN
+            RAISE EXCEPTION 'Unlinked Paper outbox event';
           END IF;
           INSERT INTO outbox_events
             (event_id,event_type,payload,payload_hash,occurred_at,
@@ -938,7 +1225,8 @@ def upgrade() -> None:
     tables = (
         "paper_policy_versions, paper_symbol_rule_versions, paper_accounts, paper_asset_balances, "
         "paper_command_receipts, paper_authorization_attempts, paper_broker_inputs, paper_orders, "
-        "paper_order_events, paper_fills, paper_inventory_lots, paper_lot_consumptions, "
+        "paper_order_events, paper_fills, paper_observation_effects, "
+        "paper_inventory_lots, paper_lot_consumptions, "
         "paper_ledger_transactions, paper_ledger_entries, paper_reconciliation_checkpoints, "
         "paper_outbox_links"
     )
@@ -950,7 +1238,8 @@ def upgrade() -> None:
     op.execute(
         "GRANT INSERT ON paper_accounts, "
         "paper_command_receipts, paper_authorization_attempts, paper_broker_inputs, paper_orders, "
-        "paper_order_events, paper_fills, paper_inventory_lots, paper_lot_consumptions, "
+        "paper_order_events, paper_fills, paper_observation_effects, "
+        "paper_inventory_lots, paper_lot_consumptions, "
         "paper_ledger_transactions, paper_ledger_entries, paper_reconciliation_checkpoints, "
         "paper_asset_balances, paper_outbox_links TO woozoo_paper_engine"
     )
@@ -1010,6 +1299,7 @@ def downgrade() -> None:
         "paper_ledger_transactions",
         "paper_lot_consumptions",
         "paper_inventory_lots",
+        "paper_observation_effects",
         "paper_fills",
         "paper_order_events",
         "paper_orders",

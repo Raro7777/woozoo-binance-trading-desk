@@ -410,14 +410,16 @@ class PaperEngine:
                 LedgerEntry("exchange.clearing", "USDT", Decimal(0), principal),
             )
             pnl = principal - basis - fill.fee_amount
-            pnl_entry = (
-                LedgerEntry("paper.realized-pnl", "USDT_VAL", Decimal(0), pnl)
-                if pnl >= 0
-                else LedgerEntry("paper.realized-loss", "USDT_VAL", -pnl, Decimal(0))
+            pnl_entries: tuple[LedgerEntry, ...] = (
+                (LedgerEntry("paper.realized-pnl", "USDT_VAL", Decimal(0), pnl),)
+                if pnl > 0
+                else (LedgerEntry("paper.realized-loss", "USDT_VAL", -pnl, Decimal(0)),)
+                if pnl < 0
+                else ()
             )
             valuation_entries = (
                 LedgerEntry("paper.disposal-value", "USDT_VAL", principal, Decimal(0)),
-                pnl_entry,
+                *pnl_entries,
                 LedgerEntry("paper.inventory-basis", "USDT_VAL", Decimal(0), basis),
                 LedgerEntry("paper.fee-value", "USDT_VAL", Decimal(0), fill.fee_amount),
             )

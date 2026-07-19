@@ -47,6 +47,12 @@ transaction. The store supports orderless rejected receipts and distinct create,
 fill and cancel lifecycle writes. It hydrates the deterministic engine from durable rows after
 restart, including receipts, allocation budgets, lots, journals and event history.
 
+Recorded-book identity is stored once, while `paper_observation_effects` records each
+order's `FILL` or `NO_FILL` result. This lets one immutable observation allocate its
+floor-stepped participation budget across already-accepted orders in canonical
+`accepted_broker_seq`, client-order and order-ID order, including after restart. Transaction
+advisory locks serialize same-command and same-observation retries before the first read.
+
 Deferred commit-time checks bind fills to immutable fee/symbol policies, recorded-book
 liquidity, physical and valuation journals, FIFO conservation, complete balance commodities,
 order history and outbox versions. The minimum-privilege writer can mutate only versioned
@@ -54,6 +60,12 @@ order/balance projections; unledgered changes fail at commit. Failure injection 
 boundary proves zero partial effect. Reconciliation compares the union of durable balances
 and physical-ledger commodities, persists a fail-closed checkpoint, and any latest failed
 checkpoint places subsequent new lifecycle commands on HOLD.
+
+Commit-time templates also bind book symbol and side-specific quote eligibility, quote fee
+asset, BUY lot quantity/cost, SELL consumption quantity/FIFO basis, and every physical and
+valuation journal amount to the fill. The security-definer outbox entry point accepts only
+the seven closed Paper event shapes, exact envelope/data keys, typed values, matching domain
+rows and account links; `PUBLIC` execution is revoked.
 
 ## Required acceptance denominator
 

@@ -103,10 +103,11 @@ def test_injected_failure_rolls_back_every_authoritative_row(stage: PersistenceS
               (SELECT count(*) FROM paper_orders WHERE account_id=%s),
               (SELECT count(*) FROM paper_fills f JOIN paper_orders o USING(order_id)
                WHERE o.account_id=%s),
+              (SELECT count(*) FROM paper_observation_effects WHERE account_id=%s),
               (SELECT count(*) FROM paper_inventory_lots WHERE account_id=%s),
               (SELECT count(*) FROM paper_ledger_transactions WHERE account_id=%s),
               (SELECT count(*) FROM outbox_events WHERE aggregate_id=%s)
             """,
-            (write.account_id,) * 7 + (write.order.order_id,),
+            (write.account_id,) * 8 + (write.order.order_id,),
         ).fetchone()
-    assert counts == (0, 0, 0, 0, 0, 0, 0, 0)
+    assert counts == (0, 0, 0, 0, 0, 0, 0, 0, 0)
