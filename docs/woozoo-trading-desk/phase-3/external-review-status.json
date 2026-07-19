@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "stage_id": "p3_point_in_time_evidence",
+  "status": "external-review-unavailable",
+  "external_gate_satisfied": false,
+  "runner": "codex",
+  "selection": {
+    "policy": "codex-primary-no-claude",
+    "selected_external_reviewer": "agy",
+    "selected_once": true
+  },
+  "attempts": [
+    {
+      "result": "no usable review body",
+      "detail": "Headless command permission was auto-denied."
+    },
+    {
+      "result": "no usable review body",
+      "detail": "The permitted tool-free retry exceeded the operating-system argument length."
+    }
+  ],
+  "interpretation": "This availability record is not an external PASS. Safety QA and the same-engine Codex cross-review remain separate internal evidence. Claude was disabled and was not used."
+}

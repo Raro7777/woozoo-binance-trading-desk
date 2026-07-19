@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "woozoo.evidence-domain-events/v1",
+  "oneOf": [
+    {
+      "allOf": [
+        {"$ref": "event-envelope.v1.json"},
+        {
+          "type": "object",
+          "properties": {
+            "event_type": {"const": "evidence.snapshot.created.v1"},
+            "event_version": {"const": 1},
+            "producer": {"const": "evidence-worker"},
+            "aggregate": {
+              "type": "object",
+              "properties": {"type": {"const": "evidence_snapshot"}}
+            },
+            "data": {"$ref": "evidence-snapshot.v1.json"}
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "phase": 1,
+  "status": "READY_FOR_DIGEST_BOUND_USER_APPROVAL",
+  "acceptance_status": "UNVERIFIED",
+  "digest_algorithm": "SHA-256",
+  "digest_definition": "SHA-256 of this UTF-8 manifest after its sorted artifact list and Git gate evidence are complete; this manifest does not hash itself. The frozen_code_revision Git commit and tree bind the product source tree.",
+  "frozen_code_revision": {
+    "commit": "c629ab7217d143a93a5e58e5de5d4dcebdd1c535",
+    "tree": "052b6bbb9cdf03711e43a86459e7073c1c09374d",
+    "branch": "codex/phase-1-platform-skeleton",
+    "verdict": "PASS"
+  },
+  "phase_item_verdicts": {
+    "P1-01": "PASS",
+    "P1-02": "PASS",
+    "P1-03": "PASS",
+    "P1-04": "PASS",
+    "P1-05": "PASS",
+    "P1-06": "PASS",
+    "P1-07": "PASS",
+    "P1-08": "PASS",
+    "P1-09": "PASS",
+    "P1-10": "PASS",
+    "P1-11": "PASS",
+    "P1-12": "PASS"
+  },
+  "review_gate": {
+    "role_separated_safety_qa": "PASS_P1-01_TO_P1-10",
+    "codex_cross_review": "UNVERIFIED_PROCESS_EVIDENCE_PENDING_NO_CONFIRMED_IMPLEMENTATION_FINDING",
+    "external_review": "external-review-unavailable",
+    "external_gate_satisfied": false,
+    "external_review_is_not_pass": true,
+    "approval_boundary": "The acceptance status remains UNVERIFIED until the user explicitly approves this exact manifest digest. This manifest is not authority to begin Phase 2."
+  },
+  "git_gate": {
+    "status": "PASS",
+    "evidence_path": "docs/woozoo-trading-desk/phase-1/p1-git-gate-evidence.json",
+    "frozen_code_commit": "c629ab7217d143a93a5e58e5de5d4dcebdd1c535",
+    "draft_pr": "https://github.com/Raro7777/woozoo-binance-trading-desk/pull/2",
+    "base": "main"
+  },
+  "verification": {
+    "canonical_command": "corepack pnpm ci",
+    "status": "PASS",
+    "scenario_evidence": "docs/woozoo-trading-desk/phase-1/p1-scenario-manifest.json"
+  },
+  "artifacts": [
+    {"path": "AGENTS.md", "sha256": "48a07aed6f8ac753df49740797cbbbf20e821240d1c14e63912b6c0a289b4e64", "verdict": "PASS"},
+    {"path": "docs/woozoo-trading-desk/phase-0/phase-1-scope-and-phase-0-report.md", "sha256": "ce7d2055713442f57ed68678304c990189109a3fbda64ac6b2faaadf78ea6fbd", "verdict": "PASS"},
+    {"path": "docs/woozoo-trading-desk/phase-1/external-review-status.json", "sha256": "1b6cc86a9cc3321d7acddafae2c123097f7307ddc878ac58b116d5366df60031", "verdict": "external-review-unavailable"},
+    {"path": "docs/woozoo-trading-desk/phase-1/final-review-record.md", "sha256": "7d37a2aadbc316472278aa30b3d9e8aa9389e2c2347ed30533c3b3255946068f", "verdict": "PASS"},
+    {"path": "docs/woozoo-trading-desk/phase-1/implementation-contract.md", "sha256": "4faf1fa62e47aa78354aa4c5ab10d6d0f9f451b9942db939c4798553d26d8bb5", "verdict": "PASS"},
+    {"path": "docs/woozoo-trading-desk/phase-1/p1-git-gate-evidence.json", "sha256": "85f0bd8c5b1c85a25e26f9c19bd903805f5ef6cc645343ebd3622dec4e477f71", "verdict": "PASS"},
+    {"path": "docs/woozoo-trading-desk/phase-1/p1-scenario-manifest.json", "sha256": "ada8fea39ee8a2306ba16dbf5b2051dd20801ba405f8a39136df0724e81eb1ca", "verdict": "PASS"},
+    {"path": "docs/woozoo-trading-desk/working_history/phase-1_platform-foundation_20260719.md", "sha256": "f6f4870380fae5ae9d15d4a37650adfe8d9ebba7d4625217fca0f0c65084f3d2", "verdict": "PASS"}
+  ]
+}

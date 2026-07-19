@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "phase": 0,
+  "status": "READY_FOR_DIGEST_BOUND_USER_APPROVAL",
+  "acceptance_status": "UNVERIFIED",
+  "digest_algorithm": "SHA-256",
+  "digest_definition": "SHA-256 of this UTF-8 manifest after its sorted artifact list and Git gate evidence are complete; this manifest does not hash itself.",
+  "phase_item_verdicts": {
+    "P0-01": "PASS",
+    "P0-02": "PASS",
+    "P0-03": "PASS",
+    "P0-04": "PASS",
+    "P0-05": "PASS",
+    "P0-06": "PASS",
+    "P0-07": "PASS",
+    "P0-08": "PASS",
+    "P0-09": "PASS",
+    "P0-10": "PASS",
+    "P0-11": "PASS",
+    "P0-12": "PASS"
+  },
+  "review_gate": {
+    "role_separated_safety_qa": "PASS",
+    "codex_cross_review": "NO_CONFIRMED_FINDINGS",
+    "external_review": "external-review-unavailable",
+    "external_review_is_not_pass": true
+  },
+  "git_gate": {
+    "status": "PASS",
+    "commit": "d2e022fc17afea8bde05f220ddf1950a51a39349",
+    "branch": "codex/phase-0-design",
+    "draft_pr": "https://github.com/Raro7777/woozoo-binance-trading-desk/pull/1",
+    "base": "main"
+  },
+  "artifacts": [
+    {"path": ".agents/skills/woozoo-phase-gates/references/phase-contract.md", "sha256": "4a50a55e40a9efbd02690b0e923913bf3c9f4cbfae23c9db9d6e290762279cbe", "verdict": "PASS"},
+    {"path": ".gitattributes", "sha256": "36f5046d7b9e6c15c3d77263f4918fa7997bebfbf79f3a4f3b954da607cd4eed", "verdict": "PASS"},
+    {"path": "AGENTS.md", "sha256": "48a07aed6f8ac753df49740797cbbbf20e821240d1c14e63912b6c0a289b4e64", "verdict": "PASS"},
+    {"path": "docs/woozoo-trading-desk/mvp-plan-and-acceptance.md", "sha256": "1e5edcd3bf90e4b33ca0bef3df6c5a1373cd5be5983258eb5d8993337bfa753b", "verdict": "PASS"},
+    {"path": "docs/woozoo-trading-desk/phase-0/api-and-event-contracts.md", "sha256": "893538a5e823b3ed7269e0148d61d2cd09e1a692603993949361e07ee5b2f0fb", "verdict": "PASS"},
+    {"path": "docs/woozoo-trading-desk/phase-0/architecture-and-boundaries.md", "sha256": "eb0c48a1e9f271a2b3325a033444c6b05b6be5173484aed0adabc3722e573cc9", "verdict": "PASS"},
+    {"path": "docs/woozoo-trading-desk/phase-0/binance-official-assumptions.md", "sha256": "eb74db15e77fdc564a35e45d689230ca69761de5c9b2a572739fac1f725e22f1", "verdict": "PASS"},
+    {"path": "docs/woozoo-trading-desk/phase-0/data-model-and-retention.md", "sha256": "1ba864432e2f1e8d914e1c9d06341ad1c5a89d8ca557130561b84b205458180e", "verdict": "PASS"},
+    {"path": "docs/woozoo-trading-desk/phase-0/external-review-status.json", "sha256": "e5ac5af3ab074ebd7b2ec47a4b1a530ff6078393b0e7064a0839d105972f4609", "verdict": "external-review-unavailable"},
+    {"path": "docs/woozoo-trading-desk/phase-0/final-review-record.md", "sha256": "8b56a4160d54739bc7df5fe4abca31528597bd5c9b7cc50ad7088f35a8a092cb", "verdict": "PASS"},
+    {"path": "docs/woozoo-trading-desk/phase-0/financial-and-order-invariants.md", "sha256": "5eececccb401d3d3d817ede472dd46f6b635d10c892f6af3218738ef5cf26ef0", "verdict": "PASS"},
+    {"path": "docs/woozoo-trading-desk/phase-0/local-ci-contract.md", "sha256": "7136ef21713bbe63dec2541ba9e46d0c7eca75ff6861e5e41bbcd1185558e0fb", "verdict": "PASS"},
+    {"path": "docs/woozoo-trading-desk/phase-0/p0-git-gate-evidence.json", "sha256": "bce54a49902f9642aade16db3fd9c7bf0cc629ca214d2f86d279d069431415de", "verdict": "PASS"},
+    {"path": "docs/woozoo-trading-desk/phase-0/phase-1-scope-and-phase-0-report.md", "sha256": "ce7d2055713442f57ed68678304c990189109a3fbda64ac6b2faaadf78ea6fbd", "verdict": "PASS"},
+    {"path": "docs/woozoo-trading-desk/phase-0/README.md", "sha256": "aa075a15824562f1033560a614c3af05ffda163a9c765d34195db8db338be3bb", "verdict": "PASS"},
+    {"path": "docs/woozoo-trading-desk/phase-0/requirements-and-repository-audit.md", "sha256": "706c117dd95befc5c22d8bed31c28e5492dcb7bb169f7ad5e121bcbc93cffe37", "verdict": "PASS"},
+    {"path": "docs/woozoo-trading-desk/phase-0/requirements-trace-manifest.json", "sha256": "ef0586e8d8b279beb89a9e4c3cd52e98e43baac60a18c17ea84278fceb6b2745", "verdict": "PASS"},
+    {"path": "docs/woozoo-trading-desk/phase-0/tools/validate_requirements_trace.py", "sha256": "6d725e82933c75d27bbbd1b2ebbcedaa99b3e679c5395c474978139dad2f2bf8", "verdict": "PASS"},
+    {"path": "docs/woozoo-trading-desk/phase-0/verification-strategy.md", "sha256": "d34b292aad55d2d6476fa3d6819ae6a808368eba59d97d2817e54040491545c9", "verdict": "PASS"},
+    {"path": "docs/woozoo-trading-desk/phase-0-decision-package.md", "sha256": "0f0dd9e04b856c39b9ac6e0d778d4529e179eb15c2b6c2ed3240e4610849f4f0", "verdict": "PASS"},
+    {"path": "Woozoo_Binance_Trading_Desk_Codex_Handoff-5.docx", "sha256": "2ded3774ee98f4f808853c03a072fbbdefb3135473711463da9939daa188e8a7", "verdict": "PASS"}
+  ]
+}
