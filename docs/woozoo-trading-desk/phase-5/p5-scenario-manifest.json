@@ -5,7 +5,7 @@
   "risk_input_schema_version": "woozoo.risk-input/v1",
   "risk_decision_schema_version": "woozoo.risk-decision/v1",
   "fixture_source": "tests/unit/test_risk_engine.py::risk_input",
-  "fixture_source_sha256": "1e4482198b2d715fa58d85ce459d17d3eed6686e8136410b5a8fa5ae98b46456",
+  "fixture_source_sha256": "b4bc154825a72e2eb2aeb16aef40a70d703286b0a0f557ea81109d983656962c",
   "risk_input_schema_sha256": "2a64c7c3f4362c73bfddcd8a994a6f0d19268c277114bd2a638b642540652504",
   "risk_decision_schema_sha256": "4c8287c8d0fddbcda1b9c2687a078d2ee477d8392f1c711d473e6b29bed3d6cd",
   "kill_switch_schema_sha256": "dc30f1f1f696d4251933a6d88e2155b0f22c6515c060c08405e4aaa7cec3a89b",
@@ -28,7 +28,7 @@
         "tests/replay/test_risk_replay.py::test_reason_message_or_recording_metadata_cannot_enter_decision_hash"
       ],
       "source_sha256": [
-        "1e4482198b2d715fa58d85ce459d17d3eed6686e8136410b5a8fa5ae98b46456",
+        "b4bc154825a72e2eb2aeb16aef40a70d703286b0a0f557ea81109d983656962c",
         "e4acee48a3bf51c1b1255eab1bc44abf2cf59e1e6ed1fdf9cb154c6e43ab80eb"
       ],
       "oracle": "Same complete canonical input is byte-identical across replay, locale and process identity; each bound input mutation changes risk_input_digest."
@@ -97,11 +97,18 @@
         "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[bid_zero]",
         "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[ask_zero]",
         "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[ledger_mismatch]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[order_type_not_limit]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[side_not_long_cash]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[tif_not_allowed]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[invalid_price_or_qty]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[insufficient_available_balance]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[fee_reserve_insufficient]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[sell_exceeds_position]",
         "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[invalid_open_order_state]",
         "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[loss_scale_edge_below]"
       ],
       "source_sha256": [
-        "1e4482198b2d715fa58d85ce459d17d3eed6686e8136410b5a8fa5ae98b46456",
+        "b4bc154825a72e2eb2aeb16aef40a70d703286b0a0f557ea81109d983656962c",
         "3d5e90741c120a0b85f24bf81712ba7cb1e1c4378fb1458f9e52b85af8c3c58f"
       ],
       "boundary_cases": {
@@ -156,8 +163,24 @@
         "bid_zero": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[bid_zero]",
         "ask_zero": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[ask_zero]",
         "ledger_mismatch": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[ledger_mismatch]",
+        "order_type_not_limit": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[order_type_not_limit]",
+        "side_not_long_cash": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[side_not_long_cash]",
+        "tif_not_allowed": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[tif_not_allowed]",
+        "invalid_price_or_qty": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[invalid_price_or_qty]",
+        "insufficient_available_balance": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[insufficient_available_balance]",
+        "fee_reserve_insufficient": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[fee_reserve_insufficient]",
+        "sell_exceeds_position": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[sell_exceeds_position]",
         "invalid_open_order_state": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[invalid_open_order_state]",
         "loss_scale_edge_below": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[loss_scale_edge_below]"
+      },
+      "guard_reason_cases": {
+        "ORDER_TYPE_NOT_LIMIT": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[order_type_not_limit]",
+        "SIDE_NOT_LONG_CASH": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[side_not_long_cash]",
+        "TIF_NOT_ALLOWED": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[tif_not_allowed]",
+        "INVALID_PRICE_OR_QTY": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[invalid_price_or_qty]",
+        "INSUFFICIENT_AVAILABLE_BALANCE": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[insufficient_available_balance]",
+        "FEE_RESERVE_INSUFFICIENT": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[fee_reserve_insufficient]",
+        "SELL_EXCEEDS_POSITION": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[sell_exceeds_position]"
       },
       "oracle": "Frozen below/equal/above Decimal limits, every fail-closed counterexample, and priority then lexical ordered reasons match the Phase 0 table."
     },
@@ -240,8 +263,8 @@
         "tests/integration/test_risk_migration_contract.py::test_phase_four_to_five_to_four_to_five_migration_cycle_is_recoverable"
       ],
       "source_sha256": [
-        "0d9ae8493ca2643512f2ccedd9aeb40dbff7c379b8d60e79bd1a2549c932128f",
-        "2705f6d73eaf567a274d34ab64be776ba797b22dc7ff27e1e4be90662d8602b8"
+        "d7edffbb10a16921524e9bc4f62ed4080b1791eb0e03722fbb0b04f520ad51e7",
+        "0351ba6db1da3bbec413926ae55057d14d8dec9c28e3483b1069fb586d20808a"
       ],
       "oracle": "Unique immutable Risk input authority, least privilege, Kill barrier locking, atomic outbox and Paper cancel saga survive migration cycle and rollback."
     },

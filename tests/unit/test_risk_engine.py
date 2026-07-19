@@ -351,6 +351,13 @@ RISK_BOUNDARY_CASES = [
     ("ask_missing", "EXECUTION_QUALITY_UNKNOWN", True),
     ("bid_zero", "EXECUTION_QUALITY_UNKNOWN", True),
     ("ask_zero", "EXECUTION_QUALITY_UNKNOWN", True),
+    ("order_type_not_limit", "ORDER_TYPE_NOT_LIMIT", True),
+    ("side_not_long_cash", "SIDE_NOT_LONG_CASH", True),
+    ("tif_not_allowed", "TIF_NOT_ALLOWED", True),
+    ("invalid_price_or_qty", "INVALID_PRICE_OR_QTY", True),
+    ("insufficient_available_balance", "INSUFFICIENT_AVAILABLE_BALANCE", True),
+    ("fee_reserve_insufficient", "FEE_RESERVE_INSUFFICIENT", True),
+    ("sell_exceeds_position", "SELL_EXCEEDS_POSITION", True),
     ("ledger_mismatch", "LEDGER_IMBALANCE", True),
     ("invalid_open_order_state", "INPUT_SCHEMA_INVALID", True),
     ("loss_scale_edge_below", "REALIZED_LOSS_LIMIT_EXCEEDED", False),
@@ -510,6 +517,35 @@ def test_risk_002_complete_boundary_matrix(case: str, reason: str, present: bool
         set_preview(payload, best_bid="0")
     elif case == "ask_zero":
         set_preview(payload, best_ask="0")
+    elif case == "order_type_not_limit":
+        set_preview(payload, order_type="MARKET")
+    elif case == "side_not_long_cash":
+        payload["proposal"]["payload"]["side"] = "SHORT"  # type: ignore[index]
+        payload["proposal"]["proposal_hash"] = canonical_hash(  # type: ignore[index]
+            payload["proposal"]["payload"]  # type: ignore[index]
+        )
+        set_preview(payload, side="SHORT", worst_case_hold="0.1")
+    elif case == "tif_not_allowed":
+        set_preview(payload, time_in_force="IOC")
+    elif case == "invalid_price_or_qty":
+        set_preview(
+            payload,
+            quantity="0",
+            worst_case_fee="0",
+            worst_case_hold="0",
+            worst_case_notional="0",
+        )
+    elif case in {"insufficient_available_balance", "fee_reserve_insufficient"}:
+        available = "9.99" if case == "insufficient_available_balance" else "10"
+        payload["portfolio"]["available_quote"] = available  # type: ignore[index]
+        payload["portfolio"]["held_quote"] = format(Decimal(10000) - Decimal(available), "f")  # type: ignore[index]
+        rehash_section(payload, "portfolio", "snapshot_hash")
+    elif case == "sell_exceeds_position":
+        payload["proposal"]["payload"]["side"] = "SELL"  # type: ignore[index]
+        payload["proposal"]["proposal_hash"] = canonical_hash(  # type: ignore[index]
+            payload["proposal"]["payload"]  # type: ignore[index]
+        )
+        set_preview(payload, side="SELL", worst_case_hold="0.1")
     elif case == "ledger_mismatch":
         payload["reconciliation"]["health"] = "FAILED"  # type: ignore[index]
         payload["reconciliation"]["mismatch_codes"] = ["LEDGER_IMBALANCE"]  # type: ignore[index]
@@ -531,6 +567,8 @@ def test_risk_002_complete_boundary_matrix(case: str, reason: str, present: bool
     assert (reason in reasons) is present
     if case == "ledger_mismatch":
         expected = ("LEDGER_IMBALANCE", "RECONCILIATION_UNHEALTHY")
+    elif case == "fee_reserve_insufficient":
+        expected = ("FEE_RESERVE_INSUFFICIENT", "INSUFFICIENT_AVAILABLE_BALANCE")
     elif case in {"portfolio_exposure_above", "sell_portfolio_exposure_above"}:
         expected = ("PORTFOLIO_EXPOSURE_LIMIT_EXCEEDED", "SYMBOL_EXPOSURE_LIMIT_EXCEEDED")
     elif present:
@@ -538,6 +576,7 @@ def test_risk_002_complete_boundary_matrix(case: str, reason: str, present: bool
     else:
         expected = ("RISK_ALLOWED",)
     assert reasons == expected
+    assert decision.primary_reason_code == expected[0]
     assert decision.verdict == (
         "ERROR"
         if reason in {"EQUITY_INVALID", "INPUT_SCHEMA_INVALID"}

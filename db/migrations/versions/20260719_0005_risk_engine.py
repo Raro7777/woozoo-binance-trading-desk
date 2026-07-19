@@ -244,7 +244,12 @@ def upgrade() -> None:
               ON link.aggregate_kind='kill-switch'
              AND link.aggregate_id=event.activation_event_id
             LEFT JOIN outbox_events outbox ON outbox.event_id=link.event_id
-            WHERE receipt.request_id IS NULL OR link.event_id IS NULL OR outbox.event_id IS NULL
+            LEFT JOIN kill_switch_state state
+              ON state.scope=event.scope AND state.active
+             AND state.version=event.new_version
+             AND state.last_activation_event_id=event.activation_event_id
+            WHERE state.scope IS NULL
+               OR receipt.request_id IS NULL OR link.event_id IS NULL OR outbox.event_id IS NULL
                OR outbox.event_type<>'kill-switch.activated.v1'
                OR outbox.aggregate_type<>'kill_switch'
                OR outbox.aggregate_id<>event.activation_event_id
@@ -311,6 +316,22 @@ def upgrade() -> None:
         "paper_kill_cancel_items",
     ):
         _append_only(table)
+
+    op.create_table(
+        "phase5_p4_function_backup",
+        sa.Column("function_name", sa.String(128), primary_key=True),
+        sa.Column("function_definition", sa.Text(), nullable=False),
+    )
+    op.execute(r"""
+        INSERT INTO phase5_p4_function_backup(function_name,function_definition)
+        SELECT 'append_paper_outbox',pg_get_functiondef(
+          'append_paper_outbox(varchar,varchar,jsonb,varchar,timestamptz,varchar,varchar,bigint)'
+            ::regprocedure
+        )
+        UNION ALL
+        SELECT 'assert_paper_relational_consistency',
+               pg_get_functiondef('assert_paper_relational_consistency()'::regprocedure)
+    """)
 
     # Preserve every Phase 4 relational check, changing only the assumption that
     # all cancelled orders have a human-command receipt. A system Kill item is a
@@ -420,54 +441,16 @@ def downgrade() -> None:
     )
     op.execute(r"""
         DO $$
-        DECLARE v_definition text; v_replaced text;
+        DECLARE saved record;
         BEGIN
-          SELECT pg_get_functiondef(
-            'append_paper_outbox(varchar,varchar,jsonb,varchar,timestamptz,varchar,varchar,bigint)'
-              ::regprocedure
-          ) INTO v_definition;
-          v_replaced := regexp_replace(
-            v_definition,
-            'AND receipt\.outcome=''ORDER_CANCELLED''\) AND NOT EXISTS \(SELECT 1 FROM '
-            'paper_kill_cancel_items kill_item WHERE kill_item\.order_id=p_aggregate_id '
-            'AND kill_item\.cancel_id=p_payload->''data''->>''cancel_id''\)\)',
-            'AND receipt.outcome=''ORDER_CANCELLED''))',
-            'g'
-          );
-          EXECUTE v_replaced;
+          FOR saved IN
+            SELECT function_definition FROM phase5_p4_function_backup ORDER BY function_name
+          LOOP
+            EXECUTE saved.function_definition;
+          END LOOP;
         END $$
     """)
-    op.execute(r"""
-        DO $$
-        DECLARE v_definition text; v_replaced text;
-        BEGIN
-          SELECT pg_get_functiondef('assert_paper_relational_consistency()'::regprocedure)
-            INTO v_definition;
-          v_replaced := regexp_replace(
-            v_definition,
-            $pattern$\(event\.event_type='paper\.order\.cancelled\.v1' AND \(\(input\.source_kind IS DISTINCT FROM 'TEST_COMMAND' OR NOT EXISTS \(\s*SELECT 1 FROM paper_command_receipts receipt\s*WHERE receipt\.paper_order_id=event\.order_id\s*AND receipt\.broker_seq=input\.broker_seq\s*AND receipt\.outcome='ORDER_CANCELLED'\)\)\s*AND NOT EXISTS \(SELECT 1 FROM paper_kill_cancel_items kill_item\s*WHERE kill_item\.order_id=event\.order_id\)\)\)$pattern$,
-            $replacement$(event.event_type='paper.order.cancelled.v1' AND (input.source_kind IS DISTINCT FROM 'TEST_COMMAND' OR NOT EXISTS (SELECT 1 FROM paper_command_receipts receipt WHERE receipt.paper_order_id=event.order_id AND receipt.broker_seq=input.broker_seq AND receipt.outcome='ORDER_CANCELLED')))$replacement$,
-            'g'
-          );
-          EXECUTE v_replaced;
-        END $$
-    """)
-    op.execute(r"""
-        DO $$
-        DECLARE v_definition text; v_replaced text;
-        BEGIN
-          SELECT pg_get_functiondef('assert_paper_relational_consistency()'::regprocedure)
-            INTO v_definition;
-          v_replaced := regexp_replace(
-            v_definition,
-            '\(cancelled_receipts\.receipt_count<>1 AND NOT EXISTS \(SELECT 1 FROM '
-            'paper_kill_cancel_items kill_item WHERE kill_item\.order_id=paper_order\.order_id\)\)',
-            'cancelled_receipts.receipt_count<>1',
-            'g'
-          );
-          EXECUTE v_replaced;
-        END $$
-    """)
+    op.drop_table("phase5_p4_function_backup")
     op.execute("REVOKE ALL ON outbox_events FROM woozoo_risk_engine")
     op.execute("DROP FUNCTION IF EXISTS paper_lock_kill_barrier()")
     for table in (

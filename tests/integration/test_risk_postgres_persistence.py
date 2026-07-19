@@ -12,6 +12,7 @@ import time
 from typing import Iterator
 
 import psycopg
+from psycopg.types.json import Jsonb
 import pytest
 
 from risk_engine import (
@@ -179,13 +180,14 @@ def infrastructure_lock() -> Iterator[None]:
 @pytest.fixture(scope="module", autouse=True)
 def postgres() -> Iterator[None]:
     with infrastructure_lock():
+        run("docker", "compose", "down", "-v")
         run("docker", "compose", "up", "-d", "--wait", "postgres")
         try:
             run(sys.executable, "-m", "alembic", "upgrade", "head")
             yield
         finally:
             run(sys.executable, "-m", "alembic", "upgrade", "head")
-            run("docker", "compose", "stop", "postgres")
+            run("docker", "compose", "down", "-v")
 
 
 def test_risk_decision_persistence_is_atomic_unique_and_replay_stable() -> None:
@@ -254,6 +256,71 @@ def test_risk_decision_persistence_is_atomic_unique_and_replay_stable() -> None:
 
 
 def test_risk_writer_cannot_reset_or_decrease_the_kill_barrier() -> None:
+    unbound_event_id = "b" * 64
+    unbound_outbox_id = "1" * 64
+    unbound_request_hash = "c" * 64
+    with psycopg.connect(RISK_WRITER_URL) as connection:
+        connection.execute(
+            "INSERT INTO kill_switch_events"
+            "(activation_event_id,scope,request_id,request_hash,trigger_kind,actor_id,"
+            "reason_code,reason,observed_at,context_digest,prior_version,new_version) "
+            "VALUES (%s,'paper-global','complete-without-state',%s,'MANUAL',"
+            "'operator:unbound-test','MANUAL_SAFETY_STOP','must rollback',%s,%s,0,1)",
+            (unbound_event_id, unbound_request_hash, NOW, "a" * 64),
+        )
+        connection.execute(
+            "INSERT INTO risk_kill_command_receipts"
+            "(request_id,request_hash,activation_event_id,response,created_at) "
+            "VALUES ('complete-without-state',%s,%s,%s,%s)",
+            (
+                unbound_request_hash,
+                unbound_event_id,
+                Jsonb({"activation_event_id": unbound_event_id, "version": 1}),
+                NOW,
+            ),
+        )
+        connection.execute(
+            "INSERT INTO outbox_events"
+            "(event_id,event_type,payload,payload_hash,occurred_at,aggregate_type,"
+            "aggregate_id,aggregate_version) VALUES "
+            "(%s,'kill-switch.activated.v1',%s,%s,%s,'kill_switch',%s,1)",
+            (
+                unbound_outbox_id,
+                Jsonb(
+                    {
+                        "producer": "risk-engine",
+                        "data": {"activation_event_id": unbound_event_id},
+                    }
+                ),
+                "2" * 64,
+                NOW,
+                unbound_event_id,
+            ),
+        )
+        connection.execute(
+            "INSERT INTO risk_outbox_links(event_id,aggregate_kind,aggregate_id) "
+            "VALUES (%s,'kill-switch',%s)",
+            (unbound_outbox_id, unbound_event_id),
+        )
+        with pytest.raises(
+            psycopg.errors.RaiseException, match="activation transaction is incomplete"
+        ):
+            connection.commit()
+        connection.rollback()
+
+    with psycopg.connect(DATABASE_URL) as connection:
+        assert connection.execute(
+            "SELECT active,version FROM kill_switch_state WHERE scope='paper-global'"
+        ).fetchone() == (False, 0)
+        assert connection.execute(
+            "SELECT "
+            "(SELECT count(*) FROM kill_switch_events WHERE activation_event_id=%s),"
+            "(SELECT count(*) FROM risk_kill_command_receipts WHERE activation_event_id=%s),"
+            "(SELECT count(*) FROM risk_outbox_links WHERE event_id=%s),"
+            "(SELECT count(*) FROM outbox_events WHERE event_id=%s)",
+            (unbound_event_id, unbound_event_id, unbound_outbox_id, unbound_outbox_id),
+        ).fetchone() == (0, 0, 0, 0)
+
     partial_event_id = "e" * 64
     with psycopg.connect(RISK_WRITER_URL) as connection:
         connection.execute(

@@ -27,8 +27,20 @@ const riskBoundaryCases = [
   "watermark_incomplete", "data_invalid", "expired", "duplicate_proposal",
   "duplicate_order_intent", "equity_invalid", "bid_missing", "ask_missing",
   "bid_zero", "ask_zero", "ledger_mismatch",
+  "order_type_not_limit", "side_not_long_cash", "tif_not_allowed",
+  "invalid_price_or_qty", "insufficient_available_balance", "fee_reserve_insufficient",
+  "sell_exceeds_position",
   "invalid_open_order_state", "loss_scale_edge_below",
 ];
+const riskGuardReasonCases = {
+  ORDER_TYPE_NOT_LIMIT: "order_type_not_limit",
+  SIDE_NOT_LONG_CASH: "side_not_long_cash",
+  TIF_NOT_ALLOWED: "tif_not_allowed",
+  INVALID_PRICE_OR_QTY: "invalid_price_or_qty",
+  INSUFFICIENT_AVAILABLE_BALANCE: "insufficient_available_balance",
+  FEE_RESERVE_INSUFFICIENT: "fee_reserve_insufficient",
+  SELL_EXCEEDS_POSITION: "sell_exceeds_position",
+};
 const killFaults = [
   "paper_create_lock_before_activation", "activation_lock_before_paper_create",
   "paper_fill_lock_before_activation", "activation_lock_before_paper_fill",
@@ -115,6 +127,14 @@ async function riskDataScenario(area, id, nodeIds) {
   ]));
   if (id === "RISK-002" && JSON.stringify(scenario.boundary_cases) !== JSON.stringify(expectedRiskCases)) {
     throw new Error("RISK-002 must bind the complete frozen boundary matrix to exact cases");
+  }
+  if (id === "RISK-002") {
+    const expectedReasons = Object.fromEntries(Object.entries(riskGuardReasonCases).map(([reason, name]) => [
+      reason, `tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[${name}]`,
+    ]));
+    if (JSON.stringify(scenario.guard_reason_cases) !== JSON.stringify(expectedReasons)) {
+      throw new Error("RISK-002 must bind every semantic product guard reason to an exact case");
+    }
   }
   if (
     id === "KILL-001" || id === "KILL-002"
