@@ -6,6 +6,8 @@
   "http_status": 200,
   "response_bytes": 10241,
   "raw_response_sha256": "c30f738ad7fd6d8e1378b9a8ef022c78c801cf4d1bc0b005f8870c188364a788",
+  "deterministic_projection": "binance-symbol-rule-projection.json",
+  "deterministic_projection_sha256": "c185c254d4afc4a0929a70faa69404e816787b1b35200660b8c67b7c138ad1d6",
   "adopted_rules": {
     "BTCUSDT": {
       "status": "TRADING",

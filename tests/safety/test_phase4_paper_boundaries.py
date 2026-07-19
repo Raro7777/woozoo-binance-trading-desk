@@ -1,3 +1,5 @@
+import hashlib
+import json
 from pathlib import Path
 
 import pytest
@@ -39,3 +41,28 @@ def test_phase_four_settings_reject_credential_vocabulary() -> None:
                 "EXCHANGE_API_KEY": "forbidden-canary",
             }
         )
+
+
+def test_public_symbol_rule_projection_is_hash_bound_and_derives_adopted_rules() -> None:
+    directory = ROOT / "docs/woozoo-trading-desk/phase-4"
+    metadata = json.loads(
+        (directory / "binance-public-symbol-rule-reverification.json").read_text("utf-8")
+    )
+    projection_bytes = (directory / metadata["deterministic_projection"]).read_bytes()
+    assert (
+        hashlib.sha256(projection_bytes).hexdigest() == metadata["deterministic_projection_sha256"]
+    )
+    projection = json.loads(projection_bytes)
+    derived = {
+        symbol["symbol"]: {
+            "status": symbol["status"],
+            "base_asset": symbol["baseAsset"],
+            "quote_asset": symbol["quoteAsset"],
+            "tick_size": symbol["filters"]["PRICE_FILTER"]["tickSize"],
+            "step_size": symbol["filters"]["LOT_SIZE"]["stepSize"],
+            "min_quantity": symbol["filters"]["LOT_SIZE"]["minQty"],
+            "min_notional": symbol["filters"]["NOTIONAL"]["minNotional"],
+        }
+        for symbol in projection["symbols"]
+    }
+    assert derived == metadata["adopted_rules"]

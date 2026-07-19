@@ -16,7 +16,7 @@ CONTRACT_SOURCE_DIGESTS = {
     "evidence-snapshot.v1.json": "2e60fb66732bcdea794f9a6ecaa519cae3a1fd3fa5b5890f11839cdeb5e99b8c",
     "evidence-domain-events.v1.json": "af113814267e596fa453b5036a8f5d6e579fce133ee03efee9cca785d3f1d749",
     "paper-order.v1.json": "2a4048f7c038e394fda9d212de6486998ca61b42ff12c21fe03f0db8714220d5",
-    "paper-domain-events.v1.json": "c99666546c9dc46b346dd8b2c429e99f13f03052123777b4511d5330da6ae2c0",
+    "paper-domain-events.v1.json": "9ce88199e1f46371794a4618630bb44a7b6683ab7de0f422567e277019fd2556",
 }
 
 QualityStatusV1 = Literal["healthy", "degraded", "stale", "invalid", "reconnecting"]

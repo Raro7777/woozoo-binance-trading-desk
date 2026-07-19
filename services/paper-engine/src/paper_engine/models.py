@@ -38,6 +38,37 @@ class ExecutionFixture:
 
 
 @dataclass(frozen=True, slots=True)
+class CommandReceipt:
+    request_hash: str
+    outcome: str
+    order_id: str | None = None
+    error_code: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class MarkFixture:
+    price: str
+    source: str
+    as_of: datetime
+    quality: str
+    policy_version: str
+
+    def validate(self) -> None:
+        if not self.source or not self.policy_version or self.quality != "VALID":
+            raise ValueError("INVALID_MARK_PROVENANCE")
+        if self.as_of.tzinfo is None:
+            raise ValueError("INVALID_MARK_PROVENANCE")
+
+
+@dataclass(frozen=True, slots=True)
+class UnrealizedPnl:
+    asset: str
+    amount: Decimal
+    mark: MarkFixture
+    fifo_policy_version: str = "fifo-v1"
+
+
+@dataclass(frozen=True, slots=True)
 class PaperOrder:
     order_id: str
     client_order_id: str
@@ -52,6 +83,9 @@ class PaperOrder:
     held_asset: str
     held_amount: Decimal
     version: int
+    authorization_namespace: str = "test"
+    order_type: str = "LIMIT"
+    time_in_force: str = "GTC"
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,6 +99,8 @@ class PaperFill:
     fee_rate: Decimal
     fee_amount: Decimal
     broker_seq: int
+    fee_policy_version: str = "quote-fee-v1"
+    symbol_rule_version: str = "spot-public-rules-2026-07-19"
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,6 +141,13 @@ class Journal:
     replacement_for: str | None = None
 
     def assert_balanced(self) -> None:
+        if len(self.entries) < 2:
+            raise ValueError("LEDGER_JOURNAL_INCOMPLETE")
+        for entry in self.entries:
+            if entry.debit < 0 or entry.credit < 0:
+                raise ValueError("LEDGER_NEGATIVE_ENTRY")
+            if (entry.debit > 0) == (entry.credit > 0):
+                raise ValueError("LEDGER_ENTRY_MUST_BE_ONE_SIDED")
         commodities = {entry.commodity for entry in self.entries}
         for commodity in commodities:
             debit = sum((e.debit for e in self.entries if e.commodity == commodity), Decimal(0))

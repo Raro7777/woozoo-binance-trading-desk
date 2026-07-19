@@ -73,7 +73,7 @@ if (
   paperDomainEvents.$id !== "woozoo.paper-domain-events/v1" ||
   paperDomainEvents["x-activation-phase"] !== 7 ||
   !Array.isArray(paperDomainEvents.oneOf) ||
-  paperDomainEvents.oneOf.length !== 5
+  paperDomainEvents.oneOf.length !== 7
 ) {
   throw new Error("P4 Paper contracts must remain closed and dormant until Phase 7");
 }

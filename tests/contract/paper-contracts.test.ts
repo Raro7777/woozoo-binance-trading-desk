@@ -21,7 +21,7 @@ test("Phase 4 Paper contracts are closed and dormant until Phase 7", async () =>
     event_type: "paper.order.accepted.v1", event_version: 1,
     occurred_at: "2026-07-19T00:00:00Z", producer: "paper-engine",
     activation_phase: 7, aggregate_id: order.order_id, aggregate_version: 1,
-    payload_hash: "c".repeat(64),
+    payload_hash: "c".repeat(64), data: { order_id: order.order_id },
   };
   assert.equal(event.activation_phase, 7);
   const schema = JSON.parse(await readFile(resolve(import.meta.dirname, "../../packages/contracts/spec/paper-order.v1.json"), "utf8")) as Record<string, unknown>;
@@ -29,7 +29,7 @@ test("Phase 4 Paper contracts are closed and dormant until Phase 7", async () =>
   const openapi = JSON.parse(await readFile(resolve(import.meta.dirname, "../../packages/contracts/spec/openapi.v1.json"), "utf8")) as { paths: Record<string, unknown> };
   assert.equal(schema.additionalProperties, false);
   assert.equal(schema["x-activation-phase"], 7);
-  assert.equal(registry.oneOf.length, 5);
+  assert.equal(registry.oneOf.length, 7);
   assert.equal(registry["x-activation-phase"], 7);
   assert.equal(Object.keys(openapi.paths).some((path) => path.includes("paper")), false);
 });

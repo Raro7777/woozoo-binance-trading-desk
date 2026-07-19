@@ -21,7 +21,8 @@ def decimal_input(value: str, *, positive: bool = False) -> Decimal:
         raise ValueError("financial input must be finite")
     if exponent < -18:
         raise ValueError("financial input exceeds NUMERIC(38,18) scale")
-    if len(number.as_tuple().digits) + max(exponent, 0) > 38:
+    integer_digits = max(len(number.as_tuple().digits) + exponent, 0)
+    if integer_digits > 20:
         raise ValueError("financial input exceeds NUMERIC(38,18) precision")
     return number
 

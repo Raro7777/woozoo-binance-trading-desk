@@ -1178,10 +1178,14 @@ def test_phase_four_postgres_enforces_balance_and_immutable_ledger() -> None:
     with pytest.raises(psycopg.errors.RaiseException, match="not balanced per commodity"):
         with psycopg.connect(DATABASE_URL) as connection:
             connection.execute(
+                "INSERT INTO paper_accounts(account_id,namespace,created_at) "
+                "VALUES ('ledger-bad','test',now())"
+            )
+            connection.execute(
                 """
                 INSERT INTO paper_ledger_transactions
-                    (transaction_id,business_event_type,business_event_id,journal_kind,posted_at)
-                VALUES ('bad','paper.test','bad','PHYSICAL',now())
+                    (transaction_id,account_id,business_event_type,business_event_id,journal_kind,posted_at)
+                VALUES ('bad','ledger-bad','paper.test','bad','PHYSICAL',now())
                 """
             )
             connection.execute(
@@ -1194,10 +1198,14 @@ def test_phase_four_postgres_enforces_balance_and_immutable_ledger() -> None:
 
     with psycopg.connect(DATABASE_URL) as connection:
         connection.execute(
+            "INSERT INTO paper_accounts(account_id,namespace,created_at) "
+            "VALUES ('ledger-good','test',now())"
+        )
+        connection.execute(
             """
             INSERT INTO paper_ledger_transactions
-                (transaction_id,business_event_type,business_event_id,journal_kind,posted_at)
-            VALUES ('good','paper.test','good','PHYSICAL',now())
+                (transaction_id,account_id,business_event_type,business_event_id,journal_kind,posted_at)
+            VALUES ('good','ledger-good','paper.test','good','PHYSICAL',now())
             """
         )
         connection.execute(
@@ -1235,4 +1243,9 @@ def test_phase_four_schema_has_dormant_test_namespace_and_no_future_fk() -> None
             """
         ).fetchall()
     assert sum("namespace" in row[0] and "test" in row[0] for row in constraints) == 2
-    assert [row[0] for row in foreign_targets] == ["paper_accounts", "paper_broker_inputs"]
+    assert [row[0] for row in foreign_targets] == [
+        "paper_accounts",
+        "paper_authorization_attempts",
+        "paper_broker_inputs",
+        "paper_command_receipts",
+    ]

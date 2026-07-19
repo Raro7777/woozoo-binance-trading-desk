@@ -9,13 +9,15 @@
     {"$ref": "#/$defs/orderPartiallyFilled"},
     {"$ref": "#/$defs/orderFilled"},
     {"$ref": "#/$defs/orderCancelled"},
+    {"$ref": "#/$defs/orderRejected"},
+    {"$ref": "#/$defs/authorizationAttempted"},
     {"$ref": "#/$defs/ledgerPosted"}
   ],
   "$defs": {
     "base": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["spec_version", "event_id", "event_type", "event_version", "occurred_at", "producer", "activation_phase", "aggregate_id", "aggregate_version", "payload_hash"],
+      "required": ["spec_version", "event_id", "event_type", "event_version", "occurred_at", "producer", "activation_phase", "aggregate_id", "aggregate_version", "payload_hash", "data"],
       "properties": {
         "spec_version": {"const": "woozoo.event/v1"},
         "event_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
@@ -26,13 +28,21 @@
         "activation_phase": {"const": 7},
         "aggregate_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
         "aggregate_version": {"type": "integer", "minimum": 1},
-        "payload_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+        "payload_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "data": {"type": "object"}
       }
     },
-    "orderAccepted": {"allOf": [{"$ref": "#/$defs/base"}, {"properties": {"event_type": {"const": "paper.order.accepted.v1"}}}]},
-    "orderPartiallyFilled": {"allOf": [{"$ref": "#/$defs/base"}, {"properties": {"event_type": {"const": "paper.order.partially-filled.v1"}}}]},
-    "orderFilled": {"allOf": [{"$ref": "#/$defs/base"}, {"properties": {"event_type": {"const": "paper.order.filled.v1"}}}]},
-    "orderCancelled": {"allOf": [{"$ref": "#/$defs/base"}, {"properties": {"event_type": {"const": "paper.order.cancelled.v1"}}}]},
+    "orderAccepted": {"allOf": [{"$ref": "#/$defs/base"}, {"properties": {"event_type": {"const": "paper.order.accepted.v1"}, "data": {"$ref": "#/$defs/orderData"}}}]},
+    "orderPartiallyFilled": {"allOf": [{"$ref": "#/$defs/base"}, {"properties": {"event_type": {"const": "paper.order.partially-filled.v1"}, "data": {"$ref": "#/$defs/fillData"}}}]},
+    "orderFilled": {"allOf": [{"$ref": "#/$defs/base"}, {"properties": {"event_type": {"const": "paper.order.filled.v1"}, "data": {"$ref": "#/$defs/fillData"}}}]},
+    "orderCancelled": {"allOf": [{"$ref": "#/$defs/base"}, {"properties": {"event_type": {"const": "paper.order.cancelled.v1"}, "data": {"$ref": "#/$defs/cancelData"}}}]},
+    "orderRejected": {"allOf": [{"$ref": "#/$defs/base"}, {"properties": {"event_type": {"const": "paper.order.rejected.v1"}, "data": {"$ref": "#/$defs/rejectionData"}}}]},
+    "authorizationAttempted": {"allOf": [{"$ref": "#/$defs/base"}, {"properties": {"event_type": {"const": "paper.authorization.attempted.v1"}, "data": {"$ref": "#/$defs/authorizationData"}}}]},
+    "orderData": {"type": "object", "additionalProperties": false, "required": ["order_id"], "properties": {"order_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}},
+    "fillData": {"type": "object", "additionalProperties": false, "required": ["order_id", "fill_id"], "properties": {"order_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "fill_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}},
+    "cancelData": {"type": "object", "additionalProperties": false, "required": ["order_id", "cancel_id"], "properties": {"order_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "cancel_id": {"type": "string", "minLength": 1}}},
+    "rejectionData": {"type": "object", "additionalProperties": false, "required": ["request_hash", "reason"], "properties": {"request_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "reason": {"const": "INSUFFICIENT_FUNDS"}}},
+    "authorizationData": {"type": "object", "additionalProperties": false, "required": ["authorization_id", "outcome"], "properties": {"authorization_id": {"type": "string", "minLength": 1}, "outcome": {"enum": ["BLOCKED", "CONSUMED"]}}},
     "ledgerPosted": {"allOf": [{"$ref": "#/$defs/base"}, {"properties": {"event_type": {"const": "ledger.transaction.posted.v1"}}}]}
   }
 }

@@ -27,7 +27,8 @@ absent. Production Paper account funding and production aggregate creation remai
 - posted history is immutable; correction is complete reversal plus replacement
 
 The official unauthenticated exchangeInfo response was rechecked on 2026-07-19 and is
-frozen in `binance-public-symbol-rule-reverification.json`. BTCUSDT uses tick `0.01`,
+frozen in `binance-public-symbol-rule-reverification.json` with a hash-bound deterministic
+field projection in `binance-symbol-rule-projection.json`. BTCUSDT uses tick `0.01`,
 step/min quantity `0.00001`, min notional `5`; ETHUSDT uses tick `0.01`, step/min
 quantity `0.0001`, min notional `5`.
 
@@ -39,10 +40,13 @@ constraint trigger rejects per-commodity imbalance at commit. Append-only trigge
 reject mutations of receipts, fills, lots, consumptions and ledger history. Same
 idempotency key/hash replays the stored result and a different hash conflicts.
 
-The Phase 4 executable implementation is deliberately IO-free; transaction failure is
-injected around an aggregate snapshot and the migration is exercised against Postgres.
-Recorded commands and observations rebuild the same semantic digest without wall-clock
-or random identity inputs.
+The calculation engine remains IO-free, while an internal non-ingress Postgres store is
+the durable authority. It commits receipt, authorization attempt, ordered inputs, domain
+state, FIFO lots, ledger entries and outbox in one database transaction. Failure injection
+at each SQL boundary proves zero partial effect; a restarted store returns the same stored
+response and semantic digest. Reconciliation compares durable balances with physical
+ledger postings and persists a fail-closed checkpoint. Recorded commands and observations
+also rebuild the same in-memory semantic digest without wall-clock or random identity inputs.
 
 ## Required acceptance denominator
 
