@@ -1058,9 +1058,7 @@ def test_postgres_and_hydration_share_exact_participation_floor_boundaries(
                 replace(
                     candidate.journals[0],
                     entries=(
-                        LedgerEntry(
-                            "paper.asset", "BTC", expected_fill_quantity, Decimal(0)
-                        ),
+                        LedgerEntry("paper.asset", "BTC", expected_fill_quantity, Decimal(0)),
                         LedgerEntry(
                             "exchange.clearing",
                             "BTC",
@@ -1087,9 +1085,14 @@ def test_postgres_and_hydration_share_exact_participation_floor_boundaries(
     assert store.commit(effect).created is True
     restarted = store.hydrate_engine(opened.account_id)
     assert restarted.observation_budgets[book.source_key][1] == Decimal(0)
-    assert sum(
-        fill.quantity for fill in restarted.fills.values() if fill.observation_id == book.source_key
-    ) == expected_fill_quantity
+    assert (
+        sum(
+            fill.quantity
+            for fill in restarted.fills.values()
+            if fill.observation_id == book.source_key
+        )
+        == expected_fill_quantity
+    )
     assert store.hydrate_engine(opened.account_id).semantic_digest() == restarted.semantic_digest()
 
 
