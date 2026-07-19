@@ -1,0 +1,5 @@
+_workspace/
+_workspace_*/
+.staging_backup/
+__pycache__/
+*.py[cod]
