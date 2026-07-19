@@ -186,6 +186,144 @@ def test_shared_observation_uses_one_canonical_broker_sequence_and_budget() -> N
     assert engine.observation_budgets["shared-book"][1] == Decimal("0.05")
 
 
+def test_ineligible_later_order_cannot_consume_observation_before_eligible_first_order() -> None:
+    engine = PaperEngine()
+    engine.seed_balance("USDT", "1000", seed_id="mixed-canonical-cash")
+    first = engine.create_limit_order(
+        idempotency_key="mixed-canonical-first",
+        client_order_id="mixed-canonical-first",
+        authorization=authorization(1),
+        symbol="BTCUSDT",
+        side=OrderSide.BUY,
+        quantity_text="0.1",
+        limit_price_text="100",
+    )
+    later = engine.create_limit_order(
+        idempotency_key="mixed-canonical-later",
+        client_order_id="mixed-canonical-later",
+        authorization=authorization(2),
+        symbol="BTCUSDT",
+        side=OrderSide.BUY,
+        quantity_text="0.1",
+        limit_price_text="90",
+    )
+    before = engine.semantic_digest()
+
+    with pytest.raises(ValueError, match="NON_CANONICAL_OBSERVATION_ORDER"):
+        engine.apply_book_observation(
+            order_id=later.order_id,
+            observation_id="mixed-canonical-book",
+            best_bid_text="94",
+            best_ask_text="95",
+            displayed_quantity_text="1",
+        )
+
+    assert engine.semantic_digest() == before
+    assert engine.observation_budgets == {}
+    assert engine.observation_effects == set()
+    assert (
+        engine.apply_book_observation(
+            order_id=first.order_id,
+            observation_id="mixed-canonical-book",
+            best_bid_text="94",
+            best_ask_text="95",
+            displayed_quantity_text="1",
+        )
+        is not None
+    )
+
+
+def test_ineligible_first_order_can_record_no_fill_before_eligible_later_order() -> None:
+    engine = PaperEngine()
+    engine.seed_balance("USDT", "1000", seed_id="mixed-forward-cash")
+    first = engine.create_limit_order(
+        idempotency_key="mixed-forward-first",
+        client_order_id="mixed-forward-first",
+        authorization=authorization(1),
+        symbol="BTCUSDT",
+        side=OrderSide.BUY,
+        quantity_text="0.1",
+        limit_price_text="90",
+    )
+    later = engine.create_limit_order(
+        idempotency_key="mixed-forward-later",
+        client_order_id="mixed-forward-later",
+        authorization=authorization(2),
+        symbol="BTCUSDT",
+        side=OrderSide.BUY,
+        quantity_text="0.1",
+        limit_price_text="100",
+    )
+
+    assert (
+        engine.apply_book_observation(
+            order_id=first.order_id,
+            observation_id="mixed-forward-book",
+            best_bid_text="94",
+            best_ask_text="95",
+            displayed_quantity_text="1",
+        )
+        is None
+    )
+    assert (
+        engine.apply_book_observation(
+            order_id=later.order_id,
+            observation_id="mixed-forward-book",
+            best_bid_text="94",
+            best_ask_text="95",
+            displayed_quantity_text="1",
+        )
+        is not None
+    )
+
+
+def test_extreme_sell_balance_overflow_rolls_back_every_observation_effect() -> None:
+    engine = PaperEngine()
+    engine.seed_balance("USDT", "99999999999999999999", seed_id="max-cash")
+    engine.seed_balance("BTC", "1", seed_id="sell-inventory")
+    order = engine.create_limit_order(
+        idempotency_key="extreme-sell",
+        client_order_id="extreme-sell",
+        authorization=authorization(),
+        symbol="BTCUSDT",
+        side=OrderSide.SELL,
+        quantity_text="1",
+        limit_price_text="100",
+    )
+    before = engine.semantic_digest()
+
+    with pytest.raises(ValueError, match=r"NUMERIC\(38,18\)"):
+        engine.apply_book_observation(
+            order_id=order.order_id,
+            observation_id="extreme-sell-book",
+            best_bid_text="100",
+            best_ask_text="101",
+            displayed_quantity_text="10",
+        )
+
+    assert engine.semantic_digest() == before
+
+
+def test_out_of_range_replacement_ledger_is_rejected_before_reversal_mutation() -> None:
+    engine = PaperEngine()
+    engine.seed_balance("USDT", "100", seed_id="replacement-cash")
+    original_key = next(iter(engine.journals))
+    before = engine.semantic_digest()
+    overflow = Decimal("100000000000000000000")
+
+    with pytest.raises(ValueError, match=r"NUMERIC\(38,18\)"):
+        engine.reverse_and_replace(
+            original_key=original_key,
+            correction_id="overflow-correction",
+            replacement_entries=(
+                LedgerEntry("paper.available", "USDT", overflow, Decimal(0)),
+                LedgerEntry("paper.opening-equity", "USDT", Decimal(0), overflow),
+            ),
+        )
+
+    assert engine.semantic_digest() == before
+
+
 def test_pre_acceptance_observation_is_ignored_without_recording_an_effect() -> None:
     engine = PaperEngine()
     engine.seed_balance("USDT", "1000", seed_id="cash")

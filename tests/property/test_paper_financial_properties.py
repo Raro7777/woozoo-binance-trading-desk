@@ -183,3 +183,78 @@ def test_ord_001_shared_observation_requires_canonical_order_allocation() -> Non
         best_ask_text="100",
         displayed_quantity_text="1",
     )
+
+
+def test_ord_001_mixed_eligibility_preserves_canonical_allocation_for_generated_limits() -> None:
+    for case in range(1, 21):
+        engine = PaperEngine()
+        engine.seed_balance("USDT", "10000", seed_id=f"mixed-seed-{case}")
+        first_limit = Decimal("100") + Decimal(case)
+        later_limit = first_limit - Decimal("10")
+        ask = first_limit - Decimal("5")
+        first = engine.create_limit_order(
+            idempotency_key=f"mixed-first-{case}",
+            client_order_id=f"mixed-first-{case}",
+            authorization=fixture(case),
+            symbol="BTCUSDT",
+            side=OrderSide.BUY,
+            quantity_text="0.1",
+            limit_price_text=format(first_limit, "f"),
+        )
+        later = engine.create_limit_order(
+            idempotency_key=f"mixed-later-{case}",
+            client_order_id=f"mixed-later-{case}",
+            authorization=fixture(case + 100),
+            symbol="BTCUSDT",
+            side=OrderSide.BUY,
+            quantity_text="0.1",
+            limit_price_text=format(later_limit, "f"),
+        )
+        before = engine.semantic_digest()
+
+        with pytest.raises(ValueError, match="NON_CANONICAL_OBSERVATION_ORDER"):
+            engine.apply_book_observation(
+                order_id=later.order_id,
+                observation_id=f"mixed-book-{case}",
+                best_bid_text=format(ask - Decimal(1), "f"),
+                best_ask_text=format(ask, "f"),
+                displayed_quantity_text="1",
+            )
+
+        assert engine.semantic_digest() == before
+        assert engine.apply_book_observation(
+            order_id=first.order_id,
+            observation_id=f"mixed-book-{case}",
+            best_bid_text=format(ask - Decimal(1), "f"),
+            best_ask_text=format(ask, "f"),
+            displayed_quantity_text="1",
+        )
+
+
+def test_fin_001_extreme_sell_overflow_is_transactionally_closed_for_generated_prices() -> None:
+    for case in range(1, 21):
+        engine = PaperEngine()
+        engine.seed_balance("USDT", "99999999999999999999", seed_id=f"max-cash-{case}")
+        engine.seed_balance("BTC", "1", seed_id=f"inventory-{case}")
+        price = Decimal("100") + Decimal(case)
+        order = engine.create_limit_order(
+            idempotency_key=f"extreme-sell-{case}",
+            client_order_id=f"extreme-sell-{case}",
+            authorization=fixture(case),
+            symbol="BTCUSDT",
+            side=OrderSide.SELL,
+            quantity_text="1",
+            limit_price_text=format(price, "f"),
+        )
+        before = engine.semantic_digest()
+
+        with pytest.raises(ValueError, match=r"NUMERIC\(38,18\)"):
+            engine.apply_book_observation(
+                order_id=order.order_id,
+                observation_id=f"overflow-book-{case}",
+                best_bid_text=format(price, "f"),
+                best_ask_text=format(price + Decimal(1), "f"),
+                displayed_quantity_text="10",
+            )
+
+        assert engine.semantic_digest() == before

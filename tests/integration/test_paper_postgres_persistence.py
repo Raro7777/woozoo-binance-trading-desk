@@ -1417,6 +1417,78 @@ def test_restart_completes_shared_observation_for_second_order_once() -> None:
         store.commit(younger_fill)
 
 
+def test_hydrated_engine_and_database_reject_ineligible_later_order_before_eligible_first() -> None:
+    template = complete_write(suffix="mixed-canonical-db")
+    first_open, _ = split_open_and_fill(suffix="mixed-canonical-db")
+    later_open, _ = second_order_on_shared_observation(template)
+    later_hold = Decimal("45.045")
+    later_open = replace(
+        later_open,
+        balances=(BalanceWrite("USDT", Decimal("54.855"), Decimal("145.145"), 2),),
+        order=replace(later_open.order, limit_price=Decimal("9000"), held_amount=later_hold),
+        journals=(
+            replace(
+                later_open.journals[0],
+                entries=(
+                    LedgerEntry("paper.held", "USDT", later_hold, Decimal(0)),
+                    LedgerEntry("paper.available", "USDT", Decimal(0), later_hold),
+                ),
+            ),
+        ),
+    )
+    store = PostgresPaperStore(PAPER_WRITER_URL)
+    store.commit(first_open)
+    store.commit(later_open)
+    before = store.semantic_digest(template.account_id)
+
+    hydrated = store.hydrate_engine(template.account_id)
+    engine_before = hydrated.semantic_digest()
+    with pytest.raises(ValueError, match="NON_CANONICAL_OBSERVATION_ORDER"):
+        hydrated.apply_book_observation(
+            order_id=later_open.order.order_id,
+            observation_id="book:mixed-canonical-db",
+            best_bid_text="9499",
+            best_ask_text="9500",
+            displayed_quantity_text="0.1",
+        )
+    assert hydrated.semantic_digest() == engine_before
+
+    observation = BrokerInputWrite(
+        later_open.order.accepted_broker_seq + 1,
+        template.account_id,
+        "RECORDED_BOOK",
+        "book:mixed-canonical-db",
+        engine_id(
+            "observation",
+            "BTCUSDT",
+            "9499.000000000000000000",
+            "9500.000000000000000000",
+            "0.100000000000000000",
+        ),
+        NOW,
+        Decimal("0.1"),
+        "BTCUSDT",
+        Decimal("9499"),
+        Decimal("9500"),
+    )
+    no_fill = replace(
+        later_open,
+        receipt=None,
+        authorization_attempt=None,
+        broker_inputs=(observation,),
+        balances=(),
+        order_events=(),
+        fills=(),
+        lots=(),
+        consumptions=(),
+        journals=(),
+        outbox=(),
+    )
+    with pytest.raises(psycopg.errors.RaiseException, match="fill/order consistency"):
+        store.commit(no_fill)
+    assert store.semantic_digest(template.account_id) == before
+
+
 def test_hydrated_engine_ignores_observation_older_than_order_acceptance() -> None:
     initial = complete_write(suffix="hydrated-old-observation")
     store = PostgresPaperStore(PAPER_WRITER_URL)
@@ -1451,6 +1523,33 @@ def test_hydrated_engine_ignores_observation_older_than_order_acceptance() -> No
     ) not in hydrated.observation_effects
     assert hydrated.observation_budgets[initial.broker_inputs[1].source_key] == prior_budget
     assert hydrated.broker_seq == prior_seq
+
+
+def test_extreme_sell_numeric_overflow_rolls_back_the_entire_database_write() -> None:
+    initial = complete_write(suffix="sell-numeric-overflow")
+    store = PostgresPaperStore(PAPER_WRITER_URL)
+    store.commit(initial)
+    store.commit(cancel_write(initial))
+    opened, filled = sell_order_after_cancel(initial)
+    store.commit(opened)
+    before = store.semantic_digest(initial.account_id)
+    overflow = replace(
+        filled,
+        balances=(
+            filled.balances[0],
+            replace(filled.balances[1], available=Decimal("100000000000000000000")),
+        ),
+    )
+
+    with pytest.raises(psycopg.errors.NumericValueOutOfRange):
+        store.commit(overflow)
+
+    assert store.semantic_digest(initial.account_id) == before
+    with psycopg.connect(DATABASE_URL) as connection:
+        assert connection.execute(
+            "SELECT count(*) FROM paper_fills WHERE fill_id=%s",
+            (filled.fills[0].fill_id,),
+        ).fetchone() == (0,)
 
 
 def test_sell_fill_binds_fifo_basis_and_exact_ledger_amounts() -> None:

@@ -5,12 +5,22 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import replace
 from datetime import UTC, datetime
-from decimal import Decimal
+from decimal import Decimal, ROUND_UP
 import hashlib
 import json
 from collections.abc import Callable
 
-from .decimal_policy import canonical, decimal_input, floor_step, quantize, round_up
+from .decimal_policy import (
+    add,
+    canonical,
+    decimal_input,
+    floor_step,
+    multiply,
+    proportion,
+    quantize,
+    subtract,
+    validate_numeric,
+)
 from .models import (
     CommandReceipt,
     ExecutionFixture,
@@ -77,13 +87,20 @@ class PaperEngine:
         return self.broker_seq
 
     def _post(self, journal: Journal) -> None:
-        journal.assert_balanced()
+        self._validate_journal(journal)
         key = _id(journal.business_event_type, journal.business_event_id, journal.journal_kind)
         if key in self.journals:
             if self.journals[key] != journal:
                 raise ValueError("LEDGER_IDEMPOTENCY_CONFLICT")
             return
         self.journals[key] = journal
+
+    @staticmethod
+    def _validate_journal(journal: Journal) -> None:
+        for entry in journal.entries:
+            validate_numeric(entry.debit)
+            validate_numeric(entry.credit)
+        journal.assert_balanced()
 
     def _event(
         self,
@@ -122,7 +139,8 @@ class PaperEngine:
             if self.command_receipts[seed_id].request_hash != canonical(amount):
                 raise ValueError("IDEMPOTENCY_CONFLICT")
             return
-        self.available[asset] = self.available.get(asset, Decimal(0)) + amount
+        next_available = add(self.available.get(asset, Decimal(0)), amount)
+        self.available[asset] = next_available
         if asset in {"BTC", "ETH"}:
             self.lots += (
                 FifoLot(
@@ -172,7 +190,8 @@ class PaperEngine:
             raise ValueError("QUANTITY_FILTER_FAILED")
         if price % rule["tick"] != 0:
             raise ValueError("PRICE_FILTER_FAILED")
-        if quantity * price < rule["min_notional"]:
+        notional = multiply(quantity, price)
+        if notional < rule["min_notional"]:
             raise ValueError("NOTIONAL_FILTER_FAILED")
         request_hash = _id(
             "create",
@@ -201,7 +220,10 @@ class PaperEngine:
         base = symbol.removesuffix("USDT")
         if side == OrderSide.BUY:
             held_asset = "USDT"
-            held_amount = round_up(quantity * price) + round_up(quantity * price * FEE_RATE)
+            held_amount = add(
+                multiply(quantity, price, rounding=ROUND_UP),
+                multiply(quantity, price, FEE_RATE, rounding=ROUND_UP),
+            )
         else:
             held_asset = base
             held_amount = quantity
@@ -228,8 +250,10 @@ class PaperEngine:
                 ),
             )
             raise ValueError("INSUFFICIENT_FUNDS")
-        self.available[held_asset] = available - held_amount
-        self.held[held_asset] = self.held.get(held_asset, Decimal(0)) + held_amount
+        next_available = subtract(available, held_amount)
+        next_held = add(self.held.get(held_asset, Decimal(0)), held_amount)
+        self.available[held_asset] = next_available
+        self.held[held_asset] = next_held
         order_id = _id("order", client_order_id)
         self._post(
             Journal(
@@ -281,29 +305,54 @@ class PaperEngine:
         bid: Decimal,
         ask: Decimal,
     ) -> None:
-        eligible_orders = sorted(
-            (
-                candidate
-                for candidate in self.orders.values()
-                if candidate.symbol == order.symbol
-                and candidate.status not in {OrderStatus.FILLED, OrderStatus.CANCELLED}
-                and (candidate.order_id, observation_id) not in self.observation_effects
-                and (
-                    ask <= candidate.limit_price
-                    if candidate.side == OrderSide.BUY
-                    else bid >= candidate.limit_price
-                )
-            ),
-            key=lambda candidate: (
+        order_key = (
+            order.accepted_broker_seq,
+            order.client_order_id,
+            order.order_id,
+        )
+        has_lower_eligible_order = any(
+            candidate.symbol == order.symbol
+            and candidate.status not in {OrderStatus.FILLED, OrderStatus.CANCELLED}
+            and (candidate.order_id, observation_id) not in self.observation_effects
+            and (
                 candidate.accepted_broker_seq,
                 candidate.client_order_id,
                 candidate.order_id,
-            ),
+            )
+            < order_key
+            and (
+                ask <= candidate.limit_price
+                if candidate.side == OrderSide.BUY
+                else bid >= candidate.limit_price
+            )
+            for candidate in self.orders.values()
         )
-        if eligible_orders and eligible_orders[0].order_id != order.order_id:
+        if has_lower_eligible_order:
             raise ValueError("NON_CANONICAL_OBSERVATION_ORDER")
 
     def apply_book_observation(
+        self,
+        *,
+        order_id: str,
+        observation_id: str,
+        best_bid_text: str,
+        best_ask_text: str,
+        displayed_quantity_text: str,
+    ) -> PaperFill | None:
+        result = self.atomic(
+            lambda: self._apply_book_observation(
+                order_id=order_id,
+                observation_id=observation_id,
+                best_bid_text=best_bid_text,
+                best_ask_text=best_ask_text,
+                displayed_quantity_text=displayed_quantity_text,
+            )
+        )
+        if result is not None and not isinstance(result, PaperFill):
+            raise TypeError("unexpected observation result")
+        return result
+
+    def _apply_book_observation(
         self,
         *,
         order_id: str,
@@ -336,10 +385,9 @@ class PaperEngine:
         )
         budget = self.observation_budgets.get(observation_id)
         if budget is None:
-            if eligible:
-                self._assert_canonical_observation_order(order, observation_id, bid, ask)
+            self._assert_canonical_observation_order(order, observation_id, bid, ask)
             remaining_budget = floor_step(
-                displayed * PARTICIPATION_RATE, SYMBOL_RULES[order.symbol]["step"]
+                multiply(displayed, PARTICIPATION_RATE), SYMBOL_RULES[order.symbol]["step"]
             )
             self.observation_budgets[observation_id] = (observation_hash, remaining_budget)
             seq = self._next_seq()
@@ -361,12 +409,12 @@ class PaperEngine:
                 self.observation_sequences[observation_id] = seq
         if seq <= order.accepted_broker_seq:
             return None
-        if eligible and budget is not None:
+        if budget is not None:
             self._assert_canonical_observation_order(order, observation_id, bid, ask)
         if not eligible:
             self.observation_effects.add((order_id, observation_id))
             return None
-        remaining = order.quantity - order.filled_quantity
+        remaining = subtract(order.quantity, order.filled_quantity)
         fill_quantity = min(
             remaining,
             remaining_budget,
@@ -375,8 +423,8 @@ class PaperEngine:
             self.observation_effects.add((order_id, observation_id))
             return None
         fill_id = _id("fill", order_id, observation_id)
-        principal = quantize(fill_quantity * order.limit_price)
-        fee = round_up(principal * FEE_RATE)
+        principal = multiply(fill_quantity, order.limit_price)
+        fee = multiply(principal, FEE_RATE, rounding=ROUND_UP)
         fill = PaperFill(
             fill_id,
             order_id,
@@ -392,21 +440,25 @@ class PaperEngine:
         self.fills[fill_id] = fill
         self.observation_budgets[observation_id] = (
             observation_hash,
-            remaining_budget - fill_quantity,
+            subtract(remaining_budget, fill_quantity),
         )
         self.observation_effects.add((order_id, observation_id))
         return fill
 
     def _apply_fill(self, order: PaperOrder, fill: PaperFill, principal: Decimal) -> None:
         base = order.symbol.removesuffix("USDT")
+        planned_consumptions: tuple[LotConsumption, ...] = ()
+        planned_lots: tuple[FifoLot, ...] = ()
         if order.side == OrderSide.BUY:
-            debit = principal + fill.fee_amount
+            debit = add(principal, fill.fee_amount)
             consumed_hold = debit
             if self.held.get("USDT", Decimal(0)) < debit:
                 raise ValueError("HELD_BALANCE_UNDERFLOW")
-            self.held["USDT"] -= debit
-            self.available[base] = self.available.get(base, Decimal(0)) + fill.quantity
-            self.lots += (
+            next_held = subtract(self.held.get("USDT", Decimal(0)), debit)
+            next_received_available = add(
+                self.available.get(base, Decimal(0)), fill.quantity
+            )
+            planned_lots = (
                 FifoLot(
                     fill.fill_id,
                     base,
@@ -431,10 +483,12 @@ class PaperEngine:
             consumed_hold = fill.quantity
             if self.held.get(base, Decimal(0)) < fill.quantity:
                 raise ValueError("HELD_BALANCE_UNDERFLOW")
-            self.held[base] -= fill.quantity
-            basis = self._consume_fifo(base, fill.quantity, fill.fill_id)
-            proceeds = principal - fill.fee_amount
-            self.available["USDT"] = self.available.get("USDT", Decimal(0)) + proceeds
+            next_held = subtract(self.held.get(base, Decimal(0)), fill.quantity)
+            basis, planned_consumptions = self._plan_fifo(base, fill.quantity, fill.fill_id)
+            proceeds = subtract(principal, fill.fee_amount)
+            next_received_available = add(
+                self.available.get("USDT", Decimal(0)), proceeds
+            )
             entries = (
                 LedgerEntry("exchange.clearing", base, fill.quantity, Decimal(0)),
                 LedgerEntry("paper.held", base, Decimal(0), fill.quantity),
@@ -442,38 +496,49 @@ class PaperEngine:
                 LedgerEntry("paper.fee", "USDT", fill.fee_amount, Decimal(0)),
                 LedgerEntry("exchange.clearing", "USDT", Decimal(0), principal),
             )
-            pnl = principal - basis - fill.fee_amount
+            pnl = subtract(principal, basis, fill.fee_amount)
             pnl_entries: tuple[LedgerEntry, ...] = (
                 (LedgerEntry("paper.realized-pnl", "USDT_VAL", Decimal(0), pnl),)
                 if pnl > 0
-                else (LedgerEntry("paper.realized-loss", "USDT_VAL", -pnl, Decimal(0)),)
+                else (
+                    LedgerEntry(
+                        "paper.realized-loss",
+                        "USDT_VAL",
+                        subtract(Decimal(0), pnl),
+                        Decimal(0),
+                    ),
+                )
                 if pnl < 0
+                else ()
+            )
+            basis_entries: tuple[LedgerEntry, ...] = (
+                (LedgerEntry("paper.inventory-basis", "USDT_VAL", Decimal(0), basis),)
+                if basis > 0
                 else ()
             )
             valuation_entries = (
                 LedgerEntry("paper.disposal-value", "USDT_VAL", principal, Decimal(0)),
                 *pnl_entries,
-                LedgerEntry("paper.inventory-basis", "USDT_VAL", Decimal(0), basis),
+                *basis_entries,
                 LedgerEntry("paper.fee-value", "USDT_VAL", Decimal(0), fill.fee_amount),
             )
         journal = Journal(
             _id("journal", fill.fill_id), "paper.fill", fill.fill_id, "PHYSICAL", entries
         )
-        self._post(journal)
-        self._post(
-            Journal(
-                _id("valuation-journal", fill.fill_id),
-                "paper.fill",
-                fill.fill_id,
-                "VALUATION",
-                valuation_entries,
-            )
+        valuation_journal = Journal(
+            _id("valuation-journal", fill.fill_id),
+            "paper.fill",
+            fill.fill_id,
+            "VALUATION",
+            valuation_entries,
         )
-        cumulative = order.filled_quantity + fill.quantity
+        for planned_journal in (journal, valuation_journal):
+            self._validate_journal(planned_journal)
+        cumulative = add(order.filled_quantity, fill.quantity)
         status = (
             OrderStatus.FILLED if cumulative == order.quantity else OrderStatus.PARTIALLY_FILLED
         )
-        residual_hold = order.held_amount - consumed_hold
+        residual_hold = subtract(order.held_amount, consumed_hold)
         if residual_hold < 0:
             raise ValueError("ORDER_HOLD_UNDERFLOW")
         updated = replace(
@@ -483,14 +548,33 @@ class PaperEngine:
             held_amount=residual_hold,
             version=order.version + 1,
         )
+        release = updated.held_amount if status == OrderStatus.FILLED else Decimal(0)
+        release_journal = None
+        release_available = Decimal(0)
+        if release:
+            next_held = subtract(next_held, release)
+            release_available = add(
+                self.available.get(updated.held_asset, Decimal(0)), release
+            )
+            release_journal = self._release_journal(
+                updated.order_id, release, updated.held_asset
+            )
+            self._validate_journal(release_journal)
+        if order.side == OrderSide.BUY:
+            self.held["USDT"] = next_held
+            self.available[base] = next_received_available
+            self.lots += planned_lots
+        else:
+            self.held[base] = next_held
+            self.available["USDT"] = next_received_available
+            self.consumptions += planned_consumptions
+        if release:
+            self.available[updated.held_asset] = release_available
+        self._post(journal)
+        self._post(valuation_journal)
         if status == OrderStatus.FILLED:
-            release = updated.held_amount
-            if release:
-                self.held[updated.held_asset] -= release
-                self.available[updated.held_asset] = (
-                    self.available.get(updated.held_asset, Decimal(0)) + release
-                )
-                self._post(self._release_journal(updated.order_id, release, updated.held_asset))
+            if release_journal is not None:
+                self._post(release_journal)
             updated = replace(updated, held_amount=Decimal(0))
         self.orders[order.order_id] = updated
         event = (
@@ -521,27 +605,26 @@ class PaperEngine:
 
     def _remaining_hold(self, order: PaperOrder) -> Decimal:
         if order.side == OrderSide.SELL:
-            return order.quantity - order.filled_quantity
-        remaining = order.quantity - order.filled_quantity
-        return round_up(remaining * order.limit_price) + round_up(
-            remaining * order.limit_price * FEE_RATE
+            return subtract(order.quantity, order.filled_quantity)
+        remaining = subtract(order.quantity, order.filled_quantity)
+        return add(
+            multiply(remaining, order.limit_price, rounding=ROUND_UP),
+            multiply(remaining, order.limit_price, FEE_RATE, rounding=ROUND_UP),
         )
 
     def _lot_remaining(self, lot: FifoLot) -> Decimal:
-        used = sum(
-            (item.quantity for item in self.consumptions if item.lot_id == lot.lot_id), Decimal(0)
-        )
-        return lot.acquired_quantity - used
+        used = add(*(item.quantity for item in self.consumptions if item.lot_id == lot.lot_id))
+        return subtract(lot.acquired_quantity, used)
 
     def _lot_consumed_basis(self, lot: FifoLot) -> Decimal:
-        return sum(
-            (item.quote_basis for item in self.consumptions if item.lot_id == lot.lot_id),
-            Decimal(0),
-        )
+        return add(*(item.quote_basis for item in self.consumptions if item.lot_id == lot.lot_id))
 
-    def _consume_fifo(self, asset: str, quantity: Decimal, source_fill_id: str) -> Decimal:
+    def _plan_fifo(
+        self, asset: str, quantity: Decimal, source_fill_id: str
+    ) -> tuple[Decimal, tuple[LotConsumption, ...]]:
         needed = quantity
         basis = Decimal(0)
+        planned: tuple[LotConsumption, ...] = ()
         ordered = sorted(
             (lot for lot in self.lots if lot.asset == asset),
             key=lambda lot: (
@@ -558,14 +641,10 @@ class PaperEngine:
             if take <= 0:
                 continue
             if take == remaining:
-                lot_basis = lot.quote_cost - self._lot_consumed_basis(lot)
+                lot_basis = subtract(lot.quote_cost, self._lot_consumed_basis(lot))
             else:
-                lot_basis = (
-                    quantize(lot.quote_cost * take / lot.acquired_quantity)
-                    if lot.quote_cost
-                    else Decimal(0)
-                )
-            self.consumptions += (
+                lot_basis = proportion(lot.quote_cost, take, lot.acquired_quantity)
+            planned += (
                 LotConsumption(
                     _id("consume", lot.lot_id, source_fill_id),
                     lot.lot_id,
@@ -574,15 +653,21 @@ class PaperEngine:
                     lot_basis,
                 ),
             )
-            basis += lot_basis
-            needed -= take
+            basis = add(basis, lot_basis)
+            needed = subtract(needed, take)
             if needed == 0:
                 break
         if needed != 0:
             raise ValueError("FIFO_POSITION_UNDERFLOW")
-        return quantize(basis)
+        return quantize(basis), planned
 
     def cancel(self, order_id: str, *, cancel_id: str) -> PaperOrder:
+        result = self.atomic(lambda: self._cancel(order_id, cancel_id=cancel_id))
+        if not isinstance(result, PaperOrder):
+            raise TypeError("unexpected cancel result")
+        return result
+
+    def _cancel(self, order_id: str, *, cancel_id: str) -> PaperOrder:
         validate_opaque_id(cancel_id)
         order = self.orders[order_id]
         prior_cancel = self.cancel_receipts.get(cancel_id)
@@ -600,16 +685,18 @@ class PaperEngine:
         release = order.held_amount
         if self.held.get(order.held_asset, Decimal(0)) < release:
             raise ValueError("HELD_BALANCE_UNDERFLOW")
-        self.held[order.held_asset] -= release
-        self.available[order.held_asset] = (
-            self.available.get(order.held_asset, Decimal(0)) + release
-        )
-        self._post(self._release_journal(order_id, release, order.held_asset))
+        next_held = subtract(self.held.get(order.held_asset, Decimal(0)), release)
+        next_available = add(self.available.get(order.held_asset, Decimal(0)), release)
+        release_journal = self._release_journal(order_id, release, order.held_asset)
+        self._validate_journal(release_journal)
+        self.held[order.held_asset] = next_held
+        self.available[order.held_asset] = next_available
+        self._post(release_journal)
         self._next_seq()
         updated = replace(
             order,
             status=OrderStatus.CANCELLED,
-            held_amount=order.held_amount - release,
+            held_amount=subtract(order.held_amount, release),
             version=order.version + 1,
         )
         self.orders[order_id] = updated
@@ -626,18 +713,17 @@ class PaperEngine:
         return updated
 
     def position(self, asset: str) -> Decimal:
-        acquired = sum(
-            (lot.acquired_quantity for lot in self.lots if lot.asset == asset), Decimal(0)
+        acquired = add(
+            *(lot.acquired_quantity for lot in self.lots if lot.asset == asset)
         )
-        consumed = sum(
-            (
+        consumed = add(
+            *(
                 item.quantity
                 for item in self.consumptions
                 if any(lot.lot_id == item.lot_id and lot.asset == asset for lot in self.lots)
-            ),
-            Decimal(0),
+            )
         )
-        return quantize(acquired - consumed)
+        return subtract(acquired, consumed)
 
     def order_contract(self, order_id: str) -> dict[str, object]:
         order = self.orders[order_id]
@@ -664,15 +750,17 @@ class PaperEngine:
             order = self.orders[fill.order_id]
             if order.symbol != symbol or order.side != OrderSide.SELL:
                 continue
-            basis = sum(
-                (
+            basis = add(
+                *(
                     item.quote_basis
                     for item in self.consumptions
                     if item.source_fill_id == fill.fill_id
-                ),
-                Decimal(0),
+                )
             )
-            total += fill.quantity * fill.price - basis - fill.fee_amount
+            total = add(
+                total,
+                subtract(multiply(fill.quantity, fill.price), basis, fill.fee_amount),
+            )
         return quantize(total)
 
     def unrealized_pnl(self, asset: str, mark: MarkFixture) -> UnrealizedPnl:
@@ -684,12 +772,37 @@ class PaperEngine:
                 continue
             remaining = self._lot_remaining(lot)
             if remaining:
-                remaining_basis += lot.quote_cost * remaining / lot.acquired_quantity
+                remaining_basis = add(
+                    remaining_basis,
+                    proportion(lot.quote_cost, remaining, lot.acquired_quantity),
+                )
         return UnrealizedPnl(
-            asset, quantize(self.position(asset) * mark_price - remaining_basis), mark
+            asset, subtract(multiply(self.position(asset), mark_price), remaining_basis), mark
         )
 
     def reverse_and_replace(
+        self,
+        *,
+        original_key: str,
+        correction_id: str,
+        replacement_entries: tuple[LedgerEntry, ...],
+    ) -> tuple[Journal, Journal]:
+        result = self.atomic(
+            lambda: self._reverse_and_replace(
+                original_key=original_key,
+                correction_id=correction_id,
+                replacement_entries=replacement_entries,
+            )
+        )
+        if (
+            not isinstance(result, tuple)
+            or len(result) != 2
+            or not all(isinstance(item, Journal) for item in result)
+        ):
+            raise TypeError("unexpected correction result")
+        return result
+
+    def _reverse_and_replace(
         self,
         *,
         original_key: str,
@@ -719,8 +832,8 @@ class PaperEngine:
             replacement_entries,
             replacement_for=original.journal_id,
         )
-        reversal.assert_balanced()
-        replacement.assert_balanced()
+        self._validate_journal(reversal)
+        self._validate_journal(replacement)
         self._post(reversal)
         self._post(replacement)
         return reversal, replacement

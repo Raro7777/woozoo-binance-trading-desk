@@ -22,7 +22,8 @@ absent. Production Paper account funding and production aggregate creation remai
 - fill participation: `10%` of displayed liquidity, floor to the symbol step
 - execution price: order limit; no market fallback or better-price optimism
 - order eligibility: a book observation after acceptance, BUY ask <= limit or SELL bid >= limit
-- FIFO tie: acquisition time then canonical source fill ID
+- FIFO acquisition precedence: source fill broker sequence then canonical fill ID;
+  acquisition timestamps are provenance only and never reorder causal FIFO
 - every journal balances debit and credit independently for BTC, ETH, USDT or USDT_VAL
 - posted history is immutable; correction is complete reversal plus replacement
 
