@@ -24,6 +24,7 @@ from .models import (
     PaperFill,
     PaperOrder,
     UnrealizedPnl,
+    validate_opaque_id,
 )
 
 
@@ -112,6 +113,7 @@ class PaperEngine:
         }
 
     def seed_balance(self, asset: str, amount_text: str, *, seed_id: str) -> None:
+        validate_opaque_id(seed_id)
         amount = quantize(decimal_input(amount_text, positive=True))
         if asset not in {"BTC", "ETH", "USDT"}:
             raise ValueError("UNSUPPORTED_ASSET")
@@ -156,6 +158,8 @@ class PaperEngine:
         limit_price_text: str,
     ) -> PaperOrder:
         authorization.validate()
+        validate_opaque_id(idempotency_key)
+        validate_opaque_id(client_order_id)
         if not isinstance(side, OrderSide):
             raise ValueError("INVALID_ORDER_SIDE")
         if symbol not in {"BTCUSDT", "ETHUSDT"}:
@@ -278,6 +282,7 @@ class PaperEngine:
         best_ask_text: str,
         displayed_quantity_text: str,
     ) -> PaperFill | None:
+        validate_opaque_id(observation_id)
         order = self.orders[order_id]
         if (order_id, observation_id) in self.observation_effects:
             return next(
@@ -370,6 +375,7 @@ class PaperEngine:
         base = order.symbol.removesuffix("USDT")
         if order.side == OrderSide.BUY:
             debit = principal + fill.fee_amount
+            consumed_hold = debit
             if self.held.get("USDT", Decimal(0)) < debit:
                 raise ValueError("HELD_BALANCE_UNDERFLOW")
             self.held["USDT"] -= debit
@@ -396,6 +402,7 @@ class PaperEngine:
                 LedgerEntry("paper.acquisition-value", "USDT_VAL", Decimal(0), debit),
             )
         else:
+            consumed_hold = fill.quantity
             if self.held.get(base, Decimal(0)) < fill.quantity:
                 raise ValueError("HELD_BALANCE_UNDERFLOW")
             self.held[base] -= fill.quantity
@@ -440,18 +447,25 @@ class PaperEngine:
         status = (
             OrderStatus.FILLED if cumulative == order.quantity else OrderStatus.PARTIALLY_FILLED
         )
+        residual_hold = order.held_amount - consumed_hold
+        if residual_hold < 0:
+            raise ValueError("ORDER_HOLD_UNDERFLOW")
         updated = replace(
-            order, status=status, filled_quantity=cumulative, version=order.version + 1
+            order,
+            status=status,
+            filled_quantity=cumulative,
+            held_amount=residual_hold,
+            version=order.version + 1,
         )
         if status == OrderStatus.FILLED:
-            release = max(Decimal(0), self._remaining_hold(updated))
+            release = updated.held_amount
             if release:
                 self.held[updated.held_asset] -= release
                 self.available[updated.held_asset] = (
                     self.available.get(updated.held_asset, Decimal(0)) + release
                 )
                 self._post(self._release_journal(updated.order_id, release, updated.held_asset))
-            updated = replace(updated, held_amount=updated.held_amount - release)
+            updated = replace(updated, held_amount=Decimal(0))
         self.orders[order.order_id] = updated
         event = (
             "paper.order.filled.v1"
@@ -537,6 +551,7 @@ class PaperEngine:
         return quantize(basis)
 
     def cancel(self, order_id: str, *, cancel_id: str) -> PaperOrder:
+        validate_opaque_id(cancel_id)
         order = self.orders[order_id]
         prior_cancel = self.cancel_receipts.get(cancel_id)
         if prior_cancel is not None:
@@ -550,7 +565,7 @@ class PaperEngine:
             raise ValueError("CORRUPT_CANCEL_RECEIPT")
         if order.status == OrderStatus.FILLED:
             raise ValueError("TERMINAL_ORDER")
-        release = self._remaining_hold(order)
+        release = order.held_amount
         if self.held.get(order.held_asset, Decimal(0)) < release:
             raise ValueError("HELD_BALANCE_UNDERFLOW")
         self.held[order.held_asset] -= release
@@ -649,6 +664,7 @@ class PaperEngine:
         correction_id: str,
         replacement_entries: tuple[LedgerEntry, ...],
     ) -> tuple[Journal, Journal]:
+        validate_opaque_id(correction_id)
         original = self.journals[original_key]
         if original.reversal_of is not None:
             raise ValueError("REVERSAL_OF_REVERSAL_FORBIDDEN")

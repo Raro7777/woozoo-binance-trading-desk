@@ -6,6 +6,16 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
+import re
+
+
+OPAQUE_ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}")
+
+
+def validate_opaque_id(value: str, *, max_length: int = 128) -> None:
+    """Keep Python and PostgreSQL canonical event hashing byte-identical."""
+    if not value.isascii() or len(value) > max_length or OPAQUE_ID_PATTERN.fullmatch(value) is None:
+        raise ValueError("INVALID_OPAQUE_ID")
 
 
 class OrderSide(StrEnum):
@@ -35,6 +45,8 @@ class ExecutionFixture:
             raise ValueError("PHASE_4_PRODUCTION_AUTHORIZATION_FORBIDDEN")
         if len(self.preview_hash) != 64:
             raise ValueError("INVALID_FIXTURE_PREVIEW_HASH")
+        validate_opaque_id(self.authorization_id, max_length=64)
+        validate_opaque_id(self.authorization_nonce)
 
 
 @dataclass(frozen=True, slots=True)

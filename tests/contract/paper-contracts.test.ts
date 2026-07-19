@@ -43,4 +43,10 @@ test("Phase 4 Paper contracts are closed and dormant until Phase 7", async () =>
   assert.equal(positiveDecimal.test("9".repeat(20) + "." + "1".repeat(18)), true);
   assert.equal(positiveDecimal.test("1".repeat(21)), false);
   assert.equal(positiveDecimal.test("1." + "1".repeat(19)), false);
+  const clientOrderId = new RegExp(schema.properties.client_order_id.pattern);
+  const authorizationId = new RegExp(schema.properties.authorization_id.pattern);
+  assert.equal(clientOrderId.test("client-1"), true);
+  assert.equal(clientOrderId.test("주문-1"), false);
+  assert.equal(authorizationId.test("fixture-1"), true);
+  assert.equal(authorizationId.test("승인"), false);
 });

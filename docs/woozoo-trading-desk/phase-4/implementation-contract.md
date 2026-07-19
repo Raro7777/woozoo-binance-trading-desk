@@ -64,11 +64,15 @@ checkpoint places subsequent new lifecycle commands on HOLD.
 The database derives rather than trusts durable identity and lifecycle authority. It
 recomputes every outbox event ID and payload hash from the canonical event material, binds
 authorization and fill/cancel references to their owning aggregates, and rejects lifecycle
-events after a terminal state. An eligible observation may record `NO_FILL` only when its
-floor-stepped canonical budget is exhausted. Each order has an exact two-line hold journal;
-terminal release equals the residual hold. Fill quantity is the exact remaining-order versus
-remaining-observation minimum, and SELL basis is the exact proportional or residual basis of
-the oldest available lot, so callers cannot choose a newer lot or supply their own PnL basis.
+events after a terminal state. Opaque identifiers used in canonical hashes have one closed
+ASCII grammar in Python, Postgres and JSON Schema. An eligible observation may record
+`NO_FILL` only when its floor-stepped canonical budget is exhausted, evaluated against the
+order lifecycle as of that observation rather than a later projection. Each order has an exact
+two-line hold journal; partial fills reduce the order hold projection and terminal release
+equals the residual hold. Fill sequence equals its source observation sequence, every fill has
+exactly one correctly versioned lifecycle event, and every cancellation event names its exact
+command receipt. SELL basis is the exact proportional or residual basis of the oldest
+available lot at the sale's causal point, so later sales cannot repair a prior FIFO violation.
 
 Commit-time templates also bind book symbol and side-specific quote eligibility, quote fee
 asset, BUY lot quantity/cost, SELL consumption quantity/FIFO basis, and every physical and

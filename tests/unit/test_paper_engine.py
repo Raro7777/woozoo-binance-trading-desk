@@ -84,8 +84,11 @@ def test_ord_001_partial_fill_duplicate_cancel_and_terminal_monotonicity() -> No
     )
     assert first == duplicate
     assert engine.orders[order.order_id].filled_quantity == Decimal("0.200000000000000000")
+    assert engine.orders[order.order_id].held_amount == Decimal("80.080000000000000000")
     cancelled = engine.cancel(order.order_id, cancel_id="cancel")
     assert cancelled.status == OrderStatus.CANCELLED
+    assert cancelled.held_amount == 0
+    assert engine.held["USDT"] == 0
     with pytest.raises(ValueError, match="TERMINAL_ORDER"):
         engine.apply_book_observation(
             order_id=order.order_id,
@@ -144,6 +147,38 @@ def test_phase_four_rejects_production_authorization() -> None:
             quantity_text="1",
             limit_price_text="100",
         )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (("authorization_id", "승인-1"), ("authorization_nonce", "nonce-한글")),
+)
+def test_canonical_event_identity_rejects_non_ascii_fixture_ids(field: str, value: str) -> None:
+    fixture = authorization()
+    values = {
+        "authorization_id": fixture.authorization_id,
+        "authorization_nonce": fixture.authorization_nonce,
+        "preview_hash": fixture.preview_hash,
+    }
+    values[field] = value
+    with pytest.raises(ValueError, match="INVALID_OPAQUE_ID"):
+        ExecutionFixture(**values).validate()
+
+
+def test_canonical_event_identity_rejects_non_ascii_cancel_id() -> None:
+    engine = PaperEngine()
+    engine.seed_balance("USDT", "1000", seed_id="cash")
+    order = engine.create_limit_order(
+        idempotency_key="create-ascii",
+        client_order_id="client-ascii",
+        authorization=authorization(),
+        symbol="BTCUSDT",
+        side=OrderSide.BUY,
+        quantity_text="1",
+        limit_price_text="100",
+    )
+    with pytest.raises(ValueError, match="INVALID_OPAQUE_ID"):
+        engine.cancel(order.order_id, cancel_id="취소-1")
 
 
 def test_fin_001_every_journal_balances_per_commodity() -> None:

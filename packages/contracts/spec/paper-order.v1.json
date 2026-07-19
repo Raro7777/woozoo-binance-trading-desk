@@ -9,8 +9,8 @@
   "required": ["order_id", "client_order_id", "authorization_id", "authorization_namespace", "symbol", "side", "order_type", "time_in_force", "quantity", "limit_price", "filled_quantity", "status", "version"],
   "properties": {
     "order_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
-    "client_order_id": {"type": "string", "minLength": 1, "maxLength": 128},
-    "authorization_id": {"type": "string", "minLength": 1, "maxLength": 64},
+    "client_order_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"},
+    "authorization_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,63}$"},
     "authorization_namespace": {"const": "test"},
     "symbol": {"enum": ["BTCUSDT", "ETHUSDT"]},
     "side": {"enum": ["BUY", "SELL"]},

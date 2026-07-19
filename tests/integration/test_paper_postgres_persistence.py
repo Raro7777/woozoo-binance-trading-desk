@@ -638,7 +638,7 @@ def second_order_on_shared_observation(
         "USDT",
         Decimal("0.001"),
         Decimal("0.05"),
-        source.broker_seq + 1,
+        source.broker_seq,
     )
     lot = FifoLot(fill_id, "BTC", Decimal("0.005"), Decimal("50.05"), fill_id, NOW)
     physical = Journal(
@@ -1035,6 +1035,34 @@ def test_observation_no_fill_requires_ineligibility_or_exhausted_budget() -> Non
     assert (ineligible_open.order.order_id, ineligible_source.source_key) in (
         restarted.observation_effects
     )
+    cancelled = cancel_write(ineligible_open)
+    cancelled = replace(
+        cancelled,
+        balances=(BalanceWrite("USDT", Decimal("200"), Decimal(0), 2),),
+        order=replace(cancelled.order, version=2),
+        order_events=(replace(cancelled.order_events[0], order_version=2),),
+        journals=(
+            replace(
+                cancelled.journals[0],
+                entries=(
+                    LedgerEntry("paper.available", "USDT", Decimal("100.1"), Decimal(0)),
+                    LedgerEntry("paper.held", "USDT", Decimal(0), Decimal("100.1")),
+                ),
+            ),
+        ),
+        outbox=(
+            outbox(
+                "paper.order.cancelled.v1",
+                cancelled.order.order_id,
+                2,
+                {
+                    "order_id": cancelled.order.order_id,
+                    "cancel_id": cancelled.receipt.idempotency_key,
+                },
+            ),
+        ),
+    )
+    assert store.commit(cancelled).created is True
 
 
 def test_restart_completes_shared_observation_for_second_order_once() -> None:
@@ -1253,6 +1281,241 @@ def test_sell_fill_binds_fifo_basis_and_exact_ledger_amounts() -> None:
         store.commit(bad_fill)
 
 
+def test_deferred_fifo_rejects_younger_first_even_if_later_sale_exhausts_older(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    initial = complete_write(suffix="fifo-causal")
+    store = PostgresPaperStore(PAPER_WRITER_URL)
+    store.commit(initial)
+    store.commit(cancel_write(initial))
+
+    second_open, second_fill = second_order_on_shared_observation(initial)
+    second_command_seq = initial.order.accepted_broker_seq + 3
+    second_open = replace(
+        second_open,
+        receipt=replace(second_open.receipt, broker_seq=second_command_seq),
+        broker_inputs=(replace(second_open.broker_inputs[0], broker_seq=second_command_seq),),
+        balances=(BalanceWrite("USDT", Decimal("99.9"), Decimal("50.05"), 3),),
+        order=replace(second_open.order, accepted_broker_seq=second_command_seq),
+    )
+    second_book_seq = second_command_seq + 1
+    second_source = replace(
+        second_fill.broker_inputs[0],
+        broker_seq=second_book_seq,
+        source_key="book:second-buy:fifo-causal",
+    )
+    second_fill = replace(
+        second_fill,
+        broker_inputs=(second_source,),
+        balances=(
+            BalanceWrite("USDT", Decimal("99.9"), Decimal(0), 4),
+            BalanceWrite("BTC", Decimal("0.01"), Decimal(0), 3),
+        ),
+        fills=(
+            replace(
+                second_fill.fills[0],
+                observation_id=second_source.source_key,
+                broker_seq=second_book_seq,
+            ),
+        ),
+        order_events=(replace(second_fill.order_events[0], source_key=second_source.source_key),),
+        lots=(
+            replace(
+                second_fill.lots[0],
+                acquired_at=datetime(2026, 7, 19, 12, 1, tzinfo=UTC),
+            ),
+        ),
+    )
+    store.commit(second_open)
+    store.commit(second_fill)
+
+    first_open, first_sale = sell_order_after_cancel(initial)
+    first_command_seq = second_book_seq + 1
+    first_open = replace(
+        first_open,
+        receipt=replace(first_open.receipt, broker_seq=first_command_seq),
+        broker_inputs=(replace(first_open.broker_inputs[0], broker_seq=first_command_seq),),
+        balances=(BalanceWrite("BTC", Decimal("0.005"), Decimal("0.005"), 4),),
+        order=replace(first_open.order, accepted_broker_seq=first_command_seq),
+    )
+    first_book_seq = first_command_seq + 1
+    first_sale = replace(
+        first_sale,
+        broker_inputs=(replace(first_sale.broker_inputs[0], broker_seq=first_book_seq),),
+        order=replace(first_sale.order, accepted_broker_seq=first_command_seq),
+        balances=(
+            BalanceWrite("BTC", Decimal(0), Decimal("0.005"), 6),
+            BalanceWrite("USDT", Decimal("159.84"), Decimal(0), 5),
+        ),
+        fills=(replace(first_sale.fills[0], broker_seq=first_book_seq),),
+        consumptions=(replace(first_sale.consumptions[0], lot_id=second_fill.lots[0].lot_id),),
+    )
+
+    def clone_sale(
+        opened: AtomicPaperWrite,
+        filled: AtomicPaperWrite,
+        *,
+        tag: str,
+        command_seq: int,
+        lot_id: str,
+    ) -> tuple[AtomicPaperWrite, AtomicPaperWrite]:
+        order_id = stable_id(f"sell-order:{tag}")
+        fill_id = stable_id(f"sell-fill:{tag}")
+        auth_id = f"auth-sell-{tag}"
+        key = f"create-sell-{tag}"
+        request_hash = digest(key)
+        command_source = f"command:{key}"
+        book_source = f"book:sell:{tag}"
+        new_receipt = replace(
+            opened.receipt,
+            idempotency_key=key,
+            request_hash=request_hash,
+            paper_order_id=order_id,
+            authorization_id=auth_id,
+            broker_seq=command_seq,
+            response={"order_id": order_id, "status": "OPEN"},
+        )
+        new_attempt = replace(
+            opened.authorization_attempt,
+            authorization_id=auth_id,
+            authorization_nonce=f"nonce-{key}",
+            idempotency_key=key,
+            request_hash=request_hash,
+        )
+        new_order = replace(
+            opened.order,
+            order_id=order_id,
+            client_order_id=f"client-{key}",
+            authorization_id=auth_id,
+            accepted_broker_seq=command_seq,
+        )
+        new_open = replace(
+            opened,
+            receipt=new_receipt,
+            authorization_attempt=new_attempt,
+            broker_inputs=(
+                replace(
+                    opened.broker_inputs[0],
+                    broker_seq=command_seq,
+                    source_key=command_source,
+                    payload_hash=request_hash,
+                ),
+            ),
+            balances=(BalanceWrite("BTC", Decimal(0), Decimal("0.01"), 5),),
+            order=new_order,
+            order_events=(
+                replace(
+                    opened.order_events[0],
+                    event_id=stable_id(f"accepted-{tag}"),
+                    order_id=order_id,
+                    source_key=command_source,
+                    payload_hash=request_hash,
+                ),
+            ),
+            journals=(
+                replace(
+                    opened.journals[0],
+                    journal_id=stable_id(f"hold-{tag}"),
+                    business_event_id=order_id,
+                ),
+            ),
+            outbox=(outbox("paper.order.accepted.v1", order_id, 1, {"order_id": order_id}),),
+        )
+        book_seq = command_seq + 1
+        new_fill = replace(
+            filled.fills[0],
+            fill_id=fill_id,
+            order_id=order_id,
+            observation_id=book_source,
+            broker_seq=book_seq,
+        )
+        new_filled = replace(
+            filled,
+            broker_inputs=(
+                replace(filled.broker_inputs[0], broker_seq=book_seq, source_key=book_source),
+            ),
+            balances=(
+                BalanceWrite("BTC", Decimal(0), Decimal(0), 7),
+                BalanceWrite("USDT", Decimal("219.78"), Decimal(0), 6),
+            ),
+            order=replace(
+                filled.order,
+                order_id=order_id,
+                client_order_id=new_order.client_order_id,
+                authorization_id=auth_id,
+                accepted_broker_seq=command_seq,
+            ),
+            order_events=(
+                replace(
+                    filled.order_events[0],
+                    event_id=stable_id(f"filled-{tag}"),
+                    order_id=order_id,
+                    source_key=book_source,
+                    payload_hash=digest(fill_id),
+                ),
+            ),
+            fills=(new_fill,),
+            consumptions=(
+                replace(
+                    filled.consumptions[0],
+                    consumption_id=stable_id(f"consume-{tag}"),
+                    lot_id=lot_id,
+                    source_fill_id=fill_id,
+                ),
+            ),
+            journals=tuple(
+                replace(
+                    journal,
+                    journal_id=stable_id(f"{journal.journal_kind}-{tag}"),
+                    business_event_id=fill_id,
+                )
+                for journal in filled.journals
+            ),
+            outbox=(
+                outbox(
+                    "paper.order.filled.v1",
+                    order_id,
+                    2,
+                    {"order_id": order_id, "fill_id": fill_id},
+                ),
+            ),
+        )
+        return new_open, new_filled
+
+    second_sale_open, second_sale = clone_sale(
+        first_open,
+        first_sale,
+        tag="fifo-causal-second",
+        command_seq=first_book_seq + 1,
+        lot_id=initial.lots[0].lot_id,
+    )
+    store.commit(first_open)
+    store.commit(second_sale_open)
+
+    real_connection = psycopg.connect(DATABASE_URL)
+
+    class SharedConnection:
+        def __enter__(self) -> psycopg.Connection[tuple[object, ...]]:
+            return real_connection
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def execute(self, *args: object, **kwargs: object) -> object:
+            return real_connection.execute(*args, **kwargs)
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr(
+        "paper_engine.persistence.psycopg.connect", lambda *_args, **_kwargs: SharedConnection()
+    )
+    with pytest.raises(psycopg.errors.RaiseException, match="fill/order consistency"):
+        with real_connection:
+            PostgresPaperStore(PAPER_WRITER_URL).commit(first_sale)
+            PostgresPaperStore(PAPER_WRITER_URL).commit(second_sale)
+
+
 def test_concurrent_command_and_observation_retries_return_one_stored_effect() -> None:
     command = complete_write(suffix="concurrent-command")
     command_barrier = Barrier(2)
@@ -1395,6 +1658,46 @@ def test_database_rejects_incomplete_financial_state_and_liquidity_overallocatio
     )
     with pytest.raises(psycopg.errors.RaiseException, match="fill/order consistency"):
         PostgresPaperStore(DATABASE_URL).commit(reversed_causality)
+    forward_causality = complete_write(suffix="forward-causality")
+    forward_causality = replace(
+        forward_causality,
+        fills=(
+            replace(
+                forward_causality.fills[0],
+                broker_seq=forward_causality.broker_inputs[1].broker_seq + 1,
+            ),
+        ),
+    )
+    with pytest.raises(psycopg.errors.RaiseException, match="fill/order consistency"):
+        PostgresPaperStore(DATABASE_URL).commit(forward_causality)
+    missing_fill_event = complete_write(suffix="missing-fill-event")
+    missing_fill_event = replace(
+        missing_fill_event,
+        order_events=(missing_fill_event.order_events[0],),
+    )
+    with pytest.raises(
+        psycopg.errors.RaiseException,
+        match="fill/order consistency|Unlinked Paper outbox",
+    ):
+        PostgresPaperStore(DATABASE_URL).commit(missing_fill_event)
+    wrong_fill_event_version = complete_write(suffix="wrong-fill-event-version")
+    wrong_fill_event_version = replace(
+        wrong_fill_event_version,
+        order_events=(
+            wrong_fill_event_version.order_events[0],
+            replace(wrong_fill_event_version.order_events[1], order_version=3),
+        ),
+    )
+    with pytest.raises((psycopg.errors.ForeignKeyViolation, psycopg.errors.RaiseException)):
+        PostgresPaperStore(DATABASE_URL).commit(wrong_fill_event_version)
+    two_fills_one_event = complete_write(suffix="two-fills-one-event")
+    second_fill = replace(two_fills_one_event.fills[0], fill_id=stable_id("second-fill"))
+    two_fills_one_event = replace(
+        two_fills_one_event,
+        fills=(two_fills_one_event.fills[0], second_fill),
+    )
+    with pytest.raises((psycopg.errors.UniqueViolation, psycopg.errors.RaiseException)):
+        PostgresPaperStore(DATABASE_URL).commit(two_fills_one_event)
     mismatched_lot = complete_write(suffix="mismatched-lot")
     lot = replace(
         mismatched_lot.lots[0],
@@ -1770,6 +2073,37 @@ def test_downgrade_preserves_a_preexisting_writer_role() -> None:
         with psycopg.connect(DATABASE_URL, autocommit=True) as connection:
             connection.execute("DROP ROLE IF EXISTS woozoo_paper_engine")
         run(sys.executable, "-m", "alembic", "upgrade", "head")
+
+
+def test_cancel_outbox_binds_exact_receipt_and_rejects_non_ascii_identity() -> None:
+    initial = complete_write(suffix="cancel-binding")
+    store = PostgresPaperStore(PAPER_WRITER_URL)
+    store.commit(initial)
+    cancelled = cancel_write(initial)
+    store.commit(cancelled)
+    assert cancelled.order is not None
+    for wrong_cancel_id in ("cancel-other", "취소-1"):
+        forged = outbox(
+            "paper.order.cancelled.v1",
+            cancelled.order.order_id,
+            cancelled.order.version,
+            {"order_id": cancelled.order.order_id, "cancel_id": wrong_cancel_id},
+        )
+        with pytest.raises(psycopg.errors.RaiseException):
+            with psycopg.connect(PAPER_WRITER_URL) as connection:
+                connection.execute(
+                    "SELECT append_paper_outbox(%s,%s,%s::jsonb,%s,%s,%s,%s,%s)",
+                    (
+                        forged.event_id,
+                        forged.event_type,
+                        json.dumps(forged.payload),
+                        forged.payload_hash,
+                        forged.occurred_at,
+                        forged.aggregate_type,
+                        forged.aggregate_id,
+                        forged.aggregate_version,
+                    ),
+                )
 
 
 def test_downgrade_removes_a_migration_created_writer_role() -> None:
