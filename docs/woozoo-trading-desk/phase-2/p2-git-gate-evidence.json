@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "phase": 2,
+  "status": "UNVERIFIED",
+  "frozen_code_commit": "05484fbd6fa27f077a9cc2d55c3bac8ee672942d",
+  "frozen_code_tree": "5061f52a8440edf58f5bad5570e6f2a23de449bb",
+  "branch": "codex/phase-2-public-data",
+  "base": "main",
+  "push": {
+    "status": "PASS",
+    "remote": "origin",
+    "remote_head": "05484fbd6fa27f077a9cc2d55c3bac8ee672942d",
+    "verified_at": "2026-07-19T06:40:01.8361735Z"
+  },
+  "draft_pr": {
+    "status": "UNVERIFIED",
+    "compare_url": "https://github.com/Raro7777/woozoo-binance-trading-desk/compare/main...codex/phase-2-public-data?expand=1",
+    "url": null,
+    "number": null,
+    "state": null,
+    "draft": null,
+    "head_sha": null,
+    "attempts": [
+      {
+        "method": "gh pr create",
+        "result": "UNAVAILABLE",
+        "reason": "GitHub CLI is not authenticated."
+      },
+      {
+        "method": "GitHub connector create pull request",
+        "result": "UNAVAILABLE",
+        "reason": "GitHub integration returned HTTP 403 Resource not accessible by integration."
+      },
+      {
+        "method": "Codex in-app browser",
+        "result": "UNAVAILABLE",
+        "reason": "The GitHub comparison page is reachable but the browser session is signed out."
+      },
+      {
+        "method": "Chrome browser session",
+        "result": "UNAVAILABLE",
+        "reason": "The Chrome extension-backed browser is not available in this session."
+      }
+    ]
+  },
+  "gate_effect": "P2-12 remains UNVERIFIED. No Phase 2 acceptance digest may be issued and Phase 3 may not start until an open Draft PR targeting main is verified for this branch."
+}
