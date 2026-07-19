@@ -3,12 +3,12 @@
   "phase": 4,
   "reviewer_selector": "agy",
   "attempts": 2,
-  "status": "external-review-tool-failed",
+  "status": "external-review-unavailable",
   "external_gate_satisfied": false,
   "details": [
     "First run could not proceed because reviewer permissions were denied.",
     "Second run violated the required read-only boundary by creating root files and was terminated.",
     "The unexpected files were quarantined under ignored _workspace review evidence."
   ],
-  "classification": "No external PASS; Codex cross-review remains same-engine internal review only."
+  "classification": "No admissible external PASS. The external gate is not satisfied; Codex cross-review remains same-engine internal review only."
 }
