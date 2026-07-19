@@ -15,11 +15,12 @@
   "draft_pr": {
     "status": "UNVERIFIED",
     "compare_url": "https://github.com/Raro7777/woozoo-binance-trading-desk/compare/main...codex/phase-2-public-data?expand=1",
-    "url": null,
-    "number": null,
-    "state": null,
-    "draft": null,
-    "head_sha": null,
+    "url": "https://github.com/Raro7777/woozoo-binance-trading-desk/pull/3",
+    "number": 3,
+    "state": "open",
+    "draft": false,
+    "head_sha": "ad634b97d2f4c118de6f3957eff4f3c7282c2bbf",
+    "verified_at": "2026-07-19T07:11:01Z",
     "attempts": [
       {
         "method": "gh pr create",
@@ -40,8 +41,13 @@
         "method": "Chrome browser session",
         "result": "UNAVAILABLE",
         "reason": "The Chrome extension-backed browser is not available in this session."
+      },
+      {
+        "method": "GitHub connector convert pull request to draft",
+        "result": "UNAVAILABLE",
+        "reason": "GitHub integration returned FORBIDDEN Resource not accessible by integration."
       }
     ]
   },
-  "gate_effect": "P2-12 remains UNVERIFIED. No Phase 2 acceptance digest may be issued and Phase 3 may not start until an open Draft PR targeting main is verified for this branch."
+  "gate_effect": "PR #3 targets main from the correct Phase 2 branch and head, but draft=false. P2-12 remains UNVERIFIED. No Phase 2 acceptance digest may be issued and Phase 3 may not start until PR #3 is converted to Draft and reverified."
 }
