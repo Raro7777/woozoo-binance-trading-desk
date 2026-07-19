@@ -988,6 +988,111 @@ def test_restart_restores_floor_stepped_observation_budget_and_hash() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    ("label", "available_quantity", "expected_fill_quantity"),
+    [
+        ("below", Decimal("0.000099999999999999"), Decimal(0)),
+        ("exact", Decimal("0.000100000000000000"), Decimal("0.00001")),
+        ("above", Decimal("0.000100000000000001"), Decimal("0.00001")),
+    ],
+)
+def test_postgres_and_hydration_share_exact_participation_floor_boundaries(
+    label: str,
+    available_quantity: Decimal,
+    expected_fill_quantity: Decimal,
+) -> None:
+    opened, candidate = split_open_and_fill(suffix=f"floor-boundary-{label}")
+    source = candidate.broker_inputs[0]
+    book = replace(
+        source,
+        available_quantity=available_quantity,
+        payload_hash=engine_id(
+            "observation",
+            "BTCUSDT",
+            "99.000000000000000000",
+            "100.000000000000000000",
+            format(available_quantity, "f"),
+        ),
+    )
+    if expected_fill_quantity == 0:
+        effect = replace(
+            candidate,
+            broker_inputs=(book,),
+            balances=(),
+            order=opened.order,
+            order_events=(),
+            fills=(),
+            lots=(),
+            journals=(),
+            outbox=(),
+        )
+    else:
+        debit = Decimal("0.1001")
+        fill = replace(
+            candidate.fills[0],
+            quantity=expected_fill_quantity,
+            fee_amount=Decimal("0.0001"),
+        )
+        effect = replace(
+            candidate,
+            broker_inputs=(book,),
+            balances=(
+                BalanceWrite("USDT", Decimal("99.9"), Decimal("99.9999"), 2),
+                BalanceWrite("BTC", expected_fill_quantity, Decimal(0), 1),
+            ),
+            order=replace(
+                candidate.order,
+                status=OrderStatus.PARTIALLY_FILLED,
+                filled_quantity=expected_fill_quantity,
+                held_amount=Decimal("99.9999"),
+            ),
+            fills=(fill,),
+            lots=(
+                replace(
+                    candidate.lots[0],
+                    acquired_quantity=expected_fill_quantity,
+                    quote_cost=debit,
+                ),
+            ),
+            journals=(
+                replace(
+                    candidate.journals[0],
+                    entries=(
+                        LedgerEntry(
+                            "paper.asset", "BTC", expected_fill_quantity, Decimal(0)
+                        ),
+                        LedgerEntry(
+                            "exchange.clearing",
+                            "BTC",
+                            Decimal(0),
+                            expected_fill_quantity,
+                        ),
+                        LedgerEntry("exchange.clearing", "USDT", Decimal("0.1"), Decimal(0)),
+                        LedgerEntry("paper.fee", "USDT", Decimal("0.0001"), Decimal(0)),
+                        LedgerEntry("paper.held", "USDT", Decimal(0), debit),
+                    ),
+                ),
+                replace(
+                    candidate.journals[1],
+                    entries=(
+                        LedgerEntry("paper.inventory-basis", "USDT_VAL", debit, Decimal(0)),
+                        LedgerEntry("paper.acquisition-value", "USDT_VAL", Decimal(0), debit),
+                    ),
+                ),
+            ),
+        )
+
+    store = PostgresPaperStore(PAPER_WRITER_URL)
+    store.commit(opened)
+    assert store.commit(effect).created is True
+    restarted = store.hydrate_engine(opened.account_id)
+    assert restarted.observation_budgets[book.source_key][1] == Decimal(0)
+    assert sum(
+        fill.quantity for fill in restarted.fills.values() if fill.observation_id == book.source_key
+    ) == expected_fill_quantity
+    assert store.hydrate_engine(opened.account_id).semantic_digest() == restarted.semantic_digest()
+
+
 def test_observation_no_fill_requires_ineligibility_or_exhausted_budget() -> None:
     opened, eligible_fill = split_open_and_fill(suffix="eligible-no-fill")
     store = PostgresPaperStore(PAPER_WRITER_URL)

@@ -5,6 +5,7 @@ import pytest
 from datetime import UTC, datetime
 
 from paper_engine import ExecutionFixture, MarkFixture, OrderSide, PaperEngine
+from paper_engine.models import Journal, LedgerEntry
 
 
 def fixture(number: int) -> ExecutionFixture:
@@ -258,3 +259,54 @@ def test_fin_001_extreme_sell_overflow_is_transactionally_closed_for_generated_p
             )
 
         assert engine.semantic_digest() == before
+
+
+def test_fin_001_generated_large_journal_imbalances_remain_exactly_visible() -> None:
+    for case in range(1, 21):
+        integer = 10**20 - case
+        debit = Decimal(f"{integer}.000000000000000000")
+        credit = Decimal(f"{integer - 1}.999999999999999999")
+        journal = Journal(
+            f"{case:x}".rjust(64, "0"),
+            "paper.test",
+            f"exact-balance-{case}",
+            "PHYSICAL",
+            (
+                LedgerEntry("paper.available", "USDT", debit, Decimal(0)),
+                LedgerEntry("paper.equity", "USDT", Decimal(0), credit),
+            ),
+        )
+        with pytest.raises(ValueError, match="LEDGER_IMBALANCE:USDT"):
+            journal.assert_balanced()
+
+
+def test_ord_001_generated_participation_boundaries_floor_before_quantizing() -> None:
+    threshold = Decimal("0.000100000000000000")
+    quantum = Decimal("0.000000000000000001")
+    for case in range(1, 21):
+        for label, displayed, expected in (
+            ("below", threshold - quantum * case, Decimal(0)),
+            ("exact", threshold, Decimal("0.00001")),
+            ("above", threshold + quantum * case, Decimal("0.00001")),
+        ):
+            engine = PaperEngine()
+            engine.seed_balance("USDT", "100", seed_id=f"floor-seed-{case}-{label}")
+            order = engine.create_limit_order(
+                idempotency_key=f"floor-create-{case}-{label}",
+                client_order_id=f"floor-client-{case}-{label}",
+                authorization=fixture(case),
+                symbol="BTCUSDT",
+                side=OrderSide.BUY,
+                quantity_text="0.00003",
+                limit_price_text="200000",
+            )
+            observation_id = f"floor-book-{case}-{label}"
+            fill = engine.apply_book_observation(
+                order_id=order.order_id,
+                observation_id=observation_id,
+                best_bid_text="199999",
+                best_ask_text="200000",
+                displayed_quantity_text=format(displayed, "f"),
+            )
+            assert engine.observation_budgets[observation_id][1] == Decimal(0)
+            assert (fill.quantity if fill is not None else Decimal(0)) == expected

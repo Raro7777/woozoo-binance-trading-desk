@@ -12,7 +12,7 @@ import json
 import psycopg
 from psycopg.types.json import Jsonb
 
-from .decimal_policy import canonical, floor_step
+from .decimal_policy import canonical, floor_product_to_step, subtract
 from .engine import PARTICIPATION_RATE, SYMBOL_RULES, PaperEngine
 from .models import (
     CommandReceipt,
@@ -962,11 +962,14 @@ class PostgresPaperStore:
                     raise ValueError("CORRUPT_RECORDED_BOOK_INPUT")
                 engine.observation_budgets[source_key] = (
                     payload_hash,
-                    floor_step(
-                        available_quantity * PARTICIPATION_RATE,
-                        SYMBOL_RULES[symbol]["step"],
-                    )
-                    - allocated,
+                    subtract(
+                        floor_product_to_step(
+                            available_quantity,
+                            PARTICIPATION_RATE,
+                            step=SYMBOL_RULES[symbol]["step"],
+                        ),
+                        allocated,
+                    ),
                 )
                 engine.observation_sequences[source_key] = broker_seq
             engine.outbox = tuple(

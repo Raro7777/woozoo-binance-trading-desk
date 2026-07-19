@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from paper_engine import ExecutionFixture, OrderSide, PaperEngine
 
 
@@ -117,3 +119,35 @@ def test_ord_002_authorization_nonce_is_bound_to_request_hash() -> None:
         assert str(error) == "IDEMPOTENCY_CONFLICT"
     else:
         raise AssertionError("authorization nonce mutation must conflict")
+
+
+def test_ord_002_participation_floor_boundary_replays_without_a_phantom_fill() -> None:
+    def run_boundary() -> PaperEngine:
+        engine = PaperEngine()
+        engine.seed_balance("USDT", "100", seed_id="boundary-seed")
+        order = engine.create_limit_order(
+            idempotency_key="boundary-create",
+            client_order_id="boundary-client",
+            authorization=ExecutionFixture("boundary-auth", "boundary-nonce", "c" * 64),
+            symbol="BTCUSDT",
+            side=OrderSide.BUY,
+            quantity_text="0.00003",
+            limit_price_text="200000",
+        )
+        assert (
+            engine.apply_book_observation(
+                order_id=order.order_id,
+                observation_id="boundary-book",
+                best_bid_text="199999",
+                best_ask_text="200000",
+                displayed_quantity_text="0.000099999999999999",
+            )
+            is None
+        )
+        return engine
+
+    first = run_boundary()
+    replayed = run_boundary()
+    assert replayed.semantic_digest() == first.semantic_digest()
+    assert replayed.fills == {}
+    assert replayed.observation_budgets["boundary-book"][1] == Decimal(0)

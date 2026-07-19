@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from decimal import Decimal, InvalidOperation, ROUND_DOWN, ROUND_HALF_EVEN, ROUND_UP, localcontext
 import re
 
@@ -9,6 +10,32 @@ import re
 SCALE = Decimal("0.000000000000000001")
 DECIMAL_PATTERN = re.compile(r"^(0|[1-9][0-9]*)(\.[0-9]+)?$")
 NUMERIC_PRECISION_ERROR = "financial result exceeds NUMERIC(38,18) precision"
+
+
+def exact_sum(values: Iterable[Decimal]) -> Decimal:
+    """Sum finite Decimals by integer coefficients without applying a Decimal context."""
+    items = tuple(values)
+    if not items:
+        return Decimal(0)
+    if any(not isinstance(value, Decimal) or not value.is_finite() for value in items):
+        raise ValueError("non-finite financial result")
+    exponents = tuple(value.as_tuple().exponent for value in items)
+    if any(not isinstance(exponent, int) for exponent in exponents):
+        raise ValueError("non-finite financial result")
+    integer_exponents = tuple(exponent for exponent in exponents if isinstance(exponent, int))
+    common_exponent = min(integer_exponents)
+    total = 0
+    for value, exponent in zip(items, integer_exponents, strict=True):
+        decimal_tuple = value.as_tuple()
+        coefficient = 0
+        for digit in decimal_tuple.digits:
+            coefficient = coefficient * 10 + digit
+        if decimal_tuple.sign:
+            coefficient = -coefficient
+        total += coefficient * 10 ** (exponent - common_exponent)
+    sign = 1 if total < 0 else 0
+    digits = tuple(int(digit) for digit in str(abs(total))) if total else (0,)
+    return Decimal((sign, digits, common_exponent))
 
 
 def validate_numeric(value: Decimal) -> Decimal:
@@ -107,6 +134,20 @@ def floor_step(value: Decimal, step: Decimal) -> Decimal:
     with localcontext() as context:
         context.prec = 80
         return quantize((value / step).to_integral_value(rounding=ROUND_DOWN) * step)
+
+
+def floor_product_to_step(*values: Decimal, step: Decimal) -> Decimal:
+    """Multiply exactly enough to floor to the step before scale-18 quantization."""
+    if step <= 0:
+        raise ValueError("step must be positive")
+    precision = max(80, sum(len(value.as_tuple().digits) for value in values) + 20)
+    with localcontext() as context:
+        context.prec = precision
+        product = Decimal(1)
+        for value in values:
+            product *= value
+        stepped = (product / step).to_integral_value(rounding=ROUND_DOWN) * step
+        return quantize(stepped)
 
 
 def canonical(value: Decimal) -> str:

@@ -14,7 +14,7 @@ from .decimal_policy import (
     add,
     canonical,
     decimal_input,
-    floor_step,
+    floor_product_to_step,
     multiply,
     proportion,
     quantize,
@@ -386,8 +386,10 @@ class PaperEngine:
         budget = self.observation_budgets.get(observation_id)
         if budget is None:
             self._assert_canonical_observation_order(order, observation_id, bid, ask)
-            remaining_budget = floor_step(
-                multiply(displayed, PARTICIPATION_RATE), SYMBOL_RULES[order.symbol]["step"]
+            remaining_budget = floor_product_to_step(
+                displayed,
+                PARTICIPATION_RATE,
+                step=SYMBOL_RULES[order.symbol]["step"],
             )
             self.observation_budgets[observation_id] = (observation_hash, remaining_budget)
             seq = self._next_seq()

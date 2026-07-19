@@ -8,6 +8,8 @@ from decimal import Decimal
 from enum import StrEnum
 import re
 
+from .decimal_policy import exact_sum
+
 
 OPAQUE_ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}")
 HASH_ID_PATTERN = re.compile(r"[a-f0-9]{64}")
@@ -168,7 +170,7 @@ class Journal:
                 raise ValueError("LEDGER_ENTRY_MUST_BE_ONE_SIDED")
         commodities = {entry.commodity for entry in self.entries}
         for commodity in commodities:
-            debit = sum((e.debit for e in self.entries if e.commodity == commodity), Decimal(0))
-            credit = sum((e.credit for e in self.entries if e.commodity == commodity), Decimal(0))
+            debit = exact_sum(e.debit for e in self.entries if e.commodity == commodity)
+            credit = exact_sum(e.credit for e in self.entries if e.commodity == commodity)
             if debit != credit:
                 raise ValueError(f"LEDGER_IMBALANCE:{commodity}")

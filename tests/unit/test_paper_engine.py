@@ -186,6 +186,41 @@ def test_shared_observation_uses_one_canonical_broker_sequence_and_budget() -> N
     assert engine.observation_budgets["shared-book"][1] == Decimal("0.05")
 
 
+@pytest.mark.parametrize(
+    ("displayed", "expected_fill_quantity"),
+    [
+        ("0.000099999999999999", Decimal(0)),
+        ("0.000100000000000000", Decimal("0.000010000000000000")),
+        ("0.000100000000000001", Decimal("0.000010000000000000")),
+    ],
+)
+def test_participation_budget_floors_exact_product_before_scale_quantization(
+    displayed: str, expected_fill_quantity: Decimal
+) -> None:
+    engine = PaperEngine()
+    engine.seed_balance("USDT", "100", seed_id=f"budget-seed-{displayed}")
+    order = engine.create_limit_order(
+        idempotency_key=f"budget-create-{displayed}",
+        client_order_id=f"budget-client-{displayed}",
+        authorization=authorization(),
+        symbol="BTCUSDT",
+        side=OrderSide.BUY,
+        quantity_text="0.00003",
+        limit_price_text="200000",
+    )
+
+    fill = engine.apply_book_observation(
+        order_id=order.order_id,
+        observation_id=f"budget-book-{displayed}",
+        best_bid_text="199999",
+        best_ask_text="200000",
+        displayed_quantity_text=displayed,
+    )
+
+    assert engine.observation_budgets[f"budget-book-{displayed}"][1] == Decimal(0)
+    assert (fill.quantity if fill is not None else Decimal(0)) == expected_fill_quantity
+
+
 def test_ineligible_later_order_cannot_consume_observation_before_eligible_first_order() -> None:
     engine = PaperEngine()
     engine.seed_balance("USDT", "1000", seed_id="mixed-canonical-cash")
@@ -321,6 +356,35 @@ def test_out_of_range_replacement_ledger_is_rejected_before_reversal_mutation() 
             ),
         )
 
+    assert engine.semantic_digest() == before
+
+
+def test_journal_rejects_scale_eighteen_imbalance_hidden_by_default_decimal_context() -> None:
+    debit = Decimal("99999999999999999999.000000000000000000")
+    credit = Decimal("99999999999999999998.999999999999999999")
+    journal = Journal(
+        "0" * 64,
+        "paper.test",
+        "precision-counterexample",
+        "PHYSICAL",
+        (
+            LedgerEntry("paper.available", "USDT", debit, Decimal(0)),
+            LedgerEntry("paper.equity", "USDT", Decimal(0), credit),
+        ),
+    )
+
+    with pytest.raises(ValueError, match="LEDGER_IMBALANCE:USDT"):
+        journal.assert_balanced()
+
+    engine = PaperEngine()
+    engine.seed_balance("USDT", "100", seed_id="precision-ledger-seed")
+    before = engine.semantic_digest()
+    with pytest.raises(ValueError, match="LEDGER_IMBALANCE:USDT"):
+        engine.reverse_and_replace(
+            original_key=next(iter(engine.journals)),
+            correction_id="precision-counterexample",
+            replacement_entries=journal.entries,
+        )
     assert engine.semantic_digest() == before
 
 
