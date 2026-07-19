@@ -76,6 +76,14 @@ physical-ledger mismatch, and the future authorization first-attempt receipt mis
 last code is contract-only until Phase 7 and has no Phase 5 producer. Drawdown, ordinary
 reconciliation failure, timer, AI, restart and Redis expiry never activate or recover Kill.
 
+## Migration lifecycle
+
+An unused Phase 5 schema can downgrade to Phase 4 and re-upgrade without changing Phase 4
+Paper semantics. Once any immutable Risk decision, Kill activation, receipt, outbox link, or
+Paper Kill-cancellation history exists, downgrade is deliberately unsupported and fails
+before changing schema or data. Operators must retain the Phase 5 schema and use forward
+recovery; deleting audit history or fabricating a Phase 4 human-cancel receipt is forbidden.
+
 ## Required acceptance denominator
 
 `RISK-001..002`, `KILL-001..002`, `RISK-CONTRACT-001`, `RISK-MIGRATION-001`, and

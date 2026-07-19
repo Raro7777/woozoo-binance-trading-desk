@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 import time
 from threading import Event
 from typing import Iterator
@@ -42,8 +43,7 @@ def run(*command: str) -> None:
 
 @contextmanager
 def isolated_postgres() -> Iterator[None]:
-    lock_path = ROOT / "_workspace/p5-kill-fault.lock"
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = Path(tempfile.gettempdir()) / "woozoo-p5-kill-fault.lock"
     with lock_path.open("a+b") as lock:
         lock.seek(0)
         lock.write(b"0")

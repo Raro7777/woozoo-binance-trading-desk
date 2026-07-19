@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 import time
 from typing import Iterator
 
@@ -25,8 +26,7 @@ def run(*command: str) -> None:
 
 @contextmanager
 def infrastructure_lock() -> Iterator[None]:
-    path = ROOT / "_workspace/p5-kill-safety.lock"
-    path.parent.mkdir(parents=True, exist_ok=True)
+    path = Path(tempfile.gettempdir()) / "woozoo-p5-kill-safety.lock"
     with path.open("a+b") as lock:
         lock.seek(0)
         lock.write(b"0")

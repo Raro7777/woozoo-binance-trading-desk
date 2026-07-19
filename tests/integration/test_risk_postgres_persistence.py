@@ -302,6 +302,11 @@ def test_risk_writer_cannot_reset_or_decrease_the_kill_barrier() -> None:
             "VALUES (%s,'kill-switch',%s)",
             (unbound_outbox_id, unbound_event_id),
         )
+        connection.execute(
+            "UPDATE kill_switch_state SET active=true,version=1,last_activation_event_id=%s "
+            "WHERE scope='paper-global'",
+            (unbound_event_id,),
+        )
         with pytest.raises(
             psycopg.errors.RaiseException, match="activation transaction is incomplete"
         ):

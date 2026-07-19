@@ -358,6 +358,8 @@ RISK_BOUNDARY_CASES = [
     ("insufficient_available_balance", "INSUFFICIENT_AVAILABLE_BALANCE", True),
     ("fee_reserve_insufficient", "FEE_RESERVE_INSUFFICIENT", True),
     ("sell_exceeds_position", "SELL_EXCEEDS_POSITION", True),
+    ("sell_held_only", "SELL_EXCEEDS_POSITION", True),
+    ("max_precision_exposure_above", "SYMBOL_EXPOSURE_LIMIT_EXCEEDED", True),
     ("ledger_mismatch", "LEDGER_IMBALANCE", True),
     ("invalid_open_order_state", "INPUT_SCHEMA_INVALID", True),
     ("loss_scale_edge_below", "REALIZED_LOSS_LIMIT_EXCEEDED", False),
@@ -546,6 +548,35 @@ def test_risk_002_complete_boundary_matrix(case: str, reason: str, present: bool
             payload["proposal"]["payload"]  # type: ignore[index]
         )
         set_preview(payload, side="SELL", worst_case_hold="0.1")
+    elif case == "sell_held_only":
+        payload["proposal"]["payload"]["side"] = "SELL"  # type: ignore[index]
+        payload["proposal"]["proposal_hash"] = canonical_hash(  # type: ignore[index]
+            payload["proposal"]["payload"]  # type: ignore[index]
+        )
+        payload["portfolio"]["positions"]["BTCUSDT"].update(  # type: ignore[index]
+            {"available": "0", "held": "0.1"}
+        )
+        payload["portfolio"]["available_quote"] = "9990"  # type: ignore[index]
+        rehash_section(payload, "portfolio", "snapshot_hash")
+        set_preview(
+            payload,
+            side="SELL",
+            worst_case_fee="0",
+            worst_case_hold="0.1",
+            worst_case_notional="10",
+        )
+    elif case == "max_precision_exposure_above":
+        payload["portfolio"]["available_quote"] = "10000000000000000000"  # type: ignore[index]
+        payload["portfolio"]["high_water_equity"] = "10000000000000000000"  # type: ignore[index]
+        add_open_buy_commitment(payload, "BTCUSDT", "1500000000000000000")
+        set_preview(
+            payload,
+            quantity="0.000000000001",
+            worst_case_fee="0",
+            worst_case_hold="0.0000000001",
+            worst_case_notional="0.0000000001",
+        )
+        rehash_section(payload, "portfolio", "snapshot_hash")
     elif case == "ledger_mismatch":
         payload["reconciliation"]["health"] = "FAILED"  # type: ignore[index]
         payload["reconciliation"]["mismatch_codes"] = ["LEDGER_IMBALANCE"]  # type: ignore[index]

@@ -5,11 +5,11 @@
   "risk_input_schema_version": "woozoo.risk-input/v1",
   "risk_decision_schema_version": "woozoo.risk-decision/v1",
   "fixture_source": "tests/unit/test_risk_engine.py::risk_input",
-  "fixture_source_sha256": "b4bc154825a72e2eb2aeb16aef40a70d703286b0a0f557ea81109d983656962c",
+  "fixture_source_sha256": "ed2fdb38435842e60627a5509ca267be007de55b0b9b6bb0c63578447ed4691c",
   "risk_input_schema_sha256": "2a64c7c3f4362c73bfddcd8a994a6f0d19268c277114bd2a638b642540652504",
   "risk_decision_schema_sha256": "4c8287c8d0fddbcda1b9c2687a078d2ee477d8392f1c711d473e6b29bed3d6cd",
   "kill_switch_schema_sha256": "dc30f1f1f696d4251933a6d88e2155b0f22c6515c060c08405e4aaa7cec3a89b",
-  "implementation_contract_sha256": "ade42c96142cec7ad104410e2413842b8e950ce7899e53f057acf980411fa616",
+  "implementation_contract_sha256": "93c1d3cbc43bc9d11482ff524e33e6b0e073aa9b824b748517dc8a675a10b5d9",
   "fixed_seed": 0,
   "timezone": "UTC",
   "decision_clock": "fixture-clock/v1",
@@ -28,7 +28,7 @@
         "tests/replay/test_risk_replay.py::test_reason_message_or_recording_metadata_cannot_enter_decision_hash"
       ],
       "source_sha256": [
-        "b4bc154825a72e2eb2aeb16aef40a70d703286b0a0f557ea81109d983656962c",
+        "ed2fdb38435842e60627a5509ca267be007de55b0b9b6bb0c63578447ed4691c",
         "e4acee48a3bf51c1b1255eab1bc44abf2cf59e1e6ed1fdf9cb154c6e43ab80eb"
       ],
       "oracle": "Same complete canonical input is byte-identical across replay, locale and process identity; each bound input mutation changes risk_input_digest."
@@ -104,11 +104,13 @@
         "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[insufficient_available_balance]",
         "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[fee_reserve_insufficient]",
         "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[sell_exceeds_position]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[sell_held_only]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[max_precision_exposure_above]",
         "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[invalid_open_order_state]",
         "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[loss_scale_edge_below]"
       ],
       "source_sha256": [
-        "b4bc154825a72e2eb2aeb16aef40a70d703286b0a0f557ea81109d983656962c",
+        "ed2fdb38435842e60627a5509ca267be007de55b0b9b6bb0c63578447ed4691c",
         "3d5e90741c120a0b85f24bf81712ba7cb1e1c4378fb1458f9e52b85af8c3c58f"
       ],
       "boundary_cases": {
@@ -170,6 +172,8 @@
         "insufficient_available_balance": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[insufficient_available_balance]",
         "fee_reserve_insufficient": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[fee_reserve_insufficient]",
         "sell_exceeds_position": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[sell_exceeds_position]",
+        "sell_held_only": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[sell_held_only]",
+        "max_precision_exposure_above": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[max_precision_exposure_above]",
         "invalid_open_order_state": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[invalid_open_order_state]",
         "loss_scale_edge_below": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[loss_scale_edge_below]"
       },
@@ -201,7 +205,7 @@
         "tests/failure/test_kill_cancel_identity.py::test_kill_cancel_id_binds_full_activation_and_order_ids"
       ],
       "source_sha256": [
-        "4f2b6ae8bc663255836132ad55b13109e4f4af0dcccf7abcbeaa6dff7ef4e010",
+        "fd1a6b80fdada0f5310ae50a270e47600bed7b43b281c462c6b38606b8a1d874",
         "d52c59ec96c32ca1b66508c404f726f08646a0ac0f20183d1c3e48c983a8e277"
       ],
       "fault_cases": {
@@ -230,7 +234,7 @@
         "tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_attempt_keeps_postgres_active[redis_expiry]",
         "tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_attempt_keeps_postgres_active[unauthenticated_actor]"
       ],
-      "source_sha256": ["278dee7dd68c405ae86603b16db0625363a44dc8e8b99cfa891bda83c8fd0629"],
+      "source_sha256": ["3cbfc4e752ba2f83bab7c274765a459651d366ffa325a10e294e3275dec28d29"],
       "attempt_cases": {
         "timer": "tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_attempt_keeps_postgres_active[timer]",
         "ai": "tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_attempt_keeps_postgres_active[ai]",
@@ -260,13 +264,16 @@
         "tests/integration/test_risk_postgres_persistence.py::test_risk_decision_persistence_is_atomic_unique_and_replay_stable",
         "tests/integration/test_risk_postgres_persistence.py::test_risk_writer_cannot_reset_or_decrease_the_kill_barrier",
         "tests/integration/test_risk_migration_contract.py::test_risk_migration_001_closes_authority_and_barrier_boundaries",
-        "tests/integration/test_risk_migration_contract.py::test_phase_four_to_five_to_four_to_five_migration_cycle_is_recoverable"
+        "tests/integration/test_risk_migration_contract.py::test_phase_four_to_five_to_four_to_five_migration_cycle_is_recoverable",
+        "tests/integration/test_risk_migration_contract.py::test_phase_five_downgrade_fails_closed_when_immutable_history_exists",
+        "tests/integration/test_reconciliation_kill_handler.py::test_critical_reconciliation_mismatch_activates_kill_once_and_retries_idempotently"
       ],
       "source_sha256": [
-        "d7edffbb10a16921524e9bc4f62ed4080b1791eb0e03722fbb0b04f520ad51e7",
-        "0351ba6db1da3bbec413926ae55057d14d8dec9c28e3483b1069fb586d20808a"
+        "5ecdbe994ae764e92f3095238c644f6181fcb5f0a15d88176a32da70a235da5c",
+        "ef4b6034587409d85cf5156449a1799eb807bcaf7bf5c7a1e209bc6aa7555389",
+        "ce87278735bbbf7037fe1add8b406fbd3f354aa23018f29530bc32066c9b23d1"
       ],
-      "oracle": "Unique immutable Risk input authority, least privilege, Kill barrier locking, atomic outbox and Paper cancel saga survive migration cycle and rollback."
+      "oracle": "Unique immutable Risk input authority, least privilege, critical reconciliation Kill, barrier locking and atomic outbox are preserved; empty P5 rolls back exactly while data-bearing downgrade fails before mutation."
     },
     {
       "id": "RISK-SAFE-001",

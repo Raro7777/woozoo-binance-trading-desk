@@ -49,6 +49,7 @@ function isApprovedDomainVocabulary(projectPath, pattern) {
     projectPath === "db/migrations/versions/20260719_0004_paper_broker_ledger.py" ||
     projectPath.startsWith("packages/contracts/spec/paper-");
   const phaseFiveInternalRiskAuthority =
+    projectPath.startsWith("services/risk-engine/") ||
     projectPath === "db/migrations/versions/20260719_0005_risk_engine.py";
   if (
     (paperOwned || phaseFiveInternalRiskAuthority) &&

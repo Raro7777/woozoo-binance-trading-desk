@@ -88,6 +88,17 @@ def upgrade() -> None:
         ),
         sa.CheckConstraint("new_version=prior_version+1", name="ck_kill_version_step"),
         sa.CheckConstraint(
+            "request_id ~ '^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$' AND "
+            "actor_id ~ '^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$' AND "
+            "length(reason) BETWEEN 1 AND 512 AND "
+            "((trigger_kind='MANUAL' AND actor_id LIKE 'operator:%' AND "
+            "reason_code='MANUAL_SAFETY_STOP') OR "
+            "(trigger_kind='INVARIANT' AND actor_id LIKE 'safety-service:%' AND "
+            "reason_code IN ('LEDGER_IMBALANCE','PHYSICAL_LEDGER_MISMATCH',"
+            "'AUTHORIZATION_RECEIPT_MISMATCH')))",
+            name="ck_kill_event_actor_reason",
+        ),
+        sa.CheckConstraint(
             "activation_event_id ~ '^[a-f0-9]{64}$' AND request_hash ~ '^[a-f0-9]{64}$' "
             "AND context_digest ~ '^[a-f0-9]{64}$'",
             name="ck_kill_hashes",
@@ -250,12 +261,100 @@ def upgrade() -> None:
              AND state.last_activation_event_id=event.activation_event_id
             WHERE state.scope IS NULL
                OR receipt.request_id IS NULL OR link.event_id IS NULL OR outbox.event_id IS NULL
+               OR receipt.response IS DISTINCT FROM jsonb_build_object(
+                    'activation_event_id',event.activation_event_id,
+                    'prior_version',event.prior_version,
+                    'version',event.new_version,
+                    'outbox_event_id',link.event_id)
                OR outbox.event_type<>'kill-switch.activated.v1'
                OR outbox.aggregate_type<>'kill_switch'
                OR outbox.aggregate_id<>event.activation_event_id
                OR outbox.aggregate_version<>event.new_version
+               OR outbox.event_id<>encode(digest(convert_to(
+                    '['||to_jsonb('event'::text)::text||','||
+                    to_jsonb(outbox.event_type)::text||','||
+                    to_jsonb(event.activation_event_id)::text||','||
+                    to_jsonb(event.new_version::text)::text||']','UTF8'),'sha256'),'hex')
+               OR jsonb_typeof(outbox.payload)<>'object'
+               OR (SELECT count(*) FROM jsonb_object_keys(outbox.payload))<>11
+               OR NOT (outbox.payload ?& ARRAY[
+                    'spec_version','event_id','event_type','event_version','occurred_at',
+                    'producer','activation_phase','aggregate_id','aggregate_version',
+                    'payload_hash','data'])
+               OR outbox.payload->>'spec_version'<>'woozoo.event/v1'
+               OR outbox.payload->>'event_id'<>outbox.event_id
+               OR outbox.payload->>'event_type'<>outbox.event_type
+               OR outbox.payload->'event_version' IS DISTINCT FROM '1'::jsonb
+               OR (outbox.payload->>'occurred_at')::timestamptz IS DISTINCT FROM event.observed_at
+               OR outbox.occurred_at IS DISTINCT FROM event.observed_at
                OR outbox.payload->>'producer'<>'risk-engine'
+               OR outbox.payload->'activation_phase' IS DISTINCT FROM '7'::jsonb
+               OR outbox.payload->>'aggregate_id'<>event.activation_event_id
+               OR outbox.payload->'aggregate_version' IS DISTINCT FROM to_jsonb(event.new_version)
+               OR outbox.payload->>'payload_hash'<>outbox.payload_hash
+               OR jsonb_typeof(outbox.payload->'data')<>'object'
+               OR (SELECT count(*) FROM jsonb_object_keys(outbox.payload->'data'))<>11
+               OR NOT ((outbox.payload->'data') ?& ARRAY[
+                    'scope','active','prior_version','version','activation_event_id',
+                    'trigger_kind','actor_id','reason_code','reason','observed_at',
+                    'context_digest'])
+               OR outbox.payload->'data'->>'scope'<>event.scope
+               OR outbox.payload->'data'->'active' IS DISTINCT FROM 'true'::jsonb
+               OR outbox.payload->'data'->'prior_version' IS DISTINCT FROM
+                    to_jsonb(event.prior_version)
+               OR outbox.payload->'data'->'version' IS DISTINCT FROM to_jsonb(event.new_version)
                OR outbox.payload->'data'->>'activation_event_id'<>event.activation_event_id
+               OR outbox.payload->'data'->>'trigger_kind'<>event.trigger_kind
+               OR outbox.payload->'data'->>'actor_id'<>event.actor_id
+               OR outbox.payload->'data'->>'reason_code'<>event.reason_code
+               OR outbox.payload->'data'->>'reason'<>event.reason
+               OR (outbox.payload->'data'->>'observed_at')::timestamptz IS DISTINCT FROM
+                    event.observed_at
+               OR outbox.payload->'data'->>'context_digest'<>event.context_digest
+               OR outbox.payload_hash<>encode(digest(convert_to(
+                    '{"activation_event_id":'||
+                      to_jsonb(outbox.payload->'data'->>'activation_event_id')::text||
+                    ',"active"'||':'||'true'||
+                    ',"actor_id":'||to_jsonb(outbox.payload->'data'->>'actor_id')::text||
+                    ',"context_digest":'||
+                      to_jsonb(outbox.payload->'data'->>'context_digest')::text||
+                    ',"observed_at":'||
+                      to_jsonb(outbox.payload->'data'->>'observed_at')::text||
+                    ',"prior_version":'||(outbox.payload->'data'->>'prior_version')||
+                    ',"reason":'||to_jsonb(outbox.payload->'data'->>'reason')::text||
+                    ',"reason_code":'||
+                      to_jsonb(outbox.payload->'data'->>'reason_code')::text||
+                    ',"scope":'||to_jsonb(outbox.payload->'data'->>'scope')::text||
+                    ',"trigger_kind":'||
+                      to_jsonb(outbox.payload->'data'->>'trigger_kind')::text||
+                    ',"version":'||(outbox.payload->'data'->>'version')||'}',
+                    'UTF8'),'sha256'),'hex')
+               OR event.request_hash<>encode(digest(convert_to(
+                    '{"actor_id":'||to_jsonb(event.actor_id)::text||
+                    ',"context_digest":'||to_jsonb(event.context_digest)::text||
+                    ',"expected_version":'||event.prior_version::text||
+                    ',"observed_at":'||
+                      to_jsonb(outbox.payload->'data'->>'observed_at')::text||
+                    ',"reason":'||to_jsonb(event.reason)::text||
+                    ',"reason_code":'||to_jsonb(event.reason_code)::text||
+                    ',"request_id":'||to_jsonb(event.request_id)::text||
+                    ',"scope":'||to_jsonb(event.scope)::text||
+                    ',"trigger_kind":'||to_jsonb(event.trigger_kind)::text||'}',
+                    'UTF8'),'sha256'),'hex')
+               OR event.activation_event_id<>encode(digest(convert_to(
+                    '{"actor_id":'||to_jsonb(event.actor_id)::text||
+                    ',"context_digest":'||to_jsonb(event.context_digest)::text||
+                    ',"expected_version":'||event.prior_version::text||
+                    ',"observed_at":'||
+                      to_jsonb(outbox.payload->'data'->>'observed_at')::text||
+                    ',"prior_version":'||event.prior_version::text||
+                    ',"reason":'||to_jsonb(event.reason)::text||
+                    ',"reason_code":'||to_jsonb(event.reason_code)::text||
+                    ',"request_id":'||to_jsonb(event.request_id)::text||
+                    ',"scope":'||to_jsonb(event.scope)::text||
+                    ',"trigger_kind":'||to_jsonb(event.trigger_kind)::text||
+                    ',"version":'||event.new_version::text||'}',
+                    'UTF8'),'sha256'),'hex')
           ) OR EXISTS (
             SELECT 1 FROM kill_switch_state state
             LEFT JOIN kill_switch_events event
@@ -276,6 +375,31 @@ def upgrade() -> None:
             LEFT JOIN outbox_events outbox ON outbox.event_id=link.event_id
             WHERE link.aggregate_kind='kill-switch'
               AND (event.activation_event_id IS NULL OR outbox.event_id IS NULL)
+          ) OR EXISTS (
+            SELECT 1 FROM outbox_events outbox
+            LEFT JOIN risk_outbox_links link ON link.event_id=outbox.event_id
+            WHERE outbox.payload->>'producer'='risk-engine' AND link.event_id IS NULL
+          ) OR EXISTS (
+            SELECT 1 FROM risk_outbox_links link
+            LEFT JOIN outbox_events outbox ON outbox.event_id=link.event_id
+            LEFT JOIN risk_decisions decision
+              ON link.aggregate_kind='risk-decision'
+             AND decision.decision_id=link.aggregate_id
+            WHERE link.aggregate_kind='risk-decision'
+              AND (decision.decision_id IS NULL OR outbox.event_id IS NULL
+                   OR outbox.event_type<>'risk.decision.recorded.v1'
+                   OR outbox.aggregate_type<>'risk_decision'
+                   OR outbox.aggregate_id<>decision.decision_id
+                   OR outbox.aggregate_version<>1
+                   OR outbox.payload->>'producer'<>'risk-engine'
+                   OR outbox.payload->'data'->>'decision_id'<>decision.decision_id
+                   OR outbox.payload->'data'->>'decision_hash'<>decision.decision_hash)
+          ) OR EXISTS (
+            SELECT 1 FROM risk_decisions decision
+            LEFT JOIN risk_outbox_links link
+              ON link.aggregate_kind='risk-decision'
+             AND link.aggregate_id=decision.decision_id
+            WHERE link.event_id IS NULL
           ) THEN
             RAISE EXCEPTION 'Kill activation transaction is incomplete';
           END IF;
@@ -285,10 +409,12 @@ def upgrade() -> None:
     """)
     op.execute("REVOKE ALL ON FUNCTION assert_kill_activation_consistency() FROM PUBLIC")
     for table in (
+        "risk_decisions",
         "kill_switch_events",
         "kill_switch_state",
         "risk_kill_command_receipts",
         "risk_outbox_links",
+        "outbox_events",
     ):
         op.execute(f"""
             CREATE CONSTRAINT TRIGGER {table}_kill_activation_consistency
@@ -331,6 +457,31 @@ def upgrade() -> None:
         UNION ALL
         SELECT 'assert_paper_relational_consistency',
                pg_get_functiondef('assert_paper_relational_consistency()'::regprocedure)
+    """)
+
+    # A critical Paper mismatch must still permit the separately-owned Risk transaction
+    # that activates Kill. Risk outbox writes carry no Paper financial effect and are
+    # checked by assert_kill_activation_consistency instead.
+    op.execute(r"""
+        DO $$
+        DECLARE
+          v_definition text;
+          v_replaced text;
+        BEGIN
+          SELECT pg_get_functiondef('assert_paper_relational_consistency()'::regprocedure)
+            INTO v_definition;
+          v_replaced := regexp_replace(
+            v_definition,
+            'BEGIN',
+            'BEGIN IF TG_TABLE_NAME=''outbox_events'' AND TG_OP=''INSERT'' '
+            'AND to_jsonb(NEW)->''payload''->>''producer''=''risk-engine'' '
+            'THEN RETURN NULL; END IF;'
+          );
+          IF v_replaced=v_definition THEN
+            RAISE EXCEPTION 'Could not isolate Risk outbox from Paper consistency trigger';
+          END IF;
+          EXECUTE v_replaced;
+        END $$
     """)
 
     # Preserve every Phase 4 relational check, changing only the assumption that
@@ -412,7 +563,8 @@ def upgrade() -> None:
     op.execute("GRANT USAGE ON SCHEMA public TO woozoo_risk_engine")
     op.execute(
         "GRANT SELECT ON risk_policy_versions, risk_decisions, kill_switch_events, "
-        "kill_switch_state, risk_kill_command_receipts, risk_outbox_links TO woozoo_risk_engine"
+        "kill_switch_state, risk_kill_command_receipts, risk_outbox_links, "
+        "paper_reconciliation_checkpoints, outbox_events TO woozoo_risk_engine"
     )
     op.execute(
         "GRANT INSERT ON risk_decisions, kill_switch_events, risk_kill_command_receipts, "
@@ -434,6 +586,22 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    op.execute(r"""
+        DO $$
+        BEGIN
+          IF EXISTS (SELECT 1 FROM risk_decisions)
+             OR EXISTS (SELECT 1 FROM kill_switch_events)
+             OR EXISTS (SELECT 1 FROM risk_kill_command_receipts)
+             OR EXISTS (SELECT 1 FROM risk_outbox_links)
+             OR EXISTS (SELECT 1 FROM paper_kill_inbox)
+             OR EXISTS (SELECT 1 FROM paper_kill_cancel_batches)
+             OR EXISTS (SELECT 1 FROM paper_kill_cancel_items)
+          THEN
+            RAISE EXCEPTION
+              'Phase 5 downgrade blocked: immutable Risk/Kill history exists';
+          END IF;
+        END $$
+    """)
     op.execute(
         "CREATE TEMP TABLE phase5_outbox_cleanup AS "
         "SELECT event_id FROM risk_outbox_links UNION "
@@ -452,6 +620,9 @@ def downgrade() -> None:
     """)
     op.drop_table("phase5_p4_function_backup")
     op.execute("REVOKE ALL ON outbox_events FROM woozoo_risk_engine")
+    op.execute(
+        "REVOKE SELECT ON paper_reconciliation_checkpoints FROM woozoo_risk_engine"
+    )
     op.execute("DROP FUNCTION IF EXISTS paper_lock_kill_barrier()")
     for table in (
         "paper_kill_cancel_items",
@@ -470,6 +641,7 @@ def downgrade() -> None:
     )
     op.execute("DROP TABLE phase5_outbox_cleanup")
     op.execute("DROP FUNCTION enforce_kill_state_activation_only()")
+    op.execute("DROP TRIGGER outbox_events_kill_activation_consistency ON outbox_events")
     op.execute("DROP FUNCTION assert_kill_activation_consistency()")
     # Alembic may continue directly into the Phase 4 downgrade in the same
     # transaction. Drain deferred outbox consistency triggers before that

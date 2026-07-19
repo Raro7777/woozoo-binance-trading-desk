@@ -29,7 +29,7 @@ const riskBoundaryCases = [
   "bid_zero", "ask_zero", "ledger_mismatch",
   "order_type_not_limit", "side_not_long_cash", "tif_not_allowed",
   "invalid_price_or_qty", "insufficient_available_balance", "fee_reserve_insufficient",
-  "sell_exceeds_position",
+  "sell_exceeds_position", "sell_held_only", "max_precision_exposure_above",
   "invalid_open_order_state", "loss_scale_edge_below",
 ];
 const riskGuardReasonCases = {
@@ -344,6 +344,8 @@ const actions = {
       "tests/integration/test_risk_postgres_persistence.py::test_risk_writer_cannot_reset_or_decrease_the_kill_barrier",
       "tests/integration/test_risk_migration_contract.py::test_risk_migration_001_closes_authority_and_barrier_boundaries",
       "tests/integration/test_risk_migration_contract.py::test_phase_four_to_five_to_four_to_five_migration_cycle_is_recoverable",
+      "tests/integration/test_risk_migration_contract.py::test_phase_five_downgrade_fails_closed_when_immutable_history_exists",
+      "tests/integration/test_reconciliation_kill_handler.py::test_critical_reconciliation_mismatch_activates_kill_once_and_retries_idempotently",
     ]);
   },
   "test:replay": async () => {

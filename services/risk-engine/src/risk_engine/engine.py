@@ -219,6 +219,19 @@ def _sum(values: Sequence[Decimal]) -> Decimal:
         return sum(values, Decimal(0))
 
 
+def _difference(left: Decimal, right: Decimal) -> Decimal:
+    with localcontext() as context:
+        context.prec = 80
+        return left - right
+
+
+def _above_ratio(amount: Decimal, denominator: Decimal, threshold: Decimal) -> bool:
+    """Compare an amount to an exclusive ratio without intermediate division."""
+    if denominator <= 0:
+        raise ValueError("ratio denominator must be positive")
+    return amount > _product(denominator, threshold)
+
+
 def _at_or_above_ratio(amount: Decimal, denominator: Decimal, threshold: Decimal) -> bool:
     """Compare an amount to an inclusive ratio without intermediate rounding."""
     if denominator <= 0:
@@ -572,6 +585,7 @@ def evaluate_risk(risk_input: object) -> RiskDecision:
 
     position_exposures: dict[str, Decimal] = {}
     base_quantities: dict[str, Decimal] = {}
+    available_base_quantities: dict[str, Decimal] = {}
     try:
         if set(positions) != {"BTCUSDT", "ETHUSDT"}:
             raise ValueError("invalid position inventory")
@@ -579,11 +593,13 @@ def evaluate_risk(risk_input: object) -> RiskDecision:
             position = _object(positions[position_symbol])
             if position is None or not _exact_fields(position, {"available", "held", "midpoint"}):
                 raise ValueError("invalid position")
-            base_quantity = _decimal(position["available"]) + _decimal(position["held"])
+            available_base = _decimal(position["available"])
+            base_quantity = _sum([available_base, _decimal(position["held"])])
             midpoint = _decimal(position["midpoint"])
             if midpoint <= 0:
                 raise ValueError("invalid midpoint")
             base_quantities[position_symbol] = base_quantity
+            available_base_quantities[position_symbol] = available_base
             position_exposures[position_symbol] = _product(base_quantity, midpoint)
     except (KeyError, ValueError):
         return _finish(digest, reasons | {"EQUITY_INVALID"})
@@ -593,7 +609,7 @@ def evaluate_risk(risk_input: object) -> RiskDecision:
         return _finish(digest, reasons | {"EQUITY_INVALID"})
 
     principal = _product(quantity, limit_price)
-    calculated_notional = principal + worst_fee
+    calculated_notional = _sum([principal, worst_fee])
     expected_hold = calculated_notional if side == "BUY" else quantity
     if calculated_notional != worst_notional or expected_hold != worst_hold:
         reasons.add("INPUT_SCHEMA_INVALID")
@@ -603,7 +619,7 @@ def evaluate_risk(risk_input: object) -> RiskDecision:
         if available_quote >= principal and available_quote < calculated_notional:
             reasons.add("FEE_RESERVE_INSUFFICIENT")
     elif side == "SELL" and isinstance(symbol, str):
-        if base_quantities.get(symbol, Decimal(0)) < quantity:
+        if available_base_quantities.get(symbol, Decimal(0)) < quantity:
             reasons.add("SELL_EXCEEDS_POSITION")
 
     try:
@@ -615,20 +631,20 @@ def evaluate_risk(risk_input: object) -> RiskDecision:
     if best_bid <= 0 or best_ask <= 0 or best_bid > best_ask:
         reasons.add("EXECUTION_QUALITY_UNKNOWN")
     else:
-        midpoint = (best_ask + best_bid) / Decimal(2)
-        spread_bps = _ratio(best_ask - best_bid, midpoint) * Decimal(10000)
+        midpoint = _ratio(_sum([best_ask, best_bid]), Decimal(2))
+        spread_bps = _product(_ratio(_difference(best_ask, best_bid), midpoint), Decimal(10000))
         if spread_bps > max_spread_bps:
             reasons.add("SPREAD_LIMIT_EXCEEDED")
         raw_slippage = (
-            _ratio(limit_price - best_ask, best_ask)
+            _ratio(_difference(limit_price, best_ask), best_ask)
             if side == "BUY"
-            else _ratio(best_bid - limit_price, best_bid)
+            else _ratio(_difference(best_bid, limit_price), best_bid)
         )
-        slippage_bps = max(Decimal(0), raw_slippage) * Decimal(10000)
+        slippage_bps = _product(max(Decimal(0), raw_slippage), Decimal(10000))
         if slippage_bps > max_slippage_bps:
             reasons.add("EXPECTED_SLIPPAGE_LIMIT_EXCEEDED")
 
-    if _ratio(calculated_notional, equity) > max_order_ratio:
+    if _above_ratio(calculated_notional, equity, max_order_ratio):
         reasons.add("ORDER_NOTIONAL_LIMIT_EXCEEDED")
 
     open_orders = portfolio["open_orders"]
@@ -689,8 +705,10 @@ def evaluate_risk(risk_input: object) -> RiskDecision:
                 raise ValueError("invalid open-order amount")
             if open_order["side"] == "BUY":
                 open_symbol = open_order["symbol"]
-                commitment = _product(remaining_quantity, open_limit_price) + remaining_fee
-                open_buy_commitments[open_symbol] += commitment
+                commitment = _sum([_product(remaining_quantity, open_limit_price), remaining_fee])
+                open_buy_commitments[open_symbol] = _sum(
+                    [open_buy_commitments[open_symbol], commitment]
+                )
     except (KeyError, ValueError):
         return _finish(digest, reasons | {"INPUT_SCHEMA_INVALID"})
 
@@ -701,14 +719,19 @@ def evaluate_risk(risk_input: object) -> RiskDecision:
     try:
         for position_symbol in ("BTCUSDT", "ETHUSDT"):
             candidate = calculated_notional if side == "BUY" and symbol == position_symbol else 0
-            exposure = position_exposures[position_symbol] + open_buy_commitments[position_symbol]
-            exposure += candidate
+            exposure = _sum(
+                [
+                    position_exposures[position_symbol],
+                    open_buy_commitments[position_symbol],
+                    Decimal(candidate),
+                ]
+            )
             symbol_exposure_after[position_symbol] = exposure
-            if _ratio(exposure, equity) > _decimal(ratio_map[position_symbol]):
+            if _above_ratio(exposure, equity, _decimal(ratio_map[position_symbol])):
                 reasons.add("SYMBOL_EXPOSURE_LIMIT_EXCEEDED")
     except (KeyError, ValueError):
         return _finish(digest, reasons | {"DECIMAL_POLICY_INVALID"})
-    if _ratio(_sum(list(symbol_exposure_after.values())), equity) > max_portfolio_ratio:
+    if _above_ratio(_sum(list(symbol_exposure_after.values())), equity, max_portfolio_ratio):
         reasons.add("PORTFOLIO_EXPOSURE_LIMIT_EXCEEDED")
 
     realized_loss = max(Decimal(0), -realized_pnl)
@@ -717,7 +740,7 @@ def evaluate_risk(risk_input: object) -> RiskDecision:
     if high_water <= 0:
         reasons.add("EQUITY_INVALID")
     else:
-        drawdown_amount = max(Decimal(0), high_water - equity)
+        drawdown_amount = max(Decimal(0), _difference(high_water, equity))
         if _at_or_above_ratio(drawdown_amount, high_water, max_drawdown_ratio):
             reasons.add("DRAWDOWN_LIMIT_EXCEEDED")
 

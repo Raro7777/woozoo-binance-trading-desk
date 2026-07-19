@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from datetime import datetime, timezone
 import hashlib
 import os
 from pathlib import Path
@@ -12,6 +13,7 @@ from typing import Iterator
 import psycopg
 
 from paper_engine.persistence import PostgresPaperStore
+from risk_engine import KillActivation, PostgresKillSwitch
 from test_paper_postgres_persistence import complete_write
 
 
@@ -243,7 +245,64 @@ def test_phase_four_to_five_to_four_to_five_migration_cycle_is_recoverable() -> 
                     ).fetchone()
                     == phase4_authority[:6]
                 )
+                assert connection.execute(
+                    "SELECT "
+                    "(SELECT count(*) FROM paper_ledger_transactions WHERE account_id=%s),"
+                    "(SELECT count(*) FROM paper_outbox_events_v1 WHERE account_id=%s),"
+                    "(SELECT count(*) FROM ("
+                    " SELECT entry.transaction_id,entry.commodity "
+                    " FROM paper_ledger_entries entry "
+                    " JOIN paper_ledger_transactions tx USING(transaction_id) "
+                    " WHERE tx.account_id=%s GROUP BY entry.transaction_id,entry.commodity "
+                    " HAVING sum(entry.debit)<>sum(entry.credit)"
+                    ") imbalance)",
+                    (post_downgrade_write.account_id,) * 3,
+                ).fetchone() == (4, 2, 0)
             assert store.semantic_digest(paper_write.account_id) == baseline_digest
+            assert store.semantic_digest(post_downgrade_write.account_id) == post_downgrade_digest
         finally:
             run(sys.executable, "-m", "alembic", "upgrade", "head")
+            run("docker", "compose", "down", "-v")
+
+
+def test_phase_five_downgrade_fails_closed_when_immutable_history_exists() -> None:
+    with infrastructure_lock():
+        run("docker", "compose", "down", "-v")
+        run("docker", "compose", "up", "-d", "--wait", "postgres")
+        try:
+            run(sys.executable, "-m", "alembic", "upgrade", "head")
+            activation = PostgresKillSwitch(DATABASE_URL).activate(
+                KillActivation(
+                    request_id="migration-downgrade-guard",
+                    expected_version=0,
+                    trigger_kind="MANUAL",
+                    actor_id="operator:migration-test",
+                    reason_code="MANUAL_SAFETY_STOP",
+                    reason="preserve immutable Phase 5 history",
+                    observed_at=datetime(2026, 7, 19, tzinfo=timezone.utc),
+                    context_digest="a" * 64,
+                )
+            )
+
+            result = subprocess.run(
+                [sys.executable, "-m", "alembic", "downgrade", "20260719_0004"],
+                cwd=ROOT,
+                check=False,
+                env={**os.environ, **ENVIRONMENT},
+                capture_output=True,
+                text=True,
+            )
+            assert result.returncode != 0
+            assert "Phase 5 downgrade blocked: immutable Risk/Kill history exists" in (
+                result.stdout + result.stderr
+            )
+            with psycopg.connect(DATABASE_URL) as connection:
+                assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == (
+                    "20260719_0005",
+                )
+                assert connection.execute(
+                    "SELECT active,version,last_activation_event_id FROM kill_switch_state "
+                    "WHERE scope='paper-global'"
+                ).fetchone() == (True, 1, activation.activation_event_id)
+        finally:
             run("docker", "compose", "down", "-v")
