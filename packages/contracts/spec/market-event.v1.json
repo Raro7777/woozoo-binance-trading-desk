@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "woozoo.market-event/v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "event_id",
+    "event_type",
+    "schema_version",
+    "source",
+    "symbol",
+    "event_time",
+    "received_at",
+    "sequence",
+    "raw_event_id",
+    "raw_payload_hash",
+    "correlation_id",
+    "quality_status",
+    "quality_reasons",
+    "stream_watermark",
+    "payload"
+  ],
+  "properties": {
+    "event_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "event_type": {"enum": ["trade", "book_ticker", "kline"]},
+    "schema_version": {"const": "woozoo.market-event/v1"},
+    "source": {"const": "binance_spot_public"},
+    "symbol": {"enum": ["BTCUSDT", "ETHUSDT"]},
+    "event_time": {"type": "string", "format": "date-time"},
+    "received_at": {"type": "string", "format": "date-time"},
+    "sequence": {"type": "integer", "minimum": 0},
+    "raw_event_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "raw_payload_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "correlation_id": {"type": "string", "minLength": 1},
+    "quality_status": {"enum": ["healthy", "degraded", "stale", "invalid", "reconnecting"]},
+    "quality_reasons": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "stream_watermark": {"$ref": "#/$defs/StreamWatermarkV1"},
+    "payload": {
+      "oneOf": [
+        {"$ref": "#/$defs/TradePayloadV1"},
+        {"$ref": "#/$defs/BookTickerPayloadV1"},
+        {"$ref": "#/$defs/KlinePayloadV1"}
+      ]
+    }
+  },
+  "$defs": {
+    "DecimalString": {"type": "string", "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$"},
+    "StreamWatermarkV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["session_id", "stream", "last_sequence", "observed_at"],
+      "properties": {
+        "session_id": {"type": "string", "minLength": 1},
+        "stream": {"type": "string", "minLength": 1},
+        "last_sequence": {"type": "integer", "minimum": 0},
+        "observed_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "TradePayloadV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "price", "quantity", "buyer_maker"],
+      "properties": {
+        "kind": {"const": "trade"},
+        "price": {"$ref": "#/$defs/DecimalString"},
+        "quantity": {"$ref": "#/$defs/DecimalString"},
+        "buyer_maker": {"type": "boolean"}
+      }
+    },
+    "BookTickerPayloadV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "bid_price", "bid_quantity", "ask_price", "ask_quantity", "event_time_source"],
+      "properties": {
+        "kind": {"const": "book_ticker"},
+        "bid_price": {"$ref": "#/$defs/DecimalString"},
+        "bid_quantity": {"$ref": "#/$defs/DecimalString"},
+        "ask_price": {"$ref": "#/$defs/DecimalString"},
+        "ask_quantity": {"$ref": "#/$defs/DecimalString"},
+        "event_time_source": {"const": "received_at"}
+      }
+    },
+    "KlinePayloadV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "interval", "open_time", "close_time", "open", "close", "high", "low", "base_volume", "trade_count", "closed"],
+      "properties": {
+        "kind": {"const": "kline"},
+        "interval": {"enum": ["1m", "5m", "1h", "4h"]},
+        "open_time": {"type": "string", "format": "date-time"},
+        "close_time": {"type": "string", "format": "date-time"},
+        "open": {"$ref": "#/$defs/DecimalString"},
+        "close": {"$ref": "#/$defs/DecimalString"},
+        "high": {"$ref": "#/$defs/DecimalString"},
+        "low": {"$ref": "#/$defs/DecimalString"},
+        "base_volume": {"$ref": "#/$defs/DecimalString"},
+        "trade_count": {"type": "integer", "minimum": 0},
+        "closed": {"type": "boolean"}
+      }
+    }
+  }
+}
