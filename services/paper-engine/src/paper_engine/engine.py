@@ -274,6 +274,35 @@ class PaperEngine:
         )
         return order
 
+    def _assert_canonical_observation_order(
+        self,
+        order: PaperOrder,
+        observation_id: str,
+        bid: Decimal,
+        ask: Decimal,
+    ) -> None:
+        eligible_orders = sorted(
+            (
+                candidate
+                for candidate in self.orders.values()
+                if candidate.symbol == order.symbol
+                and candidate.status not in {OrderStatus.FILLED, OrderStatus.CANCELLED}
+                and (candidate.order_id, observation_id) not in self.observation_effects
+                and (
+                    ask <= candidate.limit_price
+                    if candidate.side == OrderSide.BUY
+                    else bid >= candidate.limit_price
+                )
+            ),
+            key=lambda candidate: (
+                candidate.accepted_broker_seq,
+                candidate.client_order_id,
+                candidate.order_id,
+            ),
+        )
+        if eligible_orders and eligible_orders[0].order_id != order.order_id:
+            raise ValueError("NON_CANONICAL_OBSERVATION_ORDER")
+
     def apply_book_observation(
         self,
         *,
@@ -307,6 +336,8 @@ class PaperEngine:
         )
         budget = self.observation_budgets.get(observation_id)
         if budget is None:
+            if eligible:
+                self._assert_canonical_observation_order(order, observation_id, bid, ask)
             remaining_budget = floor_step(
                 displayed * PARTICIPATION_RATE, SYMBOL_RULES[order.symbol]["step"]
             )
@@ -330,28 +361,8 @@ class PaperEngine:
                 self.observation_sequences[observation_id] = seq
         if seq <= order.accepted_broker_seq:
             return None
-        if eligible:
-            eligible_orders = sorted(
-                (
-                    candidate
-                    for candidate in self.orders.values()
-                    if candidate.symbol == order.symbol
-                    and candidate.status not in {OrderStatus.FILLED, OrderStatus.CANCELLED}
-                    and (candidate.order_id, observation_id) not in self.observation_effects
-                    and (
-                        ask <= candidate.limit_price
-                        if candidate.side == OrderSide.BUY
-                        else bid >= candidate.limit_price
-                    )
-                ),
-                key=lambda candidate: (
-                    candidate.accepted_broker_seq,
-                    candidate.client_order_id,
-                    candidate.order_id,
-                ),
-            )
-            if eligible_orders and eligible_orders[0].order_id != order_id:
-                raise ValueError("NON_CANONICAL_OBSERVATION_ORDER")
+        if eligible and budget is not None:
+            self._assert_canonical_observation_order(order, observation_id, bid, ask)
         if not eligible:
             self.observation_effects.add((order_id, observation_id))
             return None
