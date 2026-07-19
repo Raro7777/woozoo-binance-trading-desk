@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "phase": 3,
+  "status": "UNVERIFIED",
+  "frozen_code_commit": "15c4fb7472b884b63e39dd0a26479b8020e11acd",
+  "frozen_code_tree": "dd8e7166b8d33230ca2f2053f6c82017d8a269c6",
+  "branch": "codex/phase-3-evidence",
+  "base": "main",
+  "push": {
+    "status": "PASS",
+    "remote": "origin",
+    "remote_head": "15c4fb7472b884b63e39dd0a26479b8020e11acd"
+  },
+  "draft_pr": {
+    "status": "UNVERIFIED",
+    "compare_url": "https://github.com/Raro7777/woozoo-binance-trading-desk/compare/main...codex/phase-3-evidence?expand=1",
+    "create_url": "https://github.com/Raro7777/woozoo-binance-trading-desk/pull/new/codex/phase-3-evidence",
+    "attempts": [
+      {
+        "method": "gh pr create",
+        "result": "UNAVAILABLE",
+        "reason": "GitHub CLI is not authenticated."
+      },
+      {
+        "method": "GitHub connector create pull request",
+        "result": "UNAVAILABLE",
+        "reason": "GitHub returned 403 Resource not accessible by integration."
+      }
+    ]
+  },
+  "gate_effect": "Blocked until an open Draft PR targeting main from codex/phase-3-evidence is verified."
+}
