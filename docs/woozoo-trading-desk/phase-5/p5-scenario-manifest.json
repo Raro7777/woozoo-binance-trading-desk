@@ -5,7 +5,7 @@
   "risk_input_schema_version": "woozoo.risk-input/v1",
   "risk_decision_schema_version": "woozoo.risk-decision/v1",
   "fixture_source": "tests/unit/test_risk_engine.py::risk_input",
-  "fixture_source_sha256": "c7576d2835a2f92d6821d290344ee14eb94bda1daee0dc8c8f23e7c07b37d433",
+  "fixture_source_sha256": "29a39728590aeaa8f624348c74ab239475e506a025c7893d60f150cd035daf5c",
   "risk_input_schema_sha256": "be41adc8400db7da57a21b6b1630aaf1582183a4785cbaa0d3a65ad1eb42d92f",
   "risk_decision_schema_sha256": "4c8287c8d0fddbcda1b9c2687a078d2ee477d8392f1c711d473e6b29bed3d6cd",
   "kill_switch_schema_sha256": "dc30f1f1f696d4251933a6d88e2155b0f22c6515c060c08405e4aaa7cec3a89b",
@@ -28,7 +28,7 @@
         "tests/replay/test_risk_replay.py::test_reason_message_or_recording_metadata_cannot_enter_decision_hash"
       ],
       "source_sha256": [
-        "c7576d2835a2f92d6821d290344ee14eb94bda1daee0dc8c8f23e7c07b37d433",
+        "29a39728590aeaa8f624348c74ab239475e506a025c7893d60f150cd035daf5c",
         "e4acee48a3bf51c1b1255eab1bc44abf2cf59e1e6ed1fdf9cb154c6e43ab80eb"
       ],
       "oracle": "Same complete canonical input is byte-identical across replay, locale and process identity; each bound input mutation changes risk_input_digest."
@@ -43,12 +43,84 @@
         "tests/unit/test_risk_engine.py::test_invalid_or_non_fixture_input_fails_closed_without_approval_dependency",
         "tests/unit/test_risk_engine.py::test_nested_unknowns_policy_rebinding_and_cross_snapshot_mismatch_fail_closed",
         "tests/unit/test_risk_engine.py::test_decimal_thresholds_use_unrounded_values_and_documented_comparators",
-        "tests/property/test_risk_properties.py::test_spread_and_directional_slippage_boundaries"
+        "tests/property/test_risk_properties.py::test_spread_and_directional_slippage_boundaries",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[order_notional_below]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[order_notional_equal]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[order_notional_above]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[realized_loss_below]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[realized_loss_equal]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[realized_loss_above]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[drawdown_below]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[drawdown_equal]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[drawdown_above]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[spread_below]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[spread_equal]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[spread_above]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[slippage_below]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[slippage_equal]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[slippage_above]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[btc_exposure_below]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[btc_exposure_equal]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[btc_exposure_above]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[eth_exposure_below]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[eth_exposure_equal]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[eth_exposure_above]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[portfolio_exposure_below]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[portfolio_exposure_equal]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[portfolio_exposure_above]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[sell_reduces_long]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[evidence_missing]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[data_stale]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[future_contamination]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[watermark_incomplete]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[data_invalid]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[bid_zero]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[ask_zero]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[ledger_mismatch]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[invalid_open_order_state]",
+        "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[loss_scale_edge_below]"
       ],
       "source_sha256": [
-        "c7576d2835a2f92d6821d290344ee14eb94bda1daee0dc8c8f23e7c07b37d433",
+        "29a39728590aeaa8f624348c74ab239475e506a025c7893d60f150cd035daf5c",
         "3d5e90741c120a0b85f24bf81712ba7cb1e1c4378fb1458f9e52b85af8c3c58f"
       ],
+      "boundary_cases": {
+        "order_notional_below": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[order_notional_below]",
+        "order_notional_equal": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[order_notional_equal]",
+        "order_notional_above": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[order_notional_above]",
+        "realized_loss_below": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[realized_loss_below]",
+        "realized_loss_equal": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[realized_loss_equal]",
+        "realized_loss_above": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[realized_loss_above]",
+        "drawdown_below": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[drawdown_below]",
+        "drawdown_equal": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[drawdown_equal]",
+        "drawdown_above": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[drawdown_above]",
+        "spread_below": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[spread_below]",
+        "spread_equal": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[spread_equal]",
+        "spread_above": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[spread_above]",
+        "slippage_below": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[slippage_below]",
+        "slippage_equal": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[slippage_equal]",
+        "slippage_above": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[slippage_above]",
+        "btc_exposure_below": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[btc_exposure_below]",
+        "btc_exposure_equal": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[btc_exposure_equal]",
+        "btc_exposure_above": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[btc_exposure_above]",
+        "eth_exposure_below": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[eth_exposure_below]",
+        "eth_exposure_equal": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[eth_exposure_equal]",
+        "eth_exposure_above": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[eth_exposure_above]",
+        "portfolio_exposure_below": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[portfolio_exposure_below]",
+        "portfolio_exposure_equal": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[portfolio_exposure_equal]",
+        "portfolio_exposure_above": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[portfolio_exposure_above]",
+        "sell_reduces_long": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[sell_reduces_long]",
+        "evidence_missing": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[evidence_missing]",
+        "data_stale": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[data_stale]",
+        "future_contamination": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[future_contamination]",
+        "watermark_incomplete": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[watermark_incomplete]",
+        "data_invalid": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[data_invalid]",
+        "bid_zero": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[bid_zero]",
+        "ask_zero": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[ask_zero]",
+        "ledger_mismatch": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[ledger_mismatch]",
+        "invalid_open_order_state": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[invalid_open_order_state]",
+        "loss_scale_edge_below": "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[loss_scale_edge_below]"
+      },
       "oracle": "Frozen below/equal/above Decimal limits, every fail-closed counterexample, and priority then lexical ordered reasons match the Phase 0 table."
     },
     {
@@ -57,19 +129,30 @@
       "command": "corepack pnpm test:failure",
       "artifact": "artifacts/failure/KILL-001.json",
       "test_nodes": [
-        "tests/failure/test_kill_switch_atomicity.py::test_kill_001_activation_serializes_and_cancel_batches_replay_once"
+        "tests/failure/test_kill_fault_matrix.py::test_kill_001_fault_matrix[paper_create_lock_before_activation]",
+        "tests/failure/test_kill_fault_matrix.py::test_kill_001_fault_matrix[activation_lock_before_paper_create]",
+        "tests/failure/test_kill_fault_matrix.py::test_kill_001_fault_matrix[paper_fill_lock_before_activation]",
+        "tests/failure/test_kill_fault_matrix.py::test_kill_001_fault_matrix[activation_lock_before_paper_fill]",
+        "tests/failure/test_kill_fault_matrix.py::test_kill_001_fault_matrix[one_hundred_and_one_open_orders]",
+        "tests/failure/test_kill_fault_matrix.py::test_kill_001_fault_matrix[crash_before_batch_commit]",
+        "tests/failure/test_kill_fault_matrix.py::test_kill_001_fault_matrix[crash_after_batch_commit_before_ack]",
+        "tests/failure/test_kill_fault_matrix.py::test_kill_001_fault_matrix[duplicate_activation_delivery]",
+        "tests/failure/test_kill_cancel_identity.py::test_kill_cancel_id_binds_full_activation_and_order_ids"
       ],
-      "source_sha256": ["5e1f57f7e06d85e754a923e8a56035d367c3d1ae86038fd4342be2baa3f7b7f1"],
-      "fault_schedule": [
-        "paper_create_lock_before_activation",
-        "activation_lock_before_paper_create",
-        "paper_fill_lock_before_activation",
-        "activation_lock_before_paper_fill",
-        "one_hundred_and_one_open_orders",
-        "crash_before_batch_commit",
-        "crash_after_batch_commit_before_ack",
-        "duplicate_activation_delivery"
+      "source_sha256": [
+        "5d2e9d7d2f2d7a23a84c1991fb4db5de492cb4a16877a6a13a519b61cb4d8cc5",
+        "d52c59ec96c32ca1b66508c404f726f08646a0ac0f20183d1c3e48c983a8e277"
       ],
+      "fault_cases": {
+        "paper_create_lock_before_activation": "tests/failure/test_kill_fault_matrix.py::test_kill_001_fault_matrix[paper_create_lock_before_activation]",
+        "activation_lock_before_paper_create": "tests/failure/test_kill_fault_matrix.py::test_kill_001_fault_matrix[activation_lock_before_paper_create]",
+        "paper_fill_lock_before_activation": "tests/failure/test_kill_fault_matrix.py::test_kill_001_fault_matrix[paper_fill_lock_before_activation]",
+        "activation_lock_before_paper_fill": "tests/failure/test_kill_fault_matrix.py::test_kill_001_fault_matrix[activation_lock_before_paper_fill]",
+        "one_hundred_and_one_open_orders": "tests/failure/test_kill_fault_matrix.py::test_kill_001_fault_matrix[one_hundred_and_one_open_orders]",
+        "crash_before_batch_commit": "tests/failure/test_kill_fault_matrix.py::test_kill_001_fault_matrix[crash_before_batch_commit]",
+        "crash_after_batch_commit_before_ack": "tests/failure/test_kill_fault_matrix.py::test_kill_001_fault_matrix[crash_after_batch_commit_before_ack]",
+        "duplicate_activation_delivery": "tests/failure/test_kill_fault_matrix.py::test_kill_001_fault_matrix[duplicate_activation_delivery]"
+      },
       "oracle": "Create/fill and activation serialize on one barrier; duplicate/crashed batches resume and cancel every open order with one hold, ledger and outbox effect."
     },
     {
@@ -78,10 +161,22 @@
       "command": "corepack pnpm test:safety",
       "artifact": "artifacts/safety/KILL-002.json",
       "test_nodes": [
-        "tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_has_no_automatic_ai_or_unauthenticated_recovery"
+        "tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_has_no_automatic_ai_or_unauthenticated_recovery",
+        "tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_scans_every_executable_config_and_tool_registry_for_recovery_writer",
+        "tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_attempt_keeps_postgres_active[timer]",
+        "tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_attempt_keeps_postgres_active[ai]",
+        "tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_attempt_keeps_postgres_active[process_restart]",
+        "tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_attempt_keeps_postgres_active[redis_expiry]",
+        "tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_attempt_keeps_postgres_active[unauthenticated_actor]"
       ],
-      "source_sha256": ["4d7a1fc157d4710ef9c631acc87f0592f96acf17f090894b5ff26be9bb141515"],
-      "attempt_matrix": ["timer", "ai", "process_restart", "redis_expiry", "unauthenticated_actor"],
+      "source_sha256": ["c65095a9cb7b04214effa2c0299cd8d5d6c35b70115b95dbfb5806fe61fcbec5"],
+      "attempt_cases": {
+        "timer": "tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_attempt_keeps_postgres_active[timer]",
+        "ai": "tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_attempt_keeps_postgres_active[ai]",
+        "process_restart": "tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_attempt_keeps_postgres_active[process_restart]",
+        "redis_expiry": "tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_attempt_keeps_postgres_active[redis_expiry]",
+        "unauthenticated_actor": "tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_attempt_keeps_postgres_active[unauthenticated_actor]"
+      },
       "oracle": "Timer, AI, restart and unauthenticated recovery attempts create zero OFF transition; Phase 5 contains no recovery handler or event."
     },
     {
@@ -102,11 +197,13 @@
       "artifact": "artifacts/integration/RISK-MIGRATION-001.json",
       "test_nodes": [
         "tests/integration/test_risk_postgres_persistence.py::test_risk_decision_persistence_is_atomic_unique_and_replay_stable",
-        "tests/integration/test_risk_migration_contract.py::test_risk_migration_001_closes_authority_and_barrier_boundaries"
+        "tests/integration/test_risk_postgres_persistence.py::test_risk_writer_cannot_reset_or_decrease_the_kill_barrier",
+        "tests/integration/test_risk_migration_contract.py::test_risk_migration_001_closes_authority_and_barrier_boundaries",
+        "tests/integration/test_risk_migration_contract.py::test_phase_four_to_five_to_four_to_five_migration_cycle_is_recoverable"
       ],
       "source_sha256": [
-        "1de8a827b1cb40b59c1e5eb2488097c996ca871816a03edc1eade3c201ba17e1",
-        "69564714d462dcf8fb3efdb772a21319a0d31d567001fa775e7ce094c790e643"
+        "4359f7a87467e08b88d5f5ead0aca3a1c215d386f62bd754fc89a551d0203244",
+        "dbab61e55809631d2c7a92754076e887ee3d4baae550f488ee17ae7590fbb295"
       ],
       "oracle": "Unique immutable Risk input authority, least privilege, Kill barrier locking, atomic outbox and Paper cancel saga survive migration cycle and rollback."
     },

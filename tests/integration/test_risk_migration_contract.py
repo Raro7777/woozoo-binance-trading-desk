@@ -1,8 +1,58 @@
+from __future__ import annotations
+
+from contextlib import contextmanager
+import os
 from pathlib import Path
+import subprocess
+import sys
+import time
+from typing import Iterator
+
+import psycopg
 
 
 ROOT = Path(__file__).resolve().parents[2]
 MIGRATION = ROOT / "db/migrations/versions/20260719_0005_risk_engine.py"
+DATABASE_URL = "postgresql://postgres@127.0.0.1:5433/woozoo"
+ENVIRONMENT = {"TRADING_MODE": "paper", "DATABASE_URL": DATABASE_URL}
+
+
+def run(*command: str) -> None:
+    subprocess.run(command, cwd=ROOT, check=True, env={**os.environ, **ENVIRONMENT})
+
+
+@contextmanager
+def infrastructure_lock() -> Iterator[None]:
+    path = ROOT / ".p1-integration.lock"
+    with path.open("a+b") as lock:
+        lock.seek(0)
+        lock.write(b"0")
+        lock.flush()
+        deadline = time.monotonic() + 60
+        while True:
+            try:
+                if os.name == "nt":
+                    import msvcrt
+
+                    lock.seek(0)
+                    msvcrt.locking(lock.fileno(), msvcrt.LK_NBLCK, 1)
+                else:
+                    import fcntl
+
+                    fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except OSError:
+                if time.monotonic() >= deadline:
+                    raise TimeoutError("could not acquire infrastructure lock")
+                time.sleep(0.1)
+        try:
+            yield
+        finally:
+            if os.name == "nt":
+                lock.seek(0)
+                msvcrt.locking(lock.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
 
 
 def test_risk_migration_001_closes_authority_and_barrier_boundaries() -> None:
@@ -19,6 +69,8 @@ def test_risk_migration_001_closes_authority_and_barrier_boundaries() -> None:
         "FOR SHARE",
         "SECURITY DEFINER SET search_path = pg_catalog, public",
         "REVOKE ALL ON FUNCTION paper_lock_kill_barrier() FROM PUBLIC",
+        "enforce_kill_state_activation_only",
+        "Kill state permits monotonic activation only",
         "paper_kill_inbox",
         "paper_kill_cancel_batches",
         "paper_kill_cancel_items",
@@ -32,3 +84,45 @@ def test_risk_migration_001_closes_authority_and_barrier_boundaries() -> None:
     assert "RECOVERY" not in text
     for forbidden in ("api_key", "signature", "testnet", "mainnet", "approval"):
         assert forbidden not in text.lower()
+
+
+def test_phase_four_to_five_to_four_to_five_migration_cycle_is_recoverable() -> None:
+    with infrastructure_lock():
+        run("docker", "compose", "up", "-d", "--wait", "postgres")
+        try:
+            run(sys.executable, "-m", "alembic", "downgrade", "20260719_0004")
+            with psycopg.connect(DATABASE_URL) as connection:
+                assert connection.execute("SELECT to_regclass('paper_orders')").fetchone() == (
+                    "paper_orders",
+                )
+                assert connection.execute("SELECT to_regclass('kill_switch_state')").fetchone() == (
+                    None,
+                )
+
+            run(sys.executable, "-m", "alembic", "upgrade", "20260719_0005")
+            with psycopg.connect(DATABASE_URL) as connection:
+                assert connection.execute(
+                    "SELECT active,version FROM kill_switch_state WHERE scope='paper-global'"
+                ).fetchone() == (False, 0)
+
+            run(sys.executable, "-m", "alembic", "downgrade", "20260719_0004")
+            with psycopg.connect(DATABASE_URL) as connection:
+                assert connection.execute("SELECT to_regclass('kill_switch_state')").fetchone() == (
+                    None,
+                )
+                assert connection.execute(
+                    "SELECT count(*) FROM outbox_events WHERE payload->>'producer'='risk-engine'"
+                ).fetchone() == (0,)
+
+            run(sys.executable, "-m", "alembic", "upgrade", "20260719_0005")
+            with psycopg.connect(DATABASE_URL) as connection:
+                assert connection.execute(
+                    "SELECT active,version FROM kill_switch_state WHERE scope='paper-global'"
+                ).fetchone() == (False, 0)
+                assert connection.execute(
+                    "SELECT has_function_privilege('woozoo_paper_engine',"
+                    "'paper_lock_kill_barrier()','EXECUTE')"
+                ).fetchone() == (True,)
+        finally:
+            run(sys.executable, "-m", "alembic", "upgrade", "head")
+            run("docker", "compose", "stop", "postgres")

@@ -8,6 +8,7 @@ from decimal import Decimal
 from enum import StrEnum
 import hashlib
 import json
+from collections.abc import Callable
 
 import psycopg
 from psycopg.types.json import Jsonb
@@ -180,6 +181,17 @@ def _engine_id(kind: str, *parts: object) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
+def kill_cancel_id(activation_event_id: str, order_id: str) -> str:
+    """Bind the complete Kill activation and Paper order identities."""
+    return _digest(
+        {
+            "schema_version": "woozoo.paper-kill-cancel-id/v1",
+            "activation_event_id": activation_event_id,
+            "order_id": order_id,
+        }
+    )
+
+
 def _validate_broker_input(item: BrokerInputWrite) -> None:
     observation_fields = (item.symbol, item.best_bid, item.best_ask, item.available_quantity)
     if item.source_kind == "TEST_COMMAND":
@@ -322,7 +334,11 @@ class PostgresPaperStore:
             raise RuntimeError(f"INJECTED_PAPER_FAILURE:{stage.value}")
 
     def commit(
-        self, write: AtomicPaperWrite, *, _fail_after: PersistenceStage | None = None
+        self,
+        write: AtomicPaperWrite,
+        *,
+        _fail_after: PersistenceStage | None = None,
+        _after_barrier_acquired: Callable[[], None] | None = None,
     ) -> CommitResult:
         with psycopg.connect(self.database_url) as connection:
             for item in write.broker_inputs:
@@ -433,6 +449,8 @@ class PostgresPaperStore:
                     raise RuntimeError("PAPER_KILL_SWITCH_ACTIVE")
                 if barrier[1] != write.kill_switch_version:
                     raise RuntimeError("PAPER_KILL_VERSION_MISMATCH")
+                if _after_barrier_acquired is not None:
+                    _after_barrier_acquired()
             reconciliation = connection.execute(
                 "SELECT status FROM paper_reconciliation_checkpoints WHERE account_id=%s "
                 "ORDER BY created_at DESC,checkpoint_id DESC LIMIT 1",
@@ -905,7 +923,7 @@ class PostgresPaperStore:
                     "WHERE order_id=%s",
                     (new_version, order_id),
                 )
-                cancel_id = f"kill:{activation_event_id[:16]}:{order_id[:16]}"
+                cancel_id = kill_cancel_id(activation_event_id, order_id)
                 connection.execute(
                     "INSERT INTO paper_kill_cancel_items"
                     "(activation_event_id,order_id,batch_key,paper_account_id,cancel_id,"

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from copy import deepcopy
+from dataclasses import replace
 from datetime import UTC, datetime
 import os
 from pathlib import Path
@@ -13,14 +14,128 @@ from typing import Iterator
 import psycopg
 import pytest
 
-from risk_engine import PostgresRiskStore, RiskPersistenceStage, evaluate_risk
-from test_risk_engine import risk_input
+from risk_engine import (
+    KillActivation,
+    PostgresKillSwitch,
+    PostgresRiskStore,
+    RiskPersistenceStage,
+    canonical_hash,
+    evaluate_risk,
+)
 
 
 ROOT = Path(__file__).resolve().parents[2]
 DATABASE_URL = "postgresql://postgres@127.0.0.1:5433/woozoo"
+RISK_WRITER_URL = "postgresql://woozoo_risk_engine@127.0.0.1:5433/woozoo"
 ENVIRONMENT = {"TRADING_MODE": "paper", "DATABASE_URL": DATABASE_URL}
 NOW = datetime(2026, 7, 19, 13, 0, tzinfo=UTC)
+
+
+def risk_input() -> dict[str, object]:
+    proposal_payload = {
+        "schema_version": "woozoo.trade-proposal/v1",
+        "proposal_id": "fixture-proposal-persistence",
+        "symbol": "BTCUSDT",
+        "side": "BUY",
+    }
+    portfolio = {
+        "snapshot_id": "portfolio-persistence",
+        "available_quote": "10000",
+        "held_quote": "0",
+        "fee_liabilities": "0",
+        "positions": {
+            "BTCUSDT": {"available": "0", "held": "0", "midpoint": "100"},
+            "ETHUSDT": {"available": "0", "held": "0", "midpoint": "50"},
+        },
+        "fifo_lots": [],
+        "realized_pnl_24h": "0",
+        "high_water_equity": "10000",
+        "open_orders": [],
+    }
+    preview = {
+        "symbol": "BTCUSDT",
+        "side": "BUY",
+        "order_type": "LIMIT",
+        "time_in_force": "GTC",
+        "quantity": "0.1",
+        "limit_price": "100",
+        "worst_case_fee": "0.01",
+        "worst_case_hold": "10.01",
+        "worst_case_notional": "10.01",
+        "best_bid": "99.99",
+        "best_ask": "100",
+        "expected_slippage_inputs": {"method": "limit-vs-book-v1"},
+    }
+    policy = {
+        "version": "woozoo.risk-policy/v1",
+        "calculators": {
+            "decimal": {"name": "numeric-38-18", "version": "1", "hash": "1" * 64},
+            "fee": {"name": "quote-fee", "version": "1", "hash": "2" * 64},
+            "valuation": {"name": "midpoint", "version": "1", "hash": "3" * 64},
+            "spread": {"name": "midpoint-spread-bps", "version": "1", "hash": "4" * 64},
+            "slippage": {"name": "limit-vs-book-bps", "version": "1", "hash": "5" * 64},
+        },
+        "limits": {
+            "symbols": ["BTCUSDT", "ETHUSDT"],
+            "order_types": ["LIMIT"],
+            "sides": ["BUY", "SELL"],
+            "time_in_force": ["GTC"],
+            "max_order_notional_ratio": "0.0025",
+            "symbol_exposure_ratios": {"BTCUSDT": "0.15", "ETHUSDT": "0.10"},
+            "max_portfolio_exposure_ratio": "0.25",
+            "realized_loss_ratio": "0.01",
+            "drawdown_ratio": "0.05",
+            "max_spread_bps": "25",
+            "max_expected_slippage_bps": "25",
+            "duplicate_window_seconds": 900,
+        },
+    }
+    exposure = {"snapshot_id": "exposure-persistence", "open_order_count": 0}
+    reconciliation = {
+        "checkpoint_id": "recon-persistence",
+        "health": "HEALTHY",
+        "mismatch_codes": [],
+    }
+    return {
+        "risk_input_schema_version": "woozoo.risk-input/v1",
+        "namespace": "test",
+        "proposal": {
+            "fixture_contract": "p6-trade-proposal-consumer/v1",
+            "schema_version": "woozoo.trade-proposal/v1",
+            "payload": proposal_payload,
+            "proposal_hash": canonical_hash(proposal_payload),
+        },
+        "portfolio": {**portfolio, "snapshot_hash": canonical_hash(portfolio)},
+        "data": {
+            "evidence_id": "evidence-persistence",
+            "evidence_hash": "a" * 64,
+            "as_of": "2026-07-19T00:00:00Z",
+            "knowledge_cutoff": "2026-07-19T00:00:00Z",
+            "freshness": "FRESH",
+            "quality": "HEALTHY",
+            "future_contamination": False,
+            "watermark_complete": True,
+        },
+        "order_preview": {**preview, "paper_order_preview_hash": canonical_hash(preview)},
+        "policy": {**policy, "policy_hash": canonical_hash(policy)},
+        "kill_switch": {"active": False, "version": 0, "event_id": None},
+        "reconciliation": {
+            **reconciliation,
+            "checkpoint_hash": canonical_hash(reconciliation),
+        },
+        "decision_clock": {
+            "decision_as_of": "2026-07-19T00:00:00Z",
+            "source": "fixture-clock",
+            "version": "1",
+        },
+        "duplicate": {
+            "key": "BTCUSDT:BUY",
+            "window_seconds": 900,
+            "proposal_seen": False,
+            "order_intent_seen": False,
+        },
+        "exposure_snapshot": {**exposure, "snapshot_hash": canonical_hash(exposure)},
+    }
 
 
 def run(*command: str) -> None:
@@ -111,3 +226,62 @@ def test_risk_decision_persistence_is_atomic_unique_and_replay_stable() -> None:
                 "UPDATE risk_decisions SET verdict='DENIED' WHERE decision_id=%s",
                 (first.decision_id,),
             )
+
+    active_input = risk_input()
+    active_input["kill_switch"] = {
+        "active": True,
+        "version": 1,
+        "event_id": "c" * 64,
+    }
+    denied = evaluate_risk(active_input)
+    forged_hash = canonical_hash(
+        {
+            "decision_schema_version": denied.decision_schema_version,
+            "risk_input_digest": denied.risk_input_digest,
+            "verdict": "ALLOWED",
+            "ordered_reason_codes": ["RISK_ALLOWED"],
+        }
+    )
+    forged = replace(
+        denied,
+        verdict="ALLOWED",
+        ordered_reason_codes=("RISK_ALLOWED",),
+        primary_reason_code="RISK_ALLOWED",
+        decision_hash=forged_hash,
+    )
+    with pytest.raises(ValueError, match="FORGED_RISK_DECISION"):
+        store.persist_decision(active_input, forged, recorded_at=NOW)
+
+
+def test_risk_writer_cannot_reset_or_decrease_the_kill_barrier() -> None:
+    activation = PostgresKillSwitch(DATABASE_URL).activate(
+        KillActivation(
+            request_id="db-monotonic-kill",
+            expected_version=0,
+            trigger_kind="MANUAL",
+            actor_id="operator:db-safety-test",
+            reason_code="MANUAL_SAFETY_STOP",
+            reason="verify direct writer reset is rejected",
+            observed_at=NOW,
+            context_digest="d" * 64,
+        )
+    )
+    assert activation.version == 1
+
+    with psycopg.connect(RISK_WRITER_URL) as connection:
+        with pytest.raises(psycopg.errors.RaiseException, match="monotonic activation only"):
+            connection.execute(
+                "UPDATE kill_switch_state SET active=false,version=0,"
+                "last_activation_event_id=NULL WHERE scope='paper-global'"
+            )
+        connection.rollback()
+        with pytest.raises(psycopg.errors.RaiseException, match="monotonic activation only"):
+            connection.execute(
+                "UPDATE kill_switch_state SET version=version-1 WHERE scope='paper-global'"
+            )
+
+    with psycopg.connect(DATABASE_URL) as connection:
+        assert connection.execute(
+            "SELECT active,version,last_activation_event_id FROM kill_switch_state "
+            "WHERE scope='paper-global'"
+        ).fetchone() == (True, 1, activation.activation_event_id)

@@ -10,6 +10,26 @@ const deterministicEnvironment = { ...process.env, TZ: "UTC", PYTHONHASHSEED: "0
 const sourceRevision = "binance-spot-api-docs@29c227d84058dd2be3fe3b42ab368d1d1ce910e5";
 const policyVersion = "woozoo.market.collector-policy/v1";
 const evidenceRecipeVersion = "woozoo.evidence.closed-candles-approved-features/v1";
+const riskBoundaryCases = [
+  "order_notional_below", "order_notional_equal", "order_notional_above",
+  "realized_loss_below", "realized_loss_equal", "realized_loss_above",
+  "drawdown_below", "drawdown_equal", "drawdown_above",
+  "spread_below", "spread_equal", "spread_above",
+  "slippage_below", "slippage_equal", "slippage_above",
+  "btc_exposure_below", "btc_exposure_equal", "btc_exposure_above",
+  "eth_exposure_below", "eth_exposure_equal", "eth_exposure_above",
+  "portfolio_exposure_below", "portfolio_exposure_equal", "portfolio_exposure_above",
+  "sell_reduces_long", "evidence_missing", "data_stale", "future_contamination",
+  "watermark_incomplete", "data_invalid", "bid_zero", "ask_zero", "ledger_mismatch",
+  "invalid_open_order_state", "loss_scale_edge_below",
+];
+const killFaults = [
+  "paper_create_lock_before_activation", "activation_lock_before_paper_create",
+  "paper_fill_lock_before_activation", "activation_lock_before_paper_fill",
+  "one_hundred_and_one_open_orders", "crash_before_batch_commit",
+  "crash_after_batch_commit_before_ack", "duplicate_activation_delivery",
+];
+const killAttempts = ["timer", "ai", "process_restart", "redis_expiry", "unauthenticated_actor"];
 
 function run(command, args) {
   const result = process.platform === "win32" && [pnpm, "corepack"].includes(command)
@@ -78,11 +98,27 @@ async function riskDataScenario(area, id, nodeIds) {
   if (JSON.stringify(scenario.source_sha256) !== JSON.stringify(sourceDigests)) {
     throw new Error(`${id} source digest contract is stale`);
   }
-  if (id === "KILL-001" && scenario.fault_schedule?.length !== 8) {
-    throw new Error("KILL-001 must bind all eight frozen interleaving and replay faults");
+  const expectedRiskCases = Object.fromEntries(riskBoundaryCases.map((name) => [
+    name, `tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[${name}]`,
+  ]));
+  const expectedKillFaults = Object.fromEntries(killFaults.map((name) => [
+    name, `tests/failure/test_kill_fault_matrix.py::test_kill_001_fault_matrix[${name}]`,
+  ]));
+  const expectedKillAttempts = Object.fromEntries(killAttempts.map((name) => [
+    name, `tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_attempt_keeps_postgres_active[${name}]`,
+  ]));
+  if (id === "RISK-002" && JSON.stringify(scenario.boundary_cases) !== JSON.stringify(expectedRiskCases)) {
+    throw new Error("RISK-002 must bind the complete frozen boundary matrix to exact cases");
   }
-  if (id === "KILL-002" && scenario.attempt_matrix?.length !== 5) {
-    throw new Error("KILL-002 must bind every forbidden recovery producer");
+  if (
+    id === "KILL-001" || id === "KILL-002"
+  ) {
+    const [actual, expected, label] = id === "KILL-001"
+      ? [scenario.fault_cases, expectedKillFaults, "fault"]
+      : [scenario.attempt_cases, expectedKillAttempts, "attempt"];
+    if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+      throw new Error(`${id} must bind every frozen ${label} id to its exact executed case`);
+    }
   }
   await dataScenario(area, id, nodeIds, {
     ...(await riskMetadata()),
@@ -221,6 +257,7 @@ const actions = {
       "tests/unit/test_risk_engine.py::test_nested_unknowns_policy_rebinding_and_cross_snapshot_mismatch_fail_closed",
       "tests/unit/test_risk_engine.py::test_decimal_thresholds_use_unrounded_values_and_documented_comparators",
       "tests/property/test_risk_properties.py::test_spread_and_directional_slippage_boundaries",
+      ...riskBoundaryCases.map((name) => `tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[${name}]`),
     ]);
   },
   "test:contracts": async () => {
@@ -248,6 +285,8 @@ const actions = {
     ]);
     await riskDataScenario("safety", "KILL-002", [
       "tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_has_no_automatic_ai_or_unauthenticated_recovery",
+      "tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_scans_every_executable_config_and_tool_registry_for_recovery_writer",
+      ...killAttempts.map((name) => `tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_attempt_keeps_postgres_active[${name}]`),
     ]);
   },
   "test:integration": async () => {
@@ -274,7 +313,9 @@ const actions = {
     ], await paperMetadata());
     await riskDataScenario("integration", "RISK-MIGRATION-001", [
       "tests/integration/test_risk_postgres_persistence.py::test_risk_decision_persistence_is_atomic_unique_and_replay_stable",
+      "tests/integration/test_risk_postgres_persistence.py::test_risk_writer_cannot_reset_or_decrease_the_kill_barrier",
       "tests/integration/test_risk_migration_contract.py::test_risk_migration_001_closes_authority_and_barrier_boundaries",
+      "tests/integration/test_risk_migration_contract.py::test_phase_four_to_five_to_four_to_five_migration_cycle_is_recoverable",
     ]);
   },
   "test:replay": async () => {
@@ -364,7 +405,8 @@ const actions = {
       "tests/failure/test_paper_postgres_atomicity.py::test_injected_failure_rolls_back_every_authoritative_row[outbox]",
     ], await paperMetadata());
     await riskDataScenario("failure", "KILL-001", [
-      "tests/failure/test_kill_switch_atomicity.py::test_kill_001_activation_serializes_and_cancel_batches_replay_once",
+      ...killFaults.map((name) => `tests/failure/test_kill_fault_matrix.py::test_kill_001_fault_matrix[${name}]`),
+      "tests/failure/test_kill_cancel_identity.py::test_kill_cancel_id_binds_full_activation_and_order_ids",
     ]);
   },
   "test:property": async () => {

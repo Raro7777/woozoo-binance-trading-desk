@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from datetime import datetime
-from decimal import Decimal, InvalidOperation, ROUND_DOWN, localcontext
+from decimal import Decimal, InvalidOperation, localcontext
 from hashlib import sha256
 import json
 import re
@@ -25,7 +25,6 @@ POLICY_VERSION = "woozoo.risk-policy/v1"
 _DECIMAL = re.compile(r"^(0|[1-9][0-9]*)(\.[0-9]+)?$")
 _SIGNED_DECIMAL = re.compile(r"^-?(0|[1-9][0-9]*)(\.[0-9]+)?$")
 _HASH = re.compile(r"^[0-9a-f]{64}$")
-_NUMERIC_SCALE = Decimal("0.000000000000000001")
 
 REASON_PRIORITY: dict[str, int] = {
     "RISK_POLICY_MISSING": 10,
@@ -197,18 +196,10 @@ def _sum(values: Sequence[Decimal]) -> Decimal:
 
 
 def _at_or_above_ratio(amount: Decimal, denominator: Decimal, threshold: Decimal) -> bool:
-    """Conservatively compare a NUMERIC(38,18) amount to an inclusive ratio limit.
-
-    The threshold amount can contain more than 18 fractional digits even though
-    every authoritative stored amount is scale-18. Explicit ROUND_DOWN makes the
-    boundary deterministic and independent of the ambient Decimal context.
-    """
+    """Compare an amount to an inclusive ratio without intermediate rounding."""
     if denominator <= 0:
         raise ValueError("ratio denominator must be positive")
-    with localcontext() as context:
-        context.prec = 80
-        threshold_amount = (denominator * threshold).quantize(_NUMERIC_SCALE, rounding=ROUND_DOWN)
-    return amount >= threshold_amount
+    return amount >= _product(denominator, threshold)
 
 
 def _finish(digest: str, reasons: set[str]) -> RiskDecision:
@@ -649,17 +640,25 @@ def evaluate_risk(risk_input: object) -> RiskDecision:
                 },
             ):
                 raise ValueError("invalid open order")
-            if open_order["side"] == "BUY" and open_order["status"] in (
-                "OPEN",
-                "PARTIALLY_FILLED",
+            if (
+                not isinstance(open_order["client_order_id"], str)
+                or not 1 <= len(open_order["client_order_id"]) <= 128
+                or open_order["symbol"] not in ("BTCUSDT", "ETHUSDT")
+                or open_order["side"] not in ("BUY", "SELL")
+                or open_order["status"] not in ("OPEN", "PARTIALLY_FILLED")
+                or not isinstance(open_order["accepted_broker_seq"], int)
+                or isinstance(open_order["accepted_broker_seq"], bool)
+                or open_order["accepted_broker_seq"] < 1
             ):
+                raise ValueError("invalid open-order identity")
+            remaining_quantity = _decimal(open_order["remaining_quantity"])
+            open_limit_price = _decimal(open_order["limit_price"])
+            remaining_fee = _decimal(open_order["remaining_worst_case_quote_fee"])
+            if remaining_quantity <= 0 or open_limit_price <= 0:
+                raise ValueError("invalid open-order amount")
+            if open_order["side"] == "BUY":
                 open_symbol = open_order["symbol"]
-                if open_symbol not in open_buy_commitments:
-                    raise ValueError("invalid open-order symbol")
-                commitment = _product(
-                    _decimal(open_order["remaining_quantity"]),
-                    _decimal(open_order["limit_price"]),
-                ) + _decimal(open_order["remaining_worst_case_quote_fee"])
+                commitment = _product(remaining_quantity, open_limit_price) + remaining_fee
                 open_buy_commitments[open_symbol] += commitment
     except (KeyError, ValueError):
         return _finish(digest, reasons | {"INPUT_SCHEMA_INVALID"})

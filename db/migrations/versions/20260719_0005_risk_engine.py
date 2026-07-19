@@ -209,6 +209,31 @@ def upgrade() -> None:
         VALUES ('paper-global',false,0,NULL)
     """)
     op.execute("""
+        CREATE FUNCTION enforce_kill_state_activation_only() RETURNS trigger AS $$
+        BEGIN
+          IF OLD.scope<>'paper-global' OR OLD.active OR OLD.version<>0
+             OR NEW.scope<>OLD.scope OR NEW.active IS DISTINCT FROM true
+             OR NEW.version<>OLD.version+1 OR NEW.last_activation_event_id IS NULL
+             OR NOT EXISTS (
+               SELECT 1 FROM kill_switch_events event
+               WHERE event.activation_event_id=NEW.last_activation_event_id
+                 AND event.scope=NEW.scope
+                 AND event.prior_version=OLD.version
+                 AND event.new_version=NEW.version)
+          THEN
+            RAISE EXCEPTION 'Kill state permits monotonic activation only';
+          END IF;
+          RETURN NEW;
+        END;
+        $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public
+    """)
+    op.execute("REVOKE ALL ON FUNCTION enforce_kill_state_activation_only() FROM PUBLIC")
+    op.execute("""
+        CREATE TRIGGER kill_switch_state_activation_only
+        BEFORE UPDATE ON kill_switch_state FOR EACH ROW
+        EXECUTE FUNCTION enforce_kill_state_activation_only()
+    """)
+    op.execute("""
         CREATE FUNCTION paper_lock_kill_barrier()
         RETURNS TABLE(active boolean, version bigint, last_activation_event_id varchar) AS $$
           SELECT state.active,state.version,state.last_activation_event_id
@@ -403,6 +428,7 @@ def downgrade() -> None:
         "DELETE FROM outbox_events WHERE event_id IN (SELECT event_id FROM phase5_outbox_cleanup)"
     )
     op.execute("DROP TABLE phase5_outbox_cleanup")
+    op.execute("DROP FUNCTION enforce_kill_state_activation_only()")
     # Alembic may continue directly into the Phase 4 downgrade in the same
     # transaction. Drain deferred outbox consistency triggers before that
     # migration alters the shared outbox table.

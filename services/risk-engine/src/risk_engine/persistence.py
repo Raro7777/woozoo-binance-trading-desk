@@ -12,6 +12,7 @@ from psycopg.types.json import Jsonb
 
 from platform_core import canonical_hash
 
+from .engine import evaluate_risk
 from .models import RiskDecision
 
 
@@ -69,6 +70,9 @@ class PostgresRiskStore:
     ) -> PersistedRiskDecision:
         if recorded_at.tzinfo is None:
             raise ValueError("RECORDED_AT_MUST_BE_AWARE")
+        authoritative_decision = evaluate_risk(risk_input)
+        if authoritative_decision != decision:
+            raise ValueError("FORGED_RISK_DECISION")
         if canonical_hash(risk_input) != decision.risk_input_digest:
             raise ValueError("RISK_INPUT_DIGEST_MISMATCH")
         expected_decision_hash = canonical_hash(
