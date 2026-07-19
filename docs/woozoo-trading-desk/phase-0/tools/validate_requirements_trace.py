@@ -56,7 +56,7 @@ POLICY_DECISION_PACKAGE = "docs/woozoo-trading-desk/phase-0-decision-package.md"
 # These digests are independently reviewed authority, not candidate-controlled
 # bookkeeping. Updating either requires a deliberate policy-document review and
 # validator change; changing the manifest alongside a policy document is denied.
-AUTHORITATIVE_POLICY_APPROVAL_RECORD_SHA256 = "b81e6418d41653667bbf05a2bcf9cd85964ee969a77300eb003f6fdfce3396d7"
+AUTHORITATIVE_POLICY_APPROVAL_RECORD_SHA256 = "2c8a1d68d73c8a217db4d0e93aa74c5c7a05e092bc6f290c9f78fb107cb68080"
 AUTHORITATIVE_POLICY_DECISION_PACKAGE_SHA256 = "0f0dd9e04b856c39b9ac6e0d778d4529e179eb15c2b6c2ed3240e4610849f4f0"
 REVIEWED_POLICY_RESOLUTION_MAP = {
     "REQ-AI-007": "DP-D03",

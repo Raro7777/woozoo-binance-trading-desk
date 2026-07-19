@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "phase": 0,
+  "status": "PASS",
+  "bootstrap_commit": "03369ceebc84da904bf6cab6818154f96670dc43",
+  "phase_commit": {
+    "sha": "d2e022fc17afea8bde05f220ddf1950a51a39349",
+    "subject": "docs(phase-0): freeze Woozoo design package",
+    "conventional_commit": true,
+    "branch": "codex/phase-0-design",
+    "pushed": true
+  },
+  "draft_pull_request": {
+    "number": 1,
+    "url": "https://github.com/Raro7777/woozoo-binance-trading-desk/pull/1",
+    "base": "main",
+    "head": "codex/phase-0-design",
+    "draft": true
+  },
+  "scope_assertion": "The main bootstrap commit contains an empty tree; Phase 0 content is only on the phase branch and Draft PR."
+}

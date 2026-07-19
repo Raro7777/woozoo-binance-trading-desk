@@ -31,6 +31,13 @@ Results: `TRACE_VALIDATION=PASS requirements=123 aliases=8 targets=77`; acceptan
 - Session, CSRF, Risk, approval, authorization, Paper, and Kill production routes activate together only in Phase 7. Phase 5 is schema/RED and Phase 6 is fixture/test namespace only.
 - Exposure and single-order maximums deny only when strictly exceeded; loss and drawdown deny at equality. Risk reason codes are closed and deterministically ordered before hashing.
 
+## Git gate
+
+- Empty-tree repository bootstrap: `03369ceebc84da904bf6cab6818154f96670dc43` on `main`.
+- Phase package commit: `d2e022f` (`docs(phase-0): freeze Woozoo design package`) on `codex/phase-0-design`.
+- Draft PR: [#1](https://github.com/Raro7777/woozoo-binance-trading-desk/pull/1), targeting `main`.
+- The machine had no personal Git identity configured, so this repository uses the local, non-personal identity `Codex <codex@users.noreply.github.com>` for these commits.
+
 ## Next phase reference
 
 Do not create Phase 1 files until the user explicitly approves the exact SHA-256 of `p0-acceptance-evidence-manifest.json`, all Git gate evidence is present, and `phase-state.json` is updated atomically with that approval.

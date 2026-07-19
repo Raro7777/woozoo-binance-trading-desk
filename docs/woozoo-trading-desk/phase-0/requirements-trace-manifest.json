@@ -9,7 +9,7 @@
     "status": "POLICY_APPROVED_NOT_ACCEPTANCE_PASS",
     "approval_id": "P0-POLICY-01",
     "approval_record": "docs/woozoo-trading-desk/phase-0/phase-0-approval-record.md",
-    "approval_record_sha256": "b81e6418d41653667bbf05a2bcf9cd85964ee969a77300eb003f6fdfce3396d7",
+    "approval_record_sha256": "2c8a1d68d73c8a217db4d0e93aa74c5c7a05e092bc6f290c9f78fb107cb68080",
     "decision_package": "docs/woozoo-trading-desk/phase-0-decision-package.md",
     "decision_package_sha256": "0f0dd9e04b856c39b9ac6e0d778d4529e179eb15c2b6c2ed3240e4610849f4f0",
     "resolved_requirement_ids": [
