@@ -28,6 +28,7 @@ testpaths = ["tests"]
 [tool.ruff]
 target-version = "py313"
 line-length = 100
+extend-exclude = ["packages/python/platform-core/src/platform_core/generated_contracts.py"]
 
 [tool.mypy]
 python_version = "3.13"
