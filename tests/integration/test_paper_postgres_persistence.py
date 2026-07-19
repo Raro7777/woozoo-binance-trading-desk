@@ -1417,6 +1417,42 @@ def test_restart_completes_shared_observation_for_second_order_once() -> None:
         store.commit(younger_fill)
 
 
+def test_hydrated_engine_ignores_observation_older_than_order_acceptance() -> None:
+    initial = complete_write(suffix="hydrated-old-observation")
+    store = PostgresPaperStore(PAPER_WRITER_URL)
+    store.commit(initial)
+    opened, _ = second_order_on_shared_observation(initial)
+    command_seq = initial.broker_inputs[1].broker_seq + 1
+    opened = replace(
+        opened,
+        receipt=replace(opened.receipt, broker_seq=command_seq),
+        broker_inputs=(replace(opened.broker_inputs[0], broker_seq=command_seq),),
+        balances=(BalanceWrite("USDT", Decimal("49.85"), Decimal("100.1"), 2),),
+        order=replace(opened.order, accepted_broker_seq=command_seq),
+    )
+    store.commit(opened)
+
+    hydrated = store.hydrate_engine(initial.account_id)
+    prior_budget = hydrated.observation_budgets[initial.broker_inputs[1].source_key]
+    prior_seq = hydrated.broker_seq
+    assert (
+        hydrated.apply_book_observation(
+            order_id=opened.order.order_id,
+            observation_id=initial.broker_inputs[1].source_key,
+            best_bid_text="99",
+            best_ask_text="100",
+            displayed_quantity_text="0.05",
+        )
+        is None
+    )
+    assert (
+        opened.order.order_id,
+        initial.broker_inputs[1].source_key,
+    ) not in hydrated.observation_effects
+    assert hydrated.observation_budgets[initial.broker_inputs[1].source_key] == prior_budget
+    assert hydrated.broker_seq == prior_seq
+
+
 def test_sell_fill_binds_fifo_basis_and_exact_ledger_amounts() -> None:
     initial = complete_write(suffix="sell-exact")
     store = PostgresPaperStore(PAPER_WRITER_URL)
@@ -1499,6 +1535,286 @@ def test_sell_fill_binds_fifo_basis_and_exact_ledger_amounts() -> None:
         store.commit(bad_fill)
 
 
+def test_shared_sell_observation_uses_canonical_sale_order_for_fifo_basis() -> None:
+    initial = complete_write(suffix="shared-sell-fifo")
+    store = PostgresPaperStore(PAPER_WRITER_URL)
+    store.commit(initial)
+    store.commit(cancel_write(initial))
+
+    second_buy_open, second_buy_fill = second_order_on_shared_observation(initial)
+    second_buy_command_seq = initial.order.accepted_broker_seq + 3
+    second_buy_open = replace(
+        second_buy_open,
+        receipt=replace(second_buy_open.receipt, broker_seq=second_buy_command_seq),
+        broker_inputs=(
+            replace(second_buy_open.broker_inputs[0], broker_seq=second_buy_command_seq),
+        ),
+        balances=(BalanceWrite("USDT", Decimal("94.895"), Decimal("55.055"), 3),),
+        order=replace(
+            second_buy_open.order,
+            limit_price=Decimal("11000"),
+            held_amount=Decimal("55.055"),
+            accepted_broker_seq=second_buy_command_seq,
+        ),
+        journals=(
+            replace(
+                second_buy_open.journals[0],
+                entries=(
+                    LedgerEntry("paper.held", "USDT", Decimal("55.055"), Decimal(0)),
+                    LedgerEntry("paper.available", "USDT", Decimal(0), Decimal("55.055")),
+                ),
+            ),
+        ),
+    )
+    second_buy_book_seq = second_buy_command_seq + 1
+    second_buy_source = replace(
+        second_buy_fill.broker_inputs[0],
+        broker_seq=second_buy_book_seq,
+        source_key="book:shared-sell-second-buy",
+    )
+    second_buy_fill = replace(
+        second_buy_fill,
+        broker_inputs=(second_buy_source,),
+        balances=(
+            BalanceWrite("USDT", Decimal("94.895"), Decimal(0), 4),
+            BalanceWrite("BTC", Decimal("0.01"), Decimal(0), 3),
+        ),
+        order=replace(
+            second_buy_fill.order,
+            limit_price=Decimal("11000"),
+            accepted_broker_seq=second_buy_command_seq,
+        ),
+        order_events=(
+            replace(second_buy_fill.order_events[0], source_key=second_buy_source.source_key),
+        ),
+        fills=(
+            replace(
+                second_buy_fill.fills[0],
+                observation_id=second_buy_source.source_key,
+                broker_seq=second_buy_book_seq,
+                price=Decimal("11000"),
+                fee_amount=Decimal("0.055"),
+            ),
+        ),
+        lots=(replace(second_buy_fill.lots[0], quote_cost=Decimal("55.055")),),
+        journals=(
+            replace(
+                second_buy_fill.journals[0],
+                entries=(
+                    LedgerEntry("paper.asset", "BTC", Decimal("0.005"), Decimal(0)),
+                    LedgerEntry("exchange.clearing", "BTC", Decimal(0), Decimal("0.005")),
+                    LedgerEntry("exchange.clearing", "USDT", Decimal("55"), Decimal(0)),
+                    LedgerEntry("paper.fee", "USDT", Decimal("0.055"), Decimal(0)),
+                    LedgerEntry("paper.held", "USDT", Decimal(0), Decimal("55.055")),
+                ),
+            ),
+            replace(
+                second_buy_fill.journals[1],
+                entries=(
+                    LedgerEntry("paper.inventory-basis", "USDT_VAL", Decimal("55.055"), Decimal(0)),
+                    LedgerEntry(
+                        "paper.acquisition-value", "USDT_VAL", Decimal(0), Decimal("55.055")
+                    ),
+                ),
+            ),
+        ),
+    )
+    store.commit(second_buy_open)
+    store.commit(second_buy_fill)
+
+    first_open, _ = sell_order_after_cancel(initial)
+    first_command_seq = second_buy_book_seq + 1
+    first_open = replace(
+        first_open,
+        receipt=replace(first_open.receipt, broker_seq=first_command_seq),
+        broker_inputs=(replace(first_open.broker_inputs[0], broker_seq=first_command_seq),),
+        balances=(BalanceWrite("BTC", Decimal("0.007"), Decimal("0.003"), 4),),
+        order=replace(
+            first_open.order,
+            quantity=Decimal("0.003"),
+            held_amount=Decimal("0.003"),
+            accepted_broker_seq=first_command_seq,
+        ),
+        journals=(
+            replace(
+                first_open.journals[0],
+                entries=(
+                    LedgerEntry("paper.held", "BTC", Decimal("0.003"), Decimal(0)),
+                    LedgerEntry("paper.available", "BTC", Decimal(0), Decimal("0.003")),
+                ),
+            ),
+        ),
+    )
+    shared_source_key = "book:shared-sell-fifo:sales"
+    first_fill_id = engine_id("fill", first_open.order.order_id, shared_source_key)
+    second_order_id = next(
+        stable_id(f"shared-sell-second:{number}")
+        for number in range(100)
+        if engine_id("fill", stable_id(f"shared-sell-second:{number}"), shared_source_key)
+        < first_fill_id
+    )
+    second_command_seq = first_command_seq + 1
+    second_key = "create-shared-sell-second"
+    second_hash = digest(second_key)
+    second_source = f"command:{second_key}"
+    second_authorization = "auth-shared-sell-second"
+    second_order = replace(
+        first_open.order,
+        order_id=second_order_id,
+        client_order_id="client-shared-sell-second",
+        authorization_id=second_authorization,
+        quantity=Decimal("0.005"),
+        held_amount=Decimal("0.005"),
+        accepted_broker_seq=second_command_seq,
+    )
+    second_open = replace(
+        first_open,
+        receipt=replace(
+            first_open.receipt,
+            idempotency_key=second_key,
+            request_hash=second_hash,
+            paper_order_id=second_order_id,
+            authorization_id=second_authorization,
+            broker_seq=second_command_seq,
+            response={"order_id": second_order_id, "status": "OPEN"},
+        ),
+        authorization_attempt=replace(
+            first_open.authorization_attempt,
+            authorization_id=second_authorization,
+            authorization_nonce="nonce-shared-sell-second",
+            idempotency_key=second_key,
+            request_hash=second_hash,
+        ),
+        broker_inputs=(
+            replace(
+                first_open.broker_inputs[0],
+                broker_seq=second_command_seq,
+                source_key=second_source,
+                payload_hash=second_hash,
+            ),
+        ),
+        balances=(BalanceWrite("BTC", Decimal("0.002"), Decimal("0.008"), 5),),
+        order=second_order,
+        order_events=(
+            replace(
+                first_open.order_events[0],
+                event_id=stable_id("accepted-shared-sell-second"),
+                order_id=second_order_id,
+                source_key=second_source,
+                payload_hash=second_hash,
+            ),
+        ),
+        journals=(
+            replace(
+                first_open.journals[0],
+                journal_id=stable_id("hold-shared-sell-second"),
+                business_event_id=second_order_id,
+                entries=(
+                    LedgerEntry("paper.held", "BTC", Decimal("0.005"), Decimal(0)),
+                    LedgerEntry("paper.available", "BTC", Decimal(0), Decimal("0.005")),
+                ),
+            ),
+        ),
+        outbox=(
+            outbox(
+                "paper.order.accepted.v1",
+                second_order_id,
+                1,
+                {"order_id": second_order_id},
+            ),
+        ),
+    )
+    store.commit(first_open)
+    store.commit(second_open)
+
+    hydrated = store.hydrate_engine(initial.account_id)
+    shared_book_seq = second_command_seq + 1
+    shared_book = BrokerInputWrite(
+        shared_book_seq,
+        initial.account_id,
+        "RECORDED_BOOK",
+        shared_source_key,
+        engine_id(
+            "observation",
+            "BTCUSDT",
+            "12000.000000000000000000",
+            "12001.000000000000000000",
+            "0.080000000000000000",
+        ),
+        NOW,
+        Decimal("0.08"),
+        "BTCUSDT",
+        Decimal("12000"),
+        Decimal("12001"),
+    )
+
+    def actual_sale_write(
+        order_id: str, *, btc_version: int, usdt_version: int
+    ) -> AtomicPaperWrite:
+        fill = hydrated.apply_book_observation(
+            order_id=order_id,
+            observation_id=shared_source_key,
+            best_bid_text="12000",
+            best_ask_text="12001",
+            displayed_quantity_text="0.08",
+        )
+        assert fill is not None
+        order = hydrated.orders[order_id]
+        consumptions = tuple(
+            item for item in hydrated.consumptions if item.source_fill_id == fill.fill_id
+        )
+        journals = tuple(
+            journal
+            for journal in hydrated.journals.values()
+            if journal.business_event_id == fill.fill_id
+        )
+        return AtomicPaperWrite(
+            initial.account_id,
+            "test",
+            None,
+            None,
+            (shared_book,),
+            (
+                BalanceWrite("BTC", hydrated.available["BTC"], hydrated.held["BTC"], btc_version),
+                BalanceWrite("USDT", hydrated.available["USDT"], Decimal(0), usdt_version),
+            ),
+            order,
+            (
+                OrderEventWrite(
+                    stable_id(f"filled-{fill.fill_id}"),
+                    order_id,
+                    order.version,
+                    "paper.order.filled.v1",
+                    shared_source_key,
+                    digest(fill.fill_id),
+                    NOW,
+                ),
+            ),
+            (fill,),
+            (),
+            consumptions,
+            journals,
+            (
+                outbox(
+                    "paper.order.filled.v1",
+                    order_id,
+                    order.version,
+                    {"order_id": order_id, "fill_id": fill.fill_id},
+                ),
+            ),
+            NOW,
+        )
+
+    first_sale = actual_sale_write(first_open.order.order_id, btc_version=6, usdt_version=5)
+    second_sale = actual_sale_write(second_order_id, btc_version=7, usdt_version=6)
+    assert second_sale.fills[0].fill_id < first_sale.fills[0].fill_id
+    assert sum(item.quote_basis for item in first_sale.consumptions) == Decimal("30.03")
+    assert sum(item.quote_basis for item in second_sale.consumptions) == Decimal("53.053")
+    assert first_sale.fills[0].broker_seq == second_sale.fills[0].broker_seq == shared_book_seq
+    store.commit(first_sale)
+    store.commit(second_sale)
+
+
 def test_deferred_fifo_rejects_younger_first_even_if_later_sale_exhausts_older(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1524,7 +1840,7 @@ def test_deferred_fifo_rejects_younger_first_even_if_later_sale_exhausts_older(
     )
     second_fill = replace(
         second_fill,
-        created_at=datetime(2026, 7, 19, 12, 1, tzinfo=UTC),
+        created_at=datetime(2026, 7, 19, 11, 59, tzinfo=UTC),
         broker_inputs=(second_source,),
         balances=(
             BalanceWrite("USDT", Decimal("99.9"), Decimal(0), 4),
@@ -1541,7 +1857,7 @@ def test_deferred_fifo_rejects_younger_first_even_if_later_sale_exhausts_older(
         lots=(
             replace(
                 second_fill.lots[0],
-                acquired_at=datetime(2026, 7, 19, 12, 1, tzinfo=UTC),
+                acquired_at=datetime(2026, 7, 19, 11, 59, tzinfo=UTC),
             ),
         ),
     )

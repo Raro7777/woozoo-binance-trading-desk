@@ -1099,8 +1099,13 @@ def upgrade() -> None:
                      COALESCE(sum(prior.quote_basis),0) basis
               FROM paper_lot_consumptions prior
               JOIN paper_fills prior_sale ON prior_sale.fill_id=prior.source_fill_id
+              JOIN paper_orders prior_sale_order ON prior_sale_order.order_id=prior_sale.order_id
               WHERE prior.lot_id=lot.lot_id
-                AND (prior_sale.broker_seq,prior_sale.fill_id)<(sale.broker_seq,sale.fill_id)
+                AND (prior_sale.broker_seq,prior_sale_order.accepted_broker_seq,
+                     prior_sale_order.client_order_id,prior_sale_order.order_id,
+                     prior_sale.fill_id)<
+                    (sale.broker_seq,sale_order.accepted_broker_seq,
+                     sale_order.client_order_id,sale_order.order_id,sale.fill_id)
             ) used_before ON true
             WHERE sale_order.side<>'SELL' OR acquisition_order.side<>'BUY'
                OR acquisition.broker_seq>=sale.broker_seq
@@ -1113,17 +1118,24 @@ def upgrade() -> None:
                   END
                OR EXISTS (
                     SELECT 1 FROM paper_inventory_lots older
+                    JOIN paper_fills older_acquisition
+                      ON older_acquisition.fill_id=older.source_fill_id
                     WHERE older.account_id=lot.account_id AND older.asset=lot.asset
-                      AND (older.acquired_at,older.source_fill_id)<
-                          (lot.acquired_at,lot.source_fill_id)
+                      AND (older_acquisition.broker_seq,older_acquisition.fill_id)<
+                          (acquisition.broker_seq,acquisition.fill_id)
                       AND older.acquired_quantity>(
                         SELECT COALESCE(sum(older_use.quantity),0)
                         FROM paper_lot_consumptions older_use
                         JOIN paper_fills older_sale
                           ON older_sale.fill_id=older_use.source_fill_id
+                        JOIN paper_orders older_sale_order
+                          ON older_sale_order.order_id=older_sale.order_id
                         WHERE older_use.lot_id=older.lot_id
-                          AND (older_sale.broker_seq,older_sale.fill_id)<=
-                              (sale.broker_seq,sale.fill_id)))
+                          AND (older_sale.broker_seq,older_sale_order.accepted_broker_seq,
+                               older_sale_order.client_order_id,older_sale_order.order_id,
+                               older_sale.fill_id)<=
+                              (sale.broker_seq,sale_order.accepted_broker_seq,
+                               sale_order.client_order_id,sale_order.order_id,sale.fill_id)))
           ) OR EXISTS (
             SELECT 1 FROM paper_observation_effects effect
             JOIN paper_orders paper_order ON paper_order.order_id=effect.order_id

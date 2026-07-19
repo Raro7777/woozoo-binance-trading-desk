@@ -350,7 +350,9 @@ class PaperEngine:
                     raise ValueError("OBSERVATION_SEQUENCE_MISSING")
                 seq = matching_sequences.pop()
                 self.observation_sequences[observation_id] = seq
-        if not eligible or seq <= order.accepted_broker_seq:
+        if seq <= order.accepted_broker_seq:
+            return None
+        if not eligible:
             self.observation_effects.add((order_id, observation_id))
             return None
         remaining = order.quantity - order.filled_quantity
@@ -531,7 +533,13 @@ class PaperEngine:
         basis = Decimal(0)
         ordered = sorted(
             (lot for lot in self.lots if lot.asset == asset),
-            key=lambda lot: (lot.acquired_at, lot.source_fill_id),
+            key=lambda lot: (
+                1 if lot.source_fill_id in self.fills else 0,
+                self.fills[lot.source_fill_id].broker_seq
+                if lot.source_fill_id in self.fills
+                else 0,
+                lot.source_fill_id,
+            ),
         )
         for lot in ordered:
             remaining = self._lot_remaining(lot)

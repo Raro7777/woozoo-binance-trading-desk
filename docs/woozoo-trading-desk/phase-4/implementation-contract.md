@@ -54,6 +54,8 @@ floor-stepped participation budget across already-accepted orders in canonical
 advisory locks serialize same-command and same-observation retries before the first read.
 Every effect of one observation reuses its single source broker sequence; allocation checks
 use the canonical order tuple rather than caller-influenced fill identifiers.
+An observation whose source sequence is not later than an order's acceptance is ignored
+without recording an effect or consuming its shared budget.
 
 Deferred commit-time checks bind fills to immutable fee/symbol policies, recorded-book
 liquidity, physical and valuation journals, FIFO conservation, complete balance commodities,
@@ -74,10 +76,12 @@ two-line hold journal; partial fills reduce the order hold projection and termin
 equals the residual hold. Fill sequence equals its source observation sequence, every fill has
 exactly one correctly versioned lifecycle event, and cancellation receipt, event and outbox
 form a one-to-one causal chain. Ledger transaction identifiers use deterministic lowercase
-64-hex IDs at every contract boundary. A BUY lot's acquisition time equals its source fill's
-authoritative creation time. SELL basis is the exact proportional or residual basis of the
-oldest available lot at the sale's causal point, so timestamp forgery or later sales cannot
-repair a prior FIFO violation.
+64-hex IDs at every contract boundary. A BUY lot's acquisition timestamp equals its source
+fill's timestamp for provenance, while FIFO acquisition precedence derives from the source
+fill sequence and deterministic fill-ID tie. SELL consumption chronology uses the source
+sequence plus the canonical order tuple. Basis is the exact proportional or residual basis
+of the oldest available lot at that causal point, so timestamp forgery, fill-hash ordering or
+later sales cannot repair a prior FIFO violation.
 
 Commit-time templates also bind book symbol and side-specific quote eligibility, quote fee
 asset, BUY lot quantity/cost, SELL consumption quantity/FIFO basis, and every physical and

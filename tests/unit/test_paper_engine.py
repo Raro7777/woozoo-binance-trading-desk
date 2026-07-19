@@ -186,6 +186,52 @@ def test_shared_observation_uses_one_canonical_broker_sequence_and_budget() -> N
     assert engine.observation_budgets["shared-book"][1] == Decimal("0.05")
 
 
+def test_pre_acceptance_observation_is_ignored_without_recording_an_effect() -> None:
+    engine = PaperEngine()
+    engine.seed_balance("USDT", "1000", seed_id="cash")
+    first = engine.create_limit_order(
+        idempotency_key="old-book-first",
+        client_order_id="old-book-first",
+        authorization=authorization(1),
+        symbol="BTCUSDT",
+        side=OrderSide.BUY,
+        quantity_text="1",
+        limit_price_text="100",
+    )
+    engine.apply_book_observation(
+        order_id=first.order_id,
+        observation_id="old-book",
+        best_bid_text="99",
+        best_ask_text="100",
+        displayed_quantity_text="1",
+    )
+    second = engine.create_limit_order(
+        idempotency_key="old-book-second",
+        client_order_id="old-book-second",
+        authorization=authorization(2),
+        symbol="BTCUSDT",
+        side=OrderSide.BUY,
+        quantity_text="1",
+        limit_price_text="100",
+    )
+    prior_budget = engine.observation_budgets["old-book"]
+    prior_seq = engine.broker_seq
+
+    assert (
+        engine.apply_book_observation(
+            order_id=second.order_id,
+            observation_id="old-book",
+            best_bid_text="99",
+            best_ask_text="100",
+            displayed_quantity_text="1",
+        )
+        is None
+    )
+    assert (second.order_id, "old-book") not in engine.observation_effects
+    assert engine.observation_budgets["old-book"] == prior_budget
+    assert engine.broker_seq == prior_seq
+
+
 def test_ledger_transaction_id_rejects_unicode_and_non_hash_ids() -> None:
     journal = Journal(
         "원장-1",
