@@ -214,9 +214,28 @@ def test_pre_acceptance_observation_is_ignored_without_recording_an_effect() -> 
         quantity_text="1",
         limit_price_text="100",
     )
+    third = engine.create_limit_order(
+        idempotency_key="old-book-third",
+        client_order_id="old-book-third",
+        authorization=authorization(3),
+        symbol="BTCUSDT",
+        side=OrderSide.BUY,
+        quantity_text="1",
+        limit_price_text="100",
+    )
     prior_budget = engine.observation_budgets["old-book"]
     prior_seq = engine.broker_seq
 
+    assert (
+        engine.apply_book_observation(
+            order_id=third.order_id,
+            observation_id="old-book",
+            best_bid_text="99",
+            best_ask_text="100",
+            displayed_quantity_text="1",
+        )
+        is None
+    )
     assert (
         engine.apply_book_observation(
             order_id=second.order_id,
@@ -228,6 +247,7 @@ def test_pre_acceptance_observation_is_ignored_without_recording_an_effect() -> 
         is None
     )
     assert (second.order_id, "old-book") not in engine.observation_effects
+    assert (third.order_id, "old-book") not in engine.observation_effects
     assert engine.observation_budgets["old-book"] == prior_budget
     assert engine.broker_seq == prior_seq
 
