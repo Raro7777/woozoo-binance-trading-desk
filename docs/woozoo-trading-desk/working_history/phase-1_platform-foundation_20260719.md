@@ -37,9 +37,11 @@ for review rather than suppressed.
 
 ## 5. Review and evidence status
 
-At this point the implementation is awaiting final role-separated safety QA,
-same-engine Codex cross-review, and the required external-review availability
-record. P1 is not accepted and its acceptance digest is not yet assigned.
+Role-separated safety QA passed the executable P1-01 through P1-10 checks. The
+same-engine Codex cross-review found no implementation defect but remains
+UNVERIFIED for process evidence, and the external route is recorded as
+`external-review-unavailable`, not PASS. P1 is not accepted and its acceptance
+digest is not yet assigned.
 
 ## 6. No-go boundaries
 
