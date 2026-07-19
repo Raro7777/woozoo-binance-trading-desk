@@ -17,8 +17,9 @@ export const productRoots = [
   ".env.example",
   "pnpm-workspace.yaml",
   "pyproject.toml",
+  "package.json",
 ];
-const dependencyMetadata = ["package.json", "pnpm-lock.yaml", "uv.lock"];
+const dependencyMetadata = ["pnpm-lock.yaml", "uv.lock"];
 const insensitive = (...parts) => new RegExp(parts.join(""), "i");
 const forbidden = [
   insensitive("bin", "ance"),
@@ -35,6 +36,7 @@ const forbidden = [
   insensitive("api[_-]?", "key"),
   insensitive("sign", "ature"),
   insensitive("listen[_-]?", "key"),
+  insensitive("live[_-]?", "mode"),
 ];
 const dependencyPattern = insensitive("bin", "ance|ccxt|exchange[_-]?", "client|broker[_-]?adapter");
 
@@ -72,6 +74,24 @@ function metadataInspection(content) {
   return content;
 }
 
+function productConfigurationInspection(projectPath, content) {
+  if (projectPath !== "package.json") return content;
+  const parsed = JSON.parse(content);
+  const { name: _projectName, ...configuration } = parsed;
+  return JSON.stringify(configuration);
+}
+
+export function scanRootPackageConfiguration(configuration) {
+  const findings = [];
+  const content = productConfigurationInspection("package.json", JSON.stringify(configuration));
+  for (const pattern of forbidden) {
+    if (pattern.test(content)) findings.push(`package.json:${pattern}`);
+  }
+  if (findings.length > 0) {
+    throw new Error(`Phase 1 capability-zero violation: ${findings.join(", ")}`);
+  }
+}
+
 export async function scanDependencyMetadata(paths = dependencyMetadata.map((path) => resolve(root, path))) {
   for (const metadataPath of paths) {
     const content = await readFile(metadataPath, "utf8");
@@ -95,8 +115,9 @@ export async function scanPaths(paths = productRoots.map((path) => resolve(root,
   for (const path of files) {
     const projectPath = relative(root, path).replaceAll("\\", "/");
     const content = await readFile(path, "utf8");
+    const inspected = productConfigurationInspection(projectPath, content);
     for (const pattern of forbidden) {
-      if (pattern.test(content)) findings.push(`${projectPath}:${pattern}`);
+      if (pattern.test(inspected)) findings.push(`${projectPath}:${pattern}`);
     }
   }
   if (findings.length > 0) {
