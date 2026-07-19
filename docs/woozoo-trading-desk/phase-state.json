@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
   "project": "woozoo-binance-trading-desk",
-  "current_phase": 2,
+  "current_phase": 3,
   "status": "active",
-  "updated_at": "2026-07-19T04:29:45Z",
+  "updated_at": "2026-07-19T07:21:51Z",
   "transition_policy": "monotonic_explicit_approval_only",
-  "acceptance_contract_ref": "woozoo-phase-gates#phase-2",
+  "acceptance_contract_ref": "woozoo-phase-gates#phase-3",
   "acceptance_contract_runtime_paths": {
-    "codex": ".agents/skills/woozoo-phase-gates/references/phase-contract.md#phase-2",
-    "claude": ".claude/skills/woozoo-phase-gates/references/phase-contract.md#phase-2"
+    "codex": ".agents/skills/woozoo-phase-gates/references/phase-contract.md#phase-3",
+    "claude": ".claude/skills/woozoo-phase-gates/references/phase-contract.md#phase-3"
   },
   "acceptance_evidence_digest": null,
   "phase_approval": {
@@ -25,21 +25,20 @@
   },
   "phase_scope_ref": "docs/woozoo-trading-desk/mvp-plan-and-acceptance.md",
   "allowed_change_scope": [
-    "btceth_spot_public_rest_and_websocket_market_data",
-    "keyless_public_capability_allowlist",
-    "raw_and_normalized_market_event_storage",
-    "collector_session_and_quality_state",
-    "bounded_reconnect_backoff_and_rate_limit_handling",
-    "dedupe_out_of_order_gap_and_backpressure_detection",
-    "deterministic_recorded_event_replay",
-    "phase_2_tests_ci_and_documentation"
+    "btceth_candle_and_feature_derivation",
+    "point_in_time_as_of_evidence_snapshots",
+    "raw_and_normalized_market_provenance",
+    "knowledge_cutoff_and_late_arrival_exclusion",
+    "evidence_digest_watermark_quality_and_collector_state",
+    "deterministic_feature_and_evidence_replay",
+    "read_only_evidence_api_and_versioned_events",
+    "phase_3_tests_ci_and_documentation"
   ],
   "forbidden_change_scope": [
-    "evidence_or_feature_domain_implementation",
     "paper_broker_or_trading_logic_implementation",
     "risk_approval_or_kill_switch_domain_implementation",
-    "ai_agent_or_trade_proposal_implementation",
     "trading_room_domain_controls",
+    "ai_agent_or_trade_proposal_input_or_implementation",
     "public_derivatives_telemetry",
     "testnet_or_private_exchange_capability",
     "mainnet_private_live_withdrawal_futures_margin_leverage_or_short",
@@ -74,6 +73,14 @@
       "at": "2026-07-19T04:29:45Z",
       "evidence_digest": "f27e59b5e308ebd121eefa86824750a857ffb7ae70d02b724e92d1995b98c4c8",
       "approval_ref": "docs/woozoo-trading-desk/phase-1/p1-to-p2-transition-approval.json"
+    },
+    {
+      "from_phase": 2,
+      "to_phase": 3,
+      "event": "advanced_after_digest_bound_user_approval",
+      "at": "2026-07-19T07:21:51Z",
+      "evidence_digest": "2d9c8158b12de3ebe55f040fccfe0872d6a39e5368b737182bb500c96bb3368f",
+      "approval_ref": "docs/woozoo-trading-desk/phase-2/p2-to-p3-transition-approval.json"
     }
   ]
 }
