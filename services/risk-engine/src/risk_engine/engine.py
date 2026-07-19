@@ -196,9 +196,7 @@ def _sum(values: Sequence[Decimal]) -> Decimal:
         return sum(values, Decimal(0))
 
 
-def _at_or_above_ratio(
-    amount: Decimal, denominator: Decimal, threshold: Decimal
-) -> bool:
+def _at_or_above_ratio(amount: Decimal, denominator: Decimal, threshold: Decimal) -> bool:
     """Conservatively compare a NUMERIC(38,18) amount to an inclusive ratio limit.
 
     The threshold amount can contain more than 18 fractional digits even though
@@ -209,9 +207,7 @@ def _at_or_above_ratio(
         raise ValueError("ratio denominator must be positive")
     with localcontext() as context:
         context.prec = 80
-        threshold_amount = (denominator * threshold).quantize(
-            _NUMERIC_SCALE, rounding=ROUND_DOWN
-        )
+        threshold_amount = (denominator * threshold).quantize(_NUMERIC_SCALE, rounding=ROUND_DOWN)
     return amount >= threshold_amount
 
 
@@ -363,28 +359,29 @@ def evaluate_risk(risk_input: object) -> RiskDecision:
         proposal["fixture_contract"] != PROPOSAL_FIXTURE_CONTRACT
         or proposal["schema_version"] != "woozoo.trade-proposal/v1"
         or proposal_payload is None
-        or not _exact_fields(
-            proposal_payload, {"schema_version", "proposal_id", "symbol", "side"}
-        )
+        or not _exact_fields(proposal_payload, {"schema_version", "proposal_id", "symbol", "side"})
         or proposal_payload["schema_version"] != "woozoo.trade-proposal/v1"
     ):
         reasons.add("INPUT_SCHEMA_INVALID")
-    elif not _valid_hash(proposal["proposal_hash"]) or canonical_hash(
-        proposal["payload"]
-    ) != proposal["proposal_hash"]:
+    elif (
+        not _valid_hash(proposal["proposal_hash"])
+        or canonical_hash(proposal["payload"]) != proposal["proposal_hash"]
+    ):
         reasons.add("PROPOSAL_HASH_MISMATCH")
 
     portfolio_body = {key: value for key, value in portfolio.items() if key != "snapshot_hash"}
-    if not _valid_hash(portfolio["snapshot_hash"]) or canonical_hash(portfolio_body) != portfolio[
-        "snapshot_hash"
-    ]:
+    if (
+        not _valid_hash(portfolio["snapshot_hash"])
+        or canonical_hash(portfolio_body) != portfolio["snapshot_hash"]
+    ):
         reasons.add("PORTFOLIO_SNAPSHOT_MISMATCH")
     preview_body = {
         key: value for key, value in preview.items() if key != "paper_order_preview_hash"
     }
-    if not _valid_hash(preview["paper_order_preview_hash"]) or canonical_hash(
-        preview_body
-    ) != preview["paper_order_preview_hash"]:
+    if (
+        not _valid_hash(preview["paper_order_preview_hash"])
+        or canonical_hash(preview_body) != preview["paper_order_preview_hash"]
+    ):
         reasons.add("INPUT_SCHEMA_INVALID")
     policy_body = {key: value for key, value in policy.items() if key != "policy_hash"}
     if (
@@ -397,16 +394,18 @@ def evaluate_risk(risk_input: object) -> RiskDecision:
     reconciliation_body = {
         key: value for key, value in reconciliation.items() if key != "checkpoint_hash"
     }
-    if not _valid_hash(reconciliation["checkpoint_hash"]) or canonical_hash(
-        reconciliation_body
-    ) != reconciliation["checkpoint_hash"]:
+    if (
+        not _valid_hash(reconciliation["checkpoint_hash"])
+        or canonical_hash(reconciliation_body) != reconciliation["checkpoint_hash"]
+    ):
         reasons.add("PORTFOLIO_SNAPSHOT_MISMATCH")
     exposure_body = {
         key: value for key, value in exposure_snapshot.items() if key != "snapshot_hash"
     }
-    if not _valid_hash(exposure_snapshot["snapshot_hash"]) or canonical_hash(
-        exposure_body
-    ) != exposure_snapshot["snapshot_hash"]:
+    if (
+        not _valid_hash(exposure_snapshot["snapshot_hash"])
+        or canonical_hash(exposure_body) != exposure_snapshot["snapshot_hash"]
+    ):
         reasons.add("PORTFOLIO_SNAPSHOT_MISMATCH")
 
     if reasons & {"INPUT_SCHEMA_INVALID", "RISK_POLICY_HASH_MISMATCH"}:
@@ -485,9 +484,8 @@ def evaluate_risk(risk_input: object) -> RiskDecision:
 
     symbol = preview["symbol"]
     side = preview["side"]
-    if (
-        proposal_payload is not None
-        and (proposal_payload["symbol"] != symbol or proposal_payload["side"] != side)
+    if proposal_payload is not None and (
+        proposal_payload["symbol"] != symbol or proposal_payload["side"] != side
     ):
         reasons.add("PROPOSAL_HASH_MISMATCH")
     if not isinstance(symbol, str) or symbol not in allowed_symbols:
@@ -520,7 +518,9 @@ def evaluate_risk(risk_input: object) -> RiskDecision:
         reasons.add("INPUT_SCHEMA_INVALID")
     else:
         try:
-            decision_as_of = datetime.fromisoformat(str(clock["decision_as_of"]).replace("Z", "+00:00"))
+            decision_as_of = datetime.fromisoformat(
+                str(clock["decision_as_of"]).replace("Z", "+00:00")
+            )
             as_of = datetime.fromisoformat(str(data["as_of"]).replace("Z", "+00:00"))
             cutoff = datetime.fromisoformat(str(data["knowledge_cutoff"]).replace("Z", "+00:00"))
             if any(value.tzinfo is None for value in (decision_as_of, as_of, cutoff)):
@@ -572,9 +572,7 @@ def evaluate_risk(risk_input: object) -> RiskDecision:
     except (KeyError, ValueError):
         return _finish(digest, reasons | {"EQUITY_INVALID"})
 
-    equity = _sum(
-        [available_quote, held_quote, *position_exposures.values(), -fee_liabilities]
-    )
+    equity = _sum([available_quote, held_quote, *position_exposures.values(), -fee_liabilities])
     if equity <= 0:
         return _finish(digest, reasons | {"EQUITY_INVALID"})
 

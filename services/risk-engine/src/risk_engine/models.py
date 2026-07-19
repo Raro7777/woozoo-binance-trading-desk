@@ -13,4 +13,3 @@ class RiskDecision:
     ordered_reason_codes: tuple[str, ...]
     primary_reason_code: str
     decision_hash: str
-

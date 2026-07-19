@@ -36,6 +36,14 @@ class PersistenceStage(StrEnum):
     OUTBOX = "outbox"
 
 
+class KillCancelStage(StrEnum):
+    INBOX = "inbox"
+    BATCH = "batch"
+    DOMAIN = "domain"
+    LEDGER = "ledger"
+    OUTBOX = "outbox"
+
+
 @dataclass(frozen=True, slots=True)
 class CommandReceiptWrite:
     scope: str
@@ -125,6 +133,7 @@ class AtomicPaperWrite:
     journals: tuple[Journal, ...]
     outbox: tuple[OutboxWrite, ...]
     created_at: datetime
+    kill_switch_version: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -140,6 +149,17 @@ class ReconciliationResult:
     mismatch_codes: tuple[str, ...]
     input_digest: str
     output_digest: str
+
+
+@dataclass(frozen=True, slots=True)
+class KillCancelResult:
+    inbox_created: bool
+    batch_created: bool
+    activation_event_id: str
+    batch_key: str | None
+    account_id: str | None
+    cancelled_count: int
+    has_more: bool
 
 
 def _json_default(value: object) -> str:
@@ -397,6 +417,22 @@ class PostgresPaperStore:
                     )
             else:
                 raise ValueError("PAPER_WRITE_IDEMPOTENCY_SOURCE_REQUIRED")
+
+            requires_open_barrier = (
+                (receipt is not None and receipt.outcome == "ORDER_CREATED")
+                or bool(write.fills)
+                or any(item.source_kind == "RECORDED_BOOK" for item in write.broker_inputs)
+            )
+            if requires_open_barrier:
+                barrier = connection.execute(
+                    "SELECT active,version FROM paper_lock_kill_barrier()"
+                ).fetchone()
+                if barrier is None:
+                    raise RuntimeError("PAPER_KILL_BARRIER_MISSING")
+                if barrier[0]:
+                    raise RuntimeError("PAPER_KILL_SWITCH_ACTIVE")
+                if barrier[1] != write.kill_switch_version:
+                    raise RuntimeError("PAPER_KILL_VERSION_MISMATCH")
             reconciliation = connection.execute(
                 "SELECT status FROM paper_reconciliation_checkpoints WHERE account_id=%s "
                 "ORDER BY created_at DESC,checkpoint_id DESC LIMIT 1",
@@ -742,6 +778,238 @@ class PostgresPaperStore:
             receipt.response if receipt is not None else {"status": "OBSERVATION_APPLIED"}
         )
         return CommitResult(True, response, self.semantic_digest(write.account_id))
+
+    @staticmethod
+    def _kill_fail(stage: KillCancelStage, requested: KillCancelStage | None) -> None:
+        if stage == requested:
+            raise RuntimeError(f"INJECTED_KILL_CANCEL_FAILURE:{stage.value}")
+
+    def consume_kill_activation(
+        self,
+        activation_event_id: str,
+        payload_hash: str,
+        *,
+        received_at: datetime,
+        _fail_after: KillCancelStage | None = None,
+    ) -> KillCancelResult:
+        """Consume one activation and atomically cancel at most 100 Paper orders."""
+        if received_at.tzinfo is None:
+            raise ValueError("RECEIVED_AT_MUST_BE_AWARE")
+        if (
+            len(activation_event_id) != 64
+            or any(character not in "0123456789abcdef" for character in activation_event_id)
+            or len(payload_hash) != 64
+            or any(character not in "0123456789abcdef" for character in payload_hash)
+        ):
+            raise ValueError("INVALID_KILL_ACTIVATION_IDENTITY")
+
+        with psycopg.connect(self.database_url) as connection:
+            barrier = connection.execute(
+                "SELECT active,version,last_activation_event_id FROM paper_lock_kill_barrier()"
+            ).fetchone()
+            if barrier is None or not barrier[0] or barrier[2] != activation_event_id:
+                raise RuntimeError("KILL_ACTIVATION_NOT_AUTHORITATIVE")
+            durable_event = connection.execute(
+                "SELECT outbox.payload_hash FROM kill_switch_events kill_event "
+                "JOIN risk_outbox_links link ON link.aggregate_id=kill_event.activation_event_id "
+                "AND link.aggregate_kind='kill-switch' "
+                "JOIN outbox_events outbox ON outbox.event_id=link.event_id "
+                "WHERE kill_event.activation_event_id=%s",
+                (activation_event_id,),
+            ).fetchone()
+            if durable_event != (payload_hash,):
+                raise ValueError("KILL_ACTIVATION_PAYLOAD_CONFLICT")
+            cursor = connection.execute(
+                "INSERT INTO paper_kill_inbox(activation_event_id,payload_hash,received_at) "
+                "VALUES (%s,%s,%s) ON CONFLICT (activation_event_id) DO NOTHING",
+                (activation_event_id, payload_hash, received_at),
+            )
+            inbox_created = cursor.rowcount == 1
+            if not inbox_created:
+                prior_hash = connection.execute(
+                    "SELECT payload_hash FROM paper_kill_inbox WHERE activation_event_id=%s",
+                    (activation_event_id,),
+                ).fetchone()
+                if prior_hash != (payload_hash,):
+                    raise ValueError("KILL_ACTIVATION_PAYLOAD_CONFLICT")
+            self._kill_fail(KillCancelStage.INBOX, _fail_after)
+
+            account = connection.execute(
+                "SELECT account_id FROM paper_orders "
+                "WHERE status IN ('OPEN','PARTIALLY_FILLED') "
+                "ORDER BY account_id,accepted_broker_seq,client_order_id,order_id LIMIT 1"
+            ).fetchone()
+            if account is None:
+                return KillCancelResult(
+                    inbox_created, False, activation_event_id, None, None, 0, False
+                )
+            account_id = account[0]
+            connection.execute(
+                "SELECT pg_advisory_xact_lock(hashtextextended(%s,0))",
+                (f"kill-cancel:{activation_event_id}:{account_id}",),
+            )
+            orders = connection.execute(
+                "SELECT order_id,accepted_broker_seq,client_order_id,held_asset,held_amount,version "
+                "FROM paper_orders WHERE account_id=%s "
+                "AND status IN ('OPEN','PARTIALLY_FILLED') "
+                "ORDER BY account_id,accepted_broker_seq,client_order_id,order_id "
+                "LIMIT 100 FOR UPDATE",
+                (account_id,),
+            ).fetchall()
+            if not orders:
+                has_more_row = connection.execute(
+                    "SELECT EXISTS(SELECT 1 FROM paper_orders "
+                    "WHERE status IN ('OPEN','PARTIALLY_FILLED'))"
+                ).fetchone()
+                assert has_more_row is not None
+                has_more = has_more_row[0]
+                return KillCancelResult(
+                    inbox_created, False, activation_event_id, None, account_id, 0, has_more
+                )
+
+            first_cursor = [account_id, orders[0][1], orders[0][2], orders[0][0]]
+            last_cursor = [account_id, orders[-1][1], orders[-1][2], orders[-1][0]]
+            batch_key = _digest([activation_event_id, account_id, first_cursor, last_cursor])
+            connection.execute(
+                "INSERT INTO paper_kill_cancel_batches"
+                "(activation_event_id,batch_key,paper_account_id,first_cursor,last_cursor,"
+                "cancelled_count,completed_at) VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                (
+                    activation_event_id,
+                    batch_key,
+                    account_id,
+                    Jsonb(first_cursor),
+                    Jsonb(last_cursor),
+                    len(orders),
+                    received_at,
+                ),
+            )
+            self._kill_fail(KillCancelStage.BATCH, _fail_after)
+
+            for order_id, _, _, held_asset, held_amount, order_version in orders:
+                balance = connection.execute(
+                    "SELECT available,held,version FROM paper_asset_balances "
+                    "WHERE account_id=%s AND asset=%s FOR UPDATE",
+                    (account_id, held_asset),
+                ).fetchone()
+                if balance is None or balance[1] < held_amount:
+                    raise RuntimeError("KILL_CANCEL_HELD_BALANCE_UNDERFLOW")
+                connection.execute(
+                    "UPDATE paper_asset_balances SET available=available+%s,held=held-%s,"
+                    "version=version+1 WHERE account_id=%s AND asset=%s",
+                    (held_amount, held_amount, account_id, held_asset),
+                )
+                new_version = order_version + 1
+                connection.execute(
+                    "UPDATE paper_orders SET status='CANCELLED',held_amount=0,version=%s "
+                    "WHERE order_id=%s",
+                    (new_version, order_id),
+                )
+                cancel_id = f"kill:{activation_event_id[:16]}:{order_id[:16]}"
+                connection.execute(
+                    "INSERT INTO paper_kill_cancel_items"
+                    "(activation_event_id,order_id,batch_key,paper_account_id,cancel_id,"
+                    "released_asset,released_amount,cancelled_at) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
+                    (
+                        activation_event_id,
+                        order_id,
+                        batch_key,
+                        account_id,
+                        cancel_id,
+                        held_asset,
+                        held_amount,
+                        received_at,
+                    ),
+                )
+                data = {"order_id": order_id, "cancel_id": cancel_id}
+                event_type = "paper.order.cancelled.v1"
+                outbox_event_id = _engine_id("event", event_type, order_id, new_version)
+                outbox_payload_hash = _engine_id(
+                    "event-payload",
+                    event_type,
+                    order_id,
+                    new_version,
+                    json.dumps(data, sort_keys=True, separators=(",", ":")),
+                )
+                source_key = f"kill:{activation_event_id}"
+                connection.execute(
+                    "INSERT INTO paper_order_events"
+                    "(event_id,order_id,order_version,event_type,source_key,payload_hash,occurred_at) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                    (
+                        outbox_event_id,
+                        order_id,
+                        new_version,
+                        event_type,
+                        source_key,
+                        outbox_payload_hash,
+                        received_at,
+                    ),
+                )
+                journal_id = _engine_id("paper.hold-release", order_id, "PHYSICAL")
+                connection.execute(
+                    "INSERT INTO paper_ledger_transactions"
+                    "(transaction_id,account_id,business_event_type,business_event_id,"
+                    "journal_kind,reversal_of,replacement_for,posted_at) "
+                    "VALUES (%s,%s,'paper.hold-release',%s,'PHYSICAL',NULL,NULL,%s)",
+                    (journal_id, account_id, order_id, received_at),
+                )
+                connection.execute(
+                    "INSERT INTO paper_ledger_entries"
+                    "(transaction_id,line_no,account_code,commodity,debit,credit) VALUES "
+                    "(%s,0,'paper.available',%s,%s,0),"
+                    "(%s,1,'paper.held',%s,0,%s)",
+                    (journal_id, held_asset, held_amount, journal_id, held_asset, held_amount),
+                )
+                envelope = {
+                    "spec_version": "woozoo.event/v1",
+                    "event_id": outbox_event_id,
+                    "event_type": event_type,
+                    "event_version": 1,
+                    "occurred_at": received_at.isoformat(),
+                    "producer": "paper-engine",
+                    "activation_phase": 7,
+                    "aggregate_id": order_id,
+                    "aggregate_version": new_version,
+                    "payload_hash": outbox_payload_hash,
+                    "data": data,
+                }
+                connection.execute(
+                    "SELECT append_paper_outbox(%s,%s,%s,%s,%s,%s,%s,%s)",
+                    (
+                        outbox_event_id,
+                        event_type,
+                        Jsonb(envelope),
+                        outbox_payload_hash,
+                        received_at,
+                        "paper_order",
+                        order_id,
+                        new_version,
+                    ),
+                )
+                connection.execute(
+                    "INSERT INTO paper_outbox_links(event_id,account_id) VALUES (%s,%s)",
+                    (outbox_event_id, account_id),
+                )
+            self._kill_fail(KillCancelStage.DOMAIN, _fail_after)
+            self._kill_fail(KillCancelStage.LEDGER, _fail_after)
+            self._kill_fail(KillCancelStage.OUTBOX, _fail_after)
+            has_more_row = connection.execute(
+                "SELECT EXISTS(SELECT 1 FROM paper_orders "
+                "WHERE status IN ('OPEN','PARTIALLY_FILLED'))"
+            ).fetchone()
+            assert has_more_row is not None
+            has_more = has_more_row[0]
+        return KillCancelResult(
+            inbox_created,
+            True,
+            activation_event_id,
+            batch_key,
+            account_id,
+            len(orders),
+            has_more,
+        )
 
     def semantic_digest(
         self, account_id: str, *, connection: psycopg.Connection[object] | None = None

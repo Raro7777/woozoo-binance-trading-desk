@@ -43,12 +43,17 @@ const phaseFourPatternA = insensitive("acc", "ount");
 const phaseFourPatternB = insensitive("test", "net");
 const phaseFourPatternC = insensitive("api[_-]?", "key");
 
-function isApprovedPhaseFourVocabulary(projectPath, pattern) {
+function isApprovedDomainVocabulary(projectPath, pattern) {
   const paperOwned =
     projectPath.startsWith("services/paper-engine/") ||
     projectPath === "db/migrations/versions/20260719_0004_paper_broker_ledger.py" ||
     projectPath.startsWith("packages/contracts/spec/paper-");
-  if (paperOwned && pattern.source === phaseFourPatternA.source) return true;
+  const phaseFiveInternalRiskAuthority =
+    projectPath === "db/migrations/versions/20260719_0005_risk_engine.py";
+  if (
+    (paperOwned || phaseFiveInternalRiskAuthority) &&
+    pattern.source === phaseFourPatternA.source
+  ) return true;
   if (
     projectPath === "services/paper-engine/src/paper_engine/settings.py" &&
     [phaseFourPatternB.source, phaseFourPatternC.source].includes(pattern.source)
@@ -155,7 +160,7 @@ export async function scanPaths(paths = productRoots.map((path) => resolve(root,
     const content = await readFile(path, "utf8");
     const inspected = productConfigurationInspection(projectPath, content);
     for (const pattern of forbidden) {
-      if (pattern.test(inspected) && !isApprovedPhaseFourVocabulary(projectPath, pattern)) {
+      if (pattern.test(inspected) && !isApprovedDomainVocabulary(projectPath, pattern)) {
         findings.push(`${projectPath}:${pattern}`);
       }
     }

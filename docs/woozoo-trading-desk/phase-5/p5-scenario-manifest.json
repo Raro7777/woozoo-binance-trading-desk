@@ -5,7 +5,7 @@
   "risk_input_schema_version": "woozoo.risk-input/v1",
   "risk_decision_schema_version": "woozoo.risk-decision/v1",
   "fixture_source": "tests/unit/test_risk_engine.py::risk_input",
-  "fixture_source_sha256": "f5f4a0a2709b4440aa5445960d4b4176e2e2cbe10f9d3f349070be67d19269a8",
+  "fixture_source_sha256": "c7576d2835a2f92d6821d290344ee14eb94bda1daee0dc8c8f23e7c07b37d433",
   "risk_input_schema_sha256": "be41adc8400db7da57a21b6b1630aaf1582183a4785cbaa0d3a65ad1eb42d92f",
   "risk_decision_schema_sha256": "4c8287c8d0fddbcda1b9c2687a078d2ee477d8392f1c711d473e6b29bed3d6cd",
   "kill_switch_schema_sha256": "dc30f1f1f696d4251933a6d88e2155b0f22c6515c060c08405e4aaa7cec3a89b",
@@ -21,6 +21,16 @@
       "owner": "risk-engine",
       "command": "corepack pnpm test:replay",
       "artifact": "artifacts/replay/RISK-001.json",
+      "test_nodes": [
+        "tests/unit/test_risk_engine.py::test_risk_001_same_complete_input_has_same_allowed_decision",
+        "tests/unit/test_risk_engine.py::test_risk_001_every_bound_section_mutation_changes_digest",
+        "tests/replay/test_risk_replay.py::test_risk_replay_is_independent_of_json_key_order_and_process_identity",
+        "tests/replay/test_risk_replay.py::test_reason_message_or_recording_metadata_cannot_enter_decision_hash"
+      ],
+      "source_sha256": [
+        "c7576d2835a2f92d6821d290344ee14eb94bda1daee0dc8c8f23e7c07b37d433",
+        "e4acee48a3bf51c1b1255eab1bc44abf2cf59e1e6ed1fdf9cb154c6e43ab80eb"
+      ],
       "oracle": "Same complete canonical input is byte-identical across replay, locale and process identity; each bound input mutation changes risk_input_digest."
     },
     {
@@ -28,6 +38,17 @@
       "owner": "risk-engine",
       "command": "corepack pnpm test:unit",
       "artifact": "artifacts/unit/RISK-002.json",
+      "test_nodes": [
+        "tests/unit/test_risk_engine.py::test_risk_002_closed_reason_precedence_collects_all_applicable_reasons",
+        "tests/unit/test_risk_engine.py::test_invalid_or_non_fixture_input_fails_closed_without_approval_dependency",
+        "tests/unit/test_risk_engine.py::test_nested_unknowns_policy_rebinding_and_cross_snapshot_mismatch_fail_closed",
+        "tests/unit/test_risk_engine.py::test_decimal_thresholds_use_unrounded_values_and_documented_comparators",
+        "tests/property/test_risk_properties.py::test_spread_and_directional_slippage_boundaries"
+      ],
+      "source_sha256": [
+        "c7576d2835a2f92d6821d290344ee14eb94bda1daee0dc8c8f23e7c07b37d433",
+        "3d5e90741c120a0b85f24bf81712ba7cb1e1c4378fb1458f9e52b85af8c3c58f"
+      ],
       "oracle": "Frozen below/equal/above Decimal limits, every fail-closed counterexample, and priority then lexical ordered reasons match the Phase 0 table."
     },
     {
@@ -35,6 +56,20 @@
       "owner": "risk-engine+paper-engine",
       "command": "corepack pnpm test:failure",
       "artifact": "artifacts/failure/KILL-001.json",
+      "test_nodes": [
+        "tests/failure/test_kill_switch_atomicity.py::test_kill_001_activation_serializes_and_cancel_batches_replay_once"
+      ],
+      "source_sha256": ["5e1f57f7e06d85e754a923e8a56035d367c3d1ae86038fd4342be2baa3f7b7f1"],
+      "fault_schedule": [
+        "paper_create_lock_before_activation",
+        "activation_lock_before_paper_create",
+        "paper_fill_lock_before_activation",
+        "activation_lock_before_paper_fill",
+        "one_hundred_and_one_open_orders",
+        "crash_before_batch_commit",
+        "crash_after_batch_commit_before_ack",
+        "duplicate_activation_delivery"
+      ],
       "oracle": "Create/fill and activation serialize on one barrier; duplicate/crashed batches resume and cancel every open order with one hold, ledger and outbox effect."
     },
     {
@@ -42,6 +77,11 @@
       "owner": "risk-engine",
       "command": "corepack pnpm test:safety",
       "artifact": "artifacts/safety/KILL-002.json",
+      "test_nodes": [
+        "tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_has_no_automatic_ai_or_unauthenticated_recovery"
+      ],
+      "source_sha256": ["4d7a1fc157d4710ef9c631acc87f0592f96acf17f090894b5ff26be9bb141515"],
+      "attempt_matrix": ["timer", "ai", "process_restart", "redis_expiry", "unauthenticated_actor"],
       "oracle": "Timer, AI, restart and unauthenticated recovery attempts create zero OFF transition; Phase 5 contains no recovery handler or event."
     },
     {
@@ -49,6 +89,10 @@
       "owner": "contracts",
       "command": "corepack pnpm test:contracts",
       "artifact": "artifacts/contracts/RISK-CONTRACT-001.json",
+      "test_nodes": [
+        "tests/contract/test_risk_contract.py::test_risk_contract_001_is_closed_typed_and_dormant"
+      ],
+      "source_sha256": ["7da4cdfe3e8df9006dff6c7062ef9b849fbe66730b6e9f87b97b42a11977b7da"],
       "oracle": "Risk input, decisions, reasons and Kill events are closed and dormant; active Risk, Kill, Approval and Authorization paths are zero."
     },
     {
@@ -56,6 +100,14 @@
       "owner": "risk-engine+paper-engine",
       "command": "corepack pnpm test:integration",
       "artifact": "artifacts/integration/RISK-MIGRATION-001.json",
+      "test_nodes": [
+        "tests/integration/test_risk_postgres_persistence.py::test_risk_decision_persistence_is_atomic_unique_and_replay_stable",
+        "tests/integration/test_risk_migration_contract.py::test_risk_migration_001_closes_authority_and_barrier_boundaries"
+      ],
+      "source_sha256": [
+        "1de8a827b1cb40b59c1e5eb2488097c996ca871816a03edc1eade3c201ba17e1",
+        "69564714d462dcf8fb3efdb772a21319a0d31d567001fa775e7ce094c790e643"
+      ],
       "oracle": "Unique immutable Risk input authority, least privilege, Kill barrier locking, atomic outbox and Paper cancel saga survive migration cycle and rollback."
     },
     {
@@ -63,6 +115,12 @@
       "owner": "safety-qa",
       "command": "corepack pnpm test:safety",
       "artifact": "artifacts/safety/RISK-SAFE-001.json",
+      "test_nodes": [
+        "tests/safety/test_phase5_risk_boundaries.py::test_phase_five_has_no_active_risk_approval_or_authorization_ingress",
+        "tests/safety/test_phase5_risk_boundaries.py::test_risk_engine_has_no_network_exchange_secret_or_ai_capability",
+        "tests/safety/test_phase5_risk_boundaries.py::test_phase_five_does_not_create_approval_or_authorization_contracts"
+      ],
+      "source_sha256": ["5935c6c23d73f2b891cf721746b227ad00dc6f9c5d3ed5345062267e48989cf9"],
       "oracle": "Network, credentials, Testnet/private/live, AI, Approval and PaperExecutionAuthorization capabilities remain zero."
     }
   ],

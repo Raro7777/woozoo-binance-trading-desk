@@ -43,6 +43,53 @@ async function paperMetadata() {
   };
 }
 
+async function riskMetadata() {
+  const manifest = await readFile(resolve(root, "docs", "woozoo-trading-desk", "phase-5", "p5-scenario-manifest.json"));
+  return {
+    schema_version: "woozoo.risk.replay-manifest/v1",
+    risk_policy_version: "woozoo.risk-policy/v1",
+    scenario_manifest_sha256: createHash("sha256").update(manifest).digest("hex"),
+    fixed_seed: 0,
+    timezone: "UTC",
+    network_enabled: false,
+  };
+}
+
+async function riskDataScenario(area, id, nodeIds) {
+  const manifestPath = resolve(root, "docs", "woozoo-trading-desk", "phase-5", "p5-scenario-manifest.json");
+  const manifestBytes = await readFile(manifestPath);
+  const manifest = JSON.parse(manifestBytes.toString("utf8"));
+  const scenario = manifest.scenarios?.find((candidate) => candidate.id === id);
+  if (
+    scenario === undefined ||
+    scenario.command !== `corepack pnpm test:${area === "contracts" ? "contracts" : area}` ||
+    scenario.artifact !== `artifacts/${area}/${id}.json` ||
+    JSON.stringify(scenario.test_nodes) !== JSON.stringify(nodeIds) ||
+    typeof scenario.oracle !== "string" ||
+    scenario.oracle.length === 0
+  ) {
+    throw new Error(`${id} scenario contract does not match its exact harness nodes`);
+  }
+  const sourcePaths = [...new Set(nodeIds.map((node) => node.split("::", 1)[0]))];
+  const sourceDigests = [];
+  for (const sourcePath of sourcePaths) {
+    sourceDigests.push(createHash("sha256").update(await readFile(resolve(root, sourcePath))).digest("hex"));
+  }
+  if (JSON.stringify(scenario.source_sha256) !== JSON.stringify(sourceDigests)) {
+    throw new Error(`${id} source digest contract is stale`);
+  }
+  if (id === "KILL-001" && scenario.fault_schedule?.length !== 8) {
+    throw new Error("KILL-001 must bind all eight frozen interleaving and replay faults");
+  }
+  if (id === "KILL-002" && scenario.attempt_matrix?.length !== 5) {
+    throw new Error("KILL-002 must bind every forbidden recovery producer");
+  }
+  await dataScenario(area, id, nodeIds, {
+    ...(await riskMetadata()),
+    scenario_input_digest: createHash("sha256").update(JSON.stringify(scenario)).digest("hex"),
+  });
+}
+
 async function revisionEvidence() {
   const commit = spawnSync("git", ["rev-parse", "HEAD"], {
     cwd: root,
@@ -168,11 +215,21 @@ const actions = {
     await dataScenario("unit", "FIN-003", [
       "tests/property/test_paper_financial_properties.py::test_fin_003_exact_partial_fill_fifo_and_pnl_oracle",
     ], await paperMetadata());
+    await riskDataScenario("unit", "RISK-002", [
+      "tests/unit/test_risk_engine.py::test_risk_002_closed_reason_precedence_collects_all_applicable_reasons",
+      "tests/unit/test_risk_engine.py::test_invalid_or_non_fixture_input_fails_closed_without_approval_dependency",
+      "tests/unit/test_risk_engine.py::test_nested_unknowns_policy_rebinding_and_cross_snapshot_mismatch_fail_closed",
+      "tests/unit/test_risk_engine.py::test_decimal_thresholds_use_unrounded_values_and_documented_comparators",
+      "tests/property/test_risk_properties.py::test_spread_and_directional_slippage_boundaries",
+    ]);
   },
   "test:contracts": async () => {
     await scenarios("contracts", ["CONTRACT-001", "DATA-CONTRACT-001"], [["node", ["scripts/generate-contracts.mjs", "--check"]], ["corepack", [pnpm, "exec", "tsc", "-p", "tests/contract/tsconfig.json"]], ["corepack", [pnpm, "exec", "tsx", "--test", "tests/contract/contracts.test.ts", "tests/contract/market-data-contracts.test.ts", "tests/contract/evidence-contracts.test.ts", "tests/contract/paper-contracts.test.ts", "tests/contract/risk-contracts.test.ts"]], ["python", ["-m", "uv", "run", "--locked", "pytest", "tests/contract", "-q"]]]);
     await dataScenario("contracts", "EVID-002", ["tests/contract/test_evidence_contract.py::test_evid_002_snapshot_contract_is_closed_and_consumer_complete"], { schema_version: "woozoo.evidence.replay-manifest/v1", evidence_recipe_version: evidenceRecipeVersion });
     await scenarios("contracts", ["PAPER-CONTRACT-001"], [["corepack", [pnpm, "exec", "tsx", "--test", "tests/contract/paper-contracts.test.ts"]]], 1, false, await paperMetadata());
+    await riskDataScenario("contracts", "RISK-CONTRACT-001", [
+      "tests/contract/test_risk_contract.py::test_risk_contract_001_is_closed_typed_and_dormant",
+    ]);
   },
   "test:safety": async () => {
     await scenarios("safety", ["SAFE-001", "SAFE-002", "SAFE-003", "SAFE-004", "SAFE-005"], [["python", ["-m", "uv", "run", "--locked", "pytest", "tests/safety", "-q"]], ["node", ["scripts/capability-zero.mjs"]], ["corepack", [pnpm, "exec", "tsx", "--test", "tests/safety/capability-zero.test.ts"]]]);
@@ -184,6 +241,14 @@ const actions = {
       "tests/safety/test_phase4_paper_boundaries.py::test_phase_four_has_no_active_paper_route_or_network_ingress",
       "tests/safety/test_phase4_paper_boundaries.py::test_phase_four_settings_reject_credential_vocabulary",
     ], await paperMetadata());
+    await riskDataScenario("safety", "RISK-SAFE-001", [
+      "tests/safety/test_phase5_risk_boundaries.py::test_phase_five_has_no_active_risk_approval_or_authorization_ingress",
+      "tests/safety/test_phase5_risk_boundaries.py::test_risk_engine_has_no_network_exchange_secret_or_ai_capability",
+      "tests/safety/test_phase5_risk_boundaries.py::test_phase_five_does_not_create_approval_or_authorization_contracts",
+    ]);
+    await riskDataScenario("safety", "KILL-002", [
+      "tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_has_no_automatic_ai_or_unauthenticated_recovery",
+    ]);
   },
   "test:integration": async () => {
     await scenarios("integration", ["PLAT-001", "PLAT-002", "PLAT-003"], [["corepack", [pnpm, "--filter", "@woozoo/trading-room-web", "run", "build"]], ["python", ["-m", "uv", "run", "--locked", "pytest", "tests/integration", "-q"]], ["corepack", [pnpm, "exec", "tsx", "--test", "tests/integration/trading-room-web.test.ts"]]]);
@@ -207,6 +272,10 @@ const actions = {
       "tests/integration/test_paper_postgres_persistence.py::test_downgrade_preserves_a_preexisting_writer_role",
       "tests/integration/test_paper_postgres_persistence.py::test_downgrade_removes_a_migration_created_writer_role",
     ], await paperMetadata());
+    await riskDataScenario("integration", "RISK-MIGRATION-001", [
+      "tests/integration/test_risk_postgres_persistence.py::test_risk_decision_persistence_is_atomic_unique_and_replay_stable",
+      "tests/integration/test_risk_migration_contract.py::test_risk_migration_001_closes_authority_and_barrier_boundaries",
+    ]);
   },
   "test:replay": async () => {
     await dataScenario("replay", "DATA-001", [
@@ -243,6 +312,12 @@ const actions = {
       "tests/replay/test_paper_restart_replay.py::test_atom_002_ack_loss_retry_returns_same_order_without_new_effect",
       "tests/integration/test_paper_postgres_persistence.py::test_concurrent_command_and_observation_retries_return_one_stored_effect",
     ], await paperMetadata());
+    await riskDataScenario("replay", "RISK-001", [
+      "tests/unit/test_risk_engine.py::test_risk_001_same_complete_input_has_same_allowed_decision",
+      "tests/unit/test_risk_engine.py::test_risk_001_every_bound_section_mutation_changes_digest",
+      "tests/replay/test_risk_replay.py::test_risk_replay_is_independent_of_json_key_order_and_process_identity",
+      "tests/replay/test_risk_replay.py::test_reason_message_or_recording_metadata_cannot_enter_decision_hash",
+    ]);
   },
   "test:failure": async () => {
     await dataScenario("failure", "DATA-003", [
@@ -288,6 +363,9 @@ const actions = {
       "tests/failure/test_paper_postgres_atomicity.py::test_injected_failure_rolls_back_every_authoritative_row[ledger-entry]",
       "tests/failure/test_paper_postgres_atomicity.py::test_injected_failure_rolls_back_every_authoritative_row[outbox]",
     ], await paperMetadata());
+    await riskDataScenario("failure", "KILL-001", [
+      "tests/failure/test_kill_switch_atomicity.py::test_kill_001_activation_serializes_and_cancel_batches_replay_once",
+    ]);
   },
   "test:property": async () => {
     await dataScenario("property", "DATA-007", [

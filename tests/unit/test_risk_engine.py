@@ -124,6 +124,27 @@ def test_risk_001_same_complete_input_has_same_allowed_decision() -> None:
     assert len(first.decision_hash) == 64
 
 
+def test_risk_001_every_bound_section_mutation_changes_digest() -> None:
+    baseline = risk_input()
+    baseline_digest = evaluate_risk(baseline).risk_input_digest
+    mutations: tuple[tuple[str, str, object], ...] = (
+        ("proposal", "proposal_hash", "0" * 64),
+        ("portfolio", "snapshot_id", "portfolio-2"),
+        ("data", "evidence_hash", "b" * 64),
+        ("order_preview", "best_bid", "99.98"),
+        ("policy", "policy_hash", "0" * 64),
+        ("kill_switch", "version", 1),
+        ("reconciliation", "checkpoint_id", "recon-2"),
+        ("decision_clock", "version", "2"),
+        ("duplicate", "key", "BTCUSDT:BUY:2"),
+        ("exposure_snapshot", "snapshot_id", "exposure-2"),
+    )
+    for section, field, replacement in mutations:
+        candidate = deepcopy(baseline)
+        candidate[section][field] = replacement  # type: ignore[index]
+        assert evaluate_risk(candidate).risk_input_digest != baseline_digest
+
+
 def test_risk_002_closed_reason_precedence_collects_all_applicable_reasons() -> None:
     payload = risk_input()
     payload["kill_switch"] = {"active": True, "version": 4, "event_id": "kill-4"}

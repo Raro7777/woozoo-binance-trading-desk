@@ -307,6 +307,7 @@ class PaperDomainEventBindingV1(TypedDict):
     payload_hash: str
     data: dict[str, str]
 
+
 RiskVerdictBindingV1 = Literal["ALLOWED", "DENIED", "ERROR"]
 
 
@@ -336,7 +337,12 @@ class KillSwitchBindingV1(TypedDict):
     activation_event_id: str
     trigger_kind: Literal["MANUAL", "INVARIANT"]
     actor_id: str
-    reason_code: Literal["MANUAL_SAFETY_STOP", "LEDGER_IMBALANCE", "PHYSICAL_LEDGER_MISMATCH", "AUTHORIZATION_RECEIPT_MISMATCH"]
+    reason_code: Literal[
+        "MANUAL_SAFETY_STOP",
+        "LEDGER_IMBALANCE",
+        "PHYSICAL_LEDGER_MISMATCH",
+        "AUTHORIZATION_RECEIPT_MISMATCH",
+    ]
     reason: str
     observed_at: str
     context_digest: str

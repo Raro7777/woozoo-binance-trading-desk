@@ -108,6 +108,7 @@ def platform_services() -> Iterator[None]:
     with integration_infrastructure_lock():
         run("docker", "compose", "up", "-d", "--wait", "postgres", "redis")
         try:
+            run(sys.executable, "-m", "alembic", "upgrade", "head")
             run(sys.executable, "-m", "alembic", "downgrade", "20260719_0003")
             run(sys.executable, "-m", "alembic", "upgrade", "head")
             with psycopg.connect(DATABASE_URL) as connection:

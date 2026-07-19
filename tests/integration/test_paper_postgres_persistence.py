@@ -91,6 +91,7 @@ def postgres() -> Iterator[None]:
     with infrastructure_lock():
         run("docker", "compose", "up", "-d", "--wait", "postgres")
         try:
+            run(sys.executable, "-m", "alembic", "upgrade", "head")
             run(sys.executable, "-m", "alembic", "downgrade", "20260719_0003")
             run(sys.executable, "-m", "alembic", "upgrade", "head")
             yield

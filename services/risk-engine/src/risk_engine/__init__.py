@@ -3,6 +3,25 @@
 from platform_core import canonical_hash, canonical_json
 
 from .engine import evaluate_risk
+from .kill_switch import (
+    KillActivation,
+    KillActivationResult,
+    KillPersistenceStage,
+    PostgresKillSwitch,
+)
 from .models import RiskDecision
+from .persistence import PersistedRiskDecision, PostgresRiskStore, RiskPersistenceStage
 
-__all__ = ["RiskDecision", "canonical_hash", "canonical_json", "evaluate_risk"]
+__all__ = [
+    "KillActivation",
+    "KillActivationResult",
+    "KillPersistenceStage",
+    "PersistedRiskDecision",
+    "PostgresKillSwitch",
+    "PostgresRiskStore",
+    "RiskDecision",
+    "RiskPersistenceStage",
+    "canonical_hash",
+    "canonical_json",
+    "evaluate_risk",
+]
