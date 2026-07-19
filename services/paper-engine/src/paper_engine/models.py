@@ -10,6 +10,7 @@ import re
 
 
 OPAQUE_ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}")
+HASH_ID_PATTERN = re.compile(r"[a-f0-9]{64}")
 
 
 def validate_opaque_id(value: str, *, max_length: int = 128) -> None:
@@ -153,6 +154,11 @@ class Journal:
     replacement_for: str | None = None
 
     def assert_balanced(self) -> None:
+        if HASH_ID_PATTERN.fullmatch(self.journal_id) is None or any(
+            reference is not None and HASH_ID_PATTERN.fullmatch(reference) is None
+            for reference in (self.reversal_of, self.replacement_for)
+        ):
+            raise ValueError("INVALID_LEDGER_TRANSACTION_ID")
         if len(self.entries) < 2:
             raise ValueError("LEDGER_JOURNAL_INCOMPLETE")
         for entry in self.entries:

@@ -197,6 +197,8 @@ const actions = {
       "tests/integration/test_paper_postgres_persistence.py::test_sell_fill_binds_fifo_basis_and_exact_ledger_amounts",
       "tests/integration/test_paper_postgres_persistence.py::test_deferred_fifo_rejects_younger_first_even_if_later_sale_exhausts_older",
       "tests/integration/test_paper_postgres_persistence.py::test_cancel_outbox_binds_exact_receipt_and_rejects_non_ascii_identity",
+      "tests/integration/test_paper_postgres_persistence.py::test_database_rejects_noncanonical_ledger_transaction_id",
+      "tests/unit/test_paper_engine.py::test_ledger_transaction_id_rejects_unicode_and_non_hash_ids",
       "tests/integration/test_paper_postgres_persistence.py::test_failed_reconciliation_checkpoint_holds_new_lifecycle_command",
     ], await paperMetadata());
     await dataScenario("integration", "PAPER-MIGRATION-001", [
@@ -232,6 +234,7 @@ const actions = {
       "tests/integration/test_paper_postgres_persistence.py::test_rejected_command_is_durable_orderless_and_restart_idempotent",
       "tests/integration/test_paper_postgres_persistence.py::test_observation_no_fill_requires_ineligibility_or_exhausted_budget",
       "tests/integration/test_paper_postgres_persistence.py::test_terminal_order_cannot_append_a_new_accepted_version",
+      "tests/unit/test_paper_engine.py::test_shared_observation_uses_one_canonical_broker_sequence_and_budget",
     ], await paperMetadata());
     await dataScenario("replay", "ATOM-002", [
       "tests/replay/test_paper_restart_replay.py::test_atom_002_ack_loss_retry_returns_same_order_without_new_effect",

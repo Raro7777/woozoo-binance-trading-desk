@@ -14,6 +14,7 @@ def test_phase_four_migration_closes_financial_and_activation_boundaries() -> No
         "paper_ledger_balance_v1",
         "reject_paper_history_mutation",
         "uq_paper_business_journal",
+        "ck_paper_ledger_transaction_id",
         "assert_paper_relational_consistency",
         "assert_paper_correction_pair",
         "paper_migration_metadata",

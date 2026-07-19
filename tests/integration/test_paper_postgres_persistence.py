@@ -238,7 +238,7 @@ def complete_write(*, suffix: str = "base") -> AtomicPaperWrite:
     )
     journals = (
         Journal(
-            journal_id=f"seed-journal-{suffix}",
+            journal_id=stable_id(f"seed-journal-{suffix}"),
             business_event_type="paper.seed",
             business_event_id=f"seed-{suffix}",
             journal_kind="PHYSICAL",
@@ -248,7 +248,7 @@ def complete_write(*, suffix: str = "base") -> AtomicPaperWrite:
             ),
         ),
         Journal(
-            journal_id=f"hold-journal-{suffix}",
+            journal_id=stable_id(f"hold-journal-{suffix}"),
             business_event_type="paper.hold",
             business_event_id=order_id,
             journal_kind="PHYSICAL",
@@ -258,7 +258,7 @@ def complete_write(*, suffix: str = "base") -> AtomicPaperWrite:
             ),
         ),
         Journal(
-            journal_id=f"fill-journal-{suffix}",
+            journal_id=stable_id(f"fill-journal-{suffix}"),
             business_event_type="paper.fill",
             business_event_id=fill_id,
             journal_kind="PHYSICAL",
@@ -271,7 +271,7 @@ def complete_write(*, suffix: str = "base") -> AtomicPaperWrite:
             ),
         ),
         Journal(
-            journal_id=f"valuation-journal-{suffix}",
+            journal_id=stable_id(f"valuation-journal-{suffix}"),
             business_event_type="paper.fill",
             business_event_id=fill_id,
             journal_kind="VALUATION",
@@ -1005,6 +1005,30 @@ def test_observation_no_fill_requires_ineligibility_or_exhausted_budget() -> Non
     with pytest.raises(psycopg.errors.RaiseException, match="fill/order consistency"):
         store.commit(eligible_no_fill)
 
+    terminal = complete_write(suffix="terminal-no-fill")
+    store.commit(terminal)
+    terminal_cancelled = cancel_write(terminal)
+    store.commit(terminal_cancelled)
+    terminal_source = replace(
+        terminal.broker_inputs[1],
+        broker_seq=terminal_cancelled.receipt.broker_seq + 1,
+        source_key="book:terminal-no-fill:after-filled",
+    )
+    terminal_no_fill = replace(
+        terminal_cancelled,
+        receipt=None,
+        authorization_attempt=None,
+        broker_inputs=(terminal_source,),
+        balances=(),
+        order_events=(),
+        fills=(),
+        lots=(),
+        journals=(),
+        outbox=(),
+    )
+    with pytest.raises(psycopg.errors.RaiseException, match="fill/order consistency"):
+        store.commit(terminal_no_fill)
+
     ineligible_open, ineligible_fill = split_open_and_fill(suffix="ineligible-no-fill")
     store.commit(ineligible_open)
     source = ineligible_fill.broker_inputs[0]
@@ -1064,6 +1088,54 @@ def test_observation_no_fill_requires_ineligibility_or_exhausted_budget() -> Non
     )
     assert store.commit(cancelled).created is True
 
+    later_open, later_fill = split_open_and_fill(suffix="ineligible-then-fill")
+    store.commit(later_open)
+    later_source = later_fill.broker_inputs[0]
+    later_ineligible_source = replace(
+        later_source,
+        best_ask=Decimal("10001"),
+        payload_hash=engine_id(
+            "observation",
+            "BTCUSDT",
+            "99.000000000000000000",
+            "10001.000000000000000000",
+            "0.050000000000000000",
+        ),
+    )
+    store.commit(
+        replace(
+            later_fill,
+            broker_inputs=(later_ineligible_source,),
+            balances=(),
+            order=later_open.order,
+            order_events=(),
+            fills=(),
+            lots=(),
+            journals=(),
+            outbox=(),
+        )
+    )
+    eligible_after_no_fill = replace(
+        later_fill.broker_inputs[0],
+        broker_seq=later_source.broker_seq + 1,
+        source_key="book:ineligible-then-fill:eligible",
+    )
+    later_fill = replace(
+        later_fill,
+        broker_inputs=(eligible_after_no_fill,),
+        order_events=(
+            replace(later_fill.order_events[0], source_key=eligible_after_no_fill.source_key),
+        ),
+        fills=(
+            replace(
+                later_fill.fills[0],
+                observation_id=eligible_after_no_fill.source_key,
+                broker_seq=eligible_after_no_fill.broker_seq,
+            ),
+        ),
+    )
+    assert store.commit(later_fill).created is True
+
 
 def test_restart_completes_shared_observation_for_second_order_once() -> None:
     initial = complete_write(suffix="shared-observation")
@@ -1087,30 +1159,63 @@ def test_restart_completes_shared_observation_for_second_order_once() -> None:
             shared_book,
         ),
         balances=(
-            BalanceWrite("USDT", Decimal("149.95"), Decimal(0), 1),
-            BalanceWrite("BTC", Decimal("0.005"), Decimal(0), 1),
+            BalanceWrite("USDT", Decimal("169.97"), Decimal(0), 1),
+            BalanceWrite("BTC", Decimal("0.003"), Decimal(0), 1),
         ),
         order=replace(
             initial.order,
-            quantity=Decimal("0.005"),
+            quantity=Decimal("0.003"),
             status=OrderStatus.FILLED,
+            filled_quantity=Decimal("0.003"),
             held_amount=Decimal(0),
         ),
         order_events=(
             initial.order_events[0],
             replace(initial.order_events[1], event_type="paper.order.filled.v1"),
         ),
-        fills=(replace(initial.fills[0], broker_seq=observation_seq),),
+        fills=(
+            replace(
+                initial.fills[0],
+                broker_seq=observation_seq,
+                quantity=Decimal("0.003"),
+                fee_amount=Decimal("0.03"),
+            ),
+        ),
+        lots=(
+            replace(
+                initial.lots[0],
+                acquired_quantity=Decimal("0.003"),
+                quote_cost=Decimal("30.03"),
+            ),
+        ),
         journals=(
             initial.journals[0],
             replace(
                 initial.journals[1],
                 entries=(
-                    LedgerEntry("paper.held", "USDT", Decimal("50.05"), Decimal(0)),
-                    LedgerEntry("paper.available", "USDT", Decimal(0), Decimal("50.05")),
+                    LedgerEntry("paper.held", "USDT", Decimal("30.03"), Decimal(0)),
+                    LedgerEntry("paper.available", "USDT", Decimal(0), Decimal("30.03")),
                 ),
             ),
-            *initial.journals[2:],
+            replace(
+                initial.journals[2],
+                entries=(
+                    LedgerEntry("paper.asset", "BTC", Decimal("0.003"), Decimal(0)),
+                    LedgerEntry("exchange.clearing", "BTC", Decimal(0), Decimal("0.003")),
+                    LedgerEntry("exchange.clearing", "USDT", Decimal("30"), Decimal(0)),
+                    LedgerEntry("paper.fee", "USDT", Decimal("0.03"), Decimal(0)),
+                    LedgerEntry("paper.held", "USDT", Decimal(0), Decimal("30.03")),
+                ),
+            ),
+            replace(
+                initial.journals[3],
+                entries=(
+                    LedgerEntry("paper.inventory-basis", "USDT_VAL", Decimal("30.03"), Decimal(0)),
+                    LedgerEntry(
+                        "paper.acquisition-value", "USDT_VAL", Decimal(0), Decimal("30.03")
+                    ),
+                ),
+            ),
         ),
         outbox=(
             initial.outbox[0],
@@ -1127,22 +1232,135 @@ def test_restart_completes_shared_observation_for_second_order_once() -> None:
     opened, filled = second_order_on_shared_observation(initial)
     opened = replace(
         opened,
-        balances=(BalanceWrite("USDT", Decimal("99.9"), Decimal("50.05"), 2),),
+        balances=(BalanceWrite("USDT", Decimal("69.87"), Decimal("100.1"), 2),),
+        order=replace(opened.order, quantity=Decimal("0.01"), held_amount=Decimal("100.1")),
+        journals=(
+            replace(
+                opened.journals[0],
+                entries=(
+                    LedgerEntry("paper.held", "USDT", Decimal("100.1"), Decimal(0)),
+                    LedgerEntry("paper.available", "USDT", Decimal(0), Decimal("100.1")),
+                ),
+            ),
+        ),
     )
     filled = replace(
         filled,
         balances=(
-            BalanceWrite("USDT", Decimal("99.9"), Decimal(0), 3),
+            BalanceWrite("USDT", Decimal("69.87"), Decimal("30.03"), 3),
             BalanceWrite("BTC", Decimal("0.01"), Decimal(0), 2),
+        ),
+        order=replace(
+            filled.order,
+            quantity=Decimal("0.01"),
+            status=OrderStatus.PARTIALLY_FILLED,
+            filled_quantity=Decimal("0.007"),
+            held_amount=Decimal("30.03"),
+        ),
+        order_events=(
+            replace(filled.order_events[0], event_type="paper.order.partially-filled.v1"),
+        ),
+        fills=(replace(filled.fills[0], quantity=Decimal("0.007"), fee_amount=Decimal("0.07")),),
+        lots=(
+            replace(
+                filled.lots[0],
+                acquired_quantity=Decimal("0.007"),
+                quote_cost=Decimal("70.07"),
+            ),
+        ),
+        journals=(
+            replace(
+                filled.journals[0],
+                entries=(
+                    LedgerEntry("paper.asset", "BTC", Decimal("0.007"), Decimal(0)),
+                    LedgerEntry("exchange.clearing", "BTC", Decimal(0), Decimal("0.007")),
+                    LedgerEntry("exchange.clearing", "USDT", Decimal("70"), Decimal(0)),
+                    LedgerEntry("paper.fee", "USDT", Decimal("0.07"), Decimal(0)),
+                    LedgerEntry("paper.held", "USDT", Decimal(0), Decimal("70.07")),
+                ),
+            ),
+            replace(
+                filled.journals[1],
+                entries=(
+                    LedgerEntry("paper.inventory-basis", "USDT_VAL", Decimal("70.07"), Decimal(0)),
+                    LedgerEntry(
+                        "paper.acquisition-value", "USDT_VAL", Decimal(0), Decimal("70.07")
+                    ),
+                ),
+            ),
+        ),
+        outbox=(
+            outbox(
+                "paper.order.partially-filled.v1",
+                filled.order.order_id,
+                2,
+                {"order_id": filled.order.order_id, "fill_id": filled.fills[0].fill_id},
+            ),
         ),
     )
     store.commit(opened)
+    hydrated_before_fill = store.hydrate_engine(initial.account_id)
+    actual_fill = hydrated_before_fill.apply_book_observation(
+        order_id=opened.order.order_id,
+        observation_id=shared_book.source_key,
+        best_bid_text="99",
+        best_ask_text="100",
+        displayed_quantity_text="0.1",
+    )
+    assert actual_fill is not None
+    assert actual_fill.broker_seq == observation_seq
+    assert actual_fill.fill_id < initial.fills[0].fill_id
+    assert (initial.fills[0].quantity, actual_fill.quantity) == (
+        Decimal("0.003"),
+        Decimal("0.007"),
+    )
+    actual_order = hydrated_before_fill.orders[opened.order.order_id]
+    actual_lot = next(
+        lot for lot in hydrated_before_fill.lots if lot.source_fill_id == actual_fill.fill_id
+    )
+    actual_journals = tuple(
+        journal
+        for journal in hydrated_before_fill.journals.values()
+        if journal.business_event_id == actual_fill.fill_id
+    )
+    filled = replace(
+        filled,
+        created_at=actual_lot.acquired_at,
+        balances=(
+            BalanceWrite(
+                "USDT",
+                hydrated_before_fill.available["USDT"],
+                hydrated_before_fill.held["USDT"],
+                3,
+            ),
+            BalanceWrite("BTC", hydrated_before_fill.available["BTC"], Decimal(0), 2),
+        ),
+        order=actual_order,
+        order_events=(
+            replace(
+                filled.order_events[0],
+                event_type="paper.order.partially-filled.v1",
+                payload_hash=digest(actual_fill.fill_id),
+            ),
+        ),
+        fills=(actual_fill,),
+        lots=(actual_lot,),
+        journals=actual_journals,
+        outbox=(
+            outbox(
+                "paper.order.partially-filled.v1",
+                actual_order.order_id,
+                actual_order.version,
+                {"order_id": actual_order.order_id, "fill_id": actual_fill.fill_id},
+            ),
+        ),
+    )
     first = PostgresPaperStore(PAPER_WRITER_URL).commit(filled)
     retry = PostgresPaperStore(PAPER_WRITER_URL).commit(filled)
     assert first.created is True
     assert retry.created is False
     restarted = store.hydrate_engine(initial.account_id)
-    assert restarted.orders[filled.order.order_id].status == OrderStatus.FILLED
+    assert restarted.orders[filled.order.order_id].status == OrderStatus.PARTIALLY_FILLED
     assert restarted.observation_budgets[initial.broker_inputs[1].source_key][1] == 0
     with psycopg.connect(DATABASE_URL) as connection:
         assert connection.execute(
@@ -1306,6 +1524,7 @@ def test_deferred_fifo_rejects_younger_first_even_if_later_sale_exhausts_older(
     )
     second_fill = replace(
         second_fill,
+        created_at=datetime(2026, 7, 19, 12, 1, tzinfo=UTC),
         broker_inputs=(second_source,),
         balances=(
             BalanceWrite("USDT", Decimal("99.9"), Decimal(0), 4),
@@ -1327,6 +1546,12 @@ def test_deferred_fifo_rejects_younger_first_even_if_later_sale_exhausts_older(
         ),
     )
     store.commit(second_open)
+    swapped_chronology = replace(
+        second_fill,
+        lots=(replace(second_fill.lots[0], acquired_at=NOW),),
+    )
+    with pytest.raises(psycopg.errors.RaiseException, match="fill/order consistency"):
+        store.commit(swapped_chronology)
     store.commit(second_fill)
 
     first_open, first_sale = sell_order_after_cancel(initial)
@@ -1709,6 +1934,34 @@ def test_database_rejects_incomplete_financial_state_and_liquidity_overallocatio
         PostgresPaperStore(DATABASE_URL).commit(mismatched_lot)
 
 
+def test_database_rejects_noncanonical_ledger_transaction_id() -> None:
+    write = complete_write(suffix="unicode-ledger-id")
+    store = PostgresPaperStore(PAPER_WRITER_URL)
+    store.commit(write)
+    with pytest.raises(psycopg.errors.CheckViolation, match="ck_paper_ledger_transaction_id"):
+        with psycopg.connect(DATABASE_URL) as connection:
+            connection.execute(
+                "INSERT INTO paper_ledger_transactions"
+                "(transaction_id,account_id,business_event_type,business_event_id,"
+                "journal_kind,posted_at) VALUES (%s,%s,%s,%s,'PHYSICAL',%s)",
+                ("원장-1", write.account_id, "paper.test", "unicode-ledger", NOW),
+            )
+    invalid_outbox = outbox(
+        "ledger.transaction.posted.v1",
+        "원장-1",
+        1,
+        {"transaction_id": "원장-1"},
+    )
+    invalid_outbox_write = rejected_write(suffix="invalid-ledger-outbox")
+    with pytest.raises(ValueError, match="INVALID_PAPER_OUTBOX_CONTRACT"):
+        store.commit(
+            replace(
+                invalid_outbox_write,
+                outbox=(*invalid_outbox_write.outbox, invalid_outbox),
+            )
+        )
+
+
 def test_failed_reconciliation_checkpoint_holds_new_lifecycle_command() -> None:
     initial = complete_write(suffix="reconciliation-hold")
     store = PostgresPaperStore(PAPER_WRITER_URL)
@@ -1818,6 +2071,7 @@ def test_database_rejects_orphan_relations_fill_mismatch_empty_journal_and_bad_c
                 (write.order.order_id,),
             )
 
+    empty_journal_id = stable_id("empty-journal")
     with pytest.raises(psycopg.errors.RaiseException, match="at least one entry"):
         with psycopg.connect(DATABASE_URL) as connection:
             connection.execute(
@@ -1825,11 +2079,12 @@ def test_database_rejects_orphan_relations_fill_mismatch_empty_journal_and_bad_c
                 INSERT INTO paper_ledger_transactions
                     (transaction_id,account_id,business_event_type,business_event_id,
                      journal_kind,posted_at)
-                VALUES ('empty-journal',%s,'paper.test','empty','PHYSICAL',%s)
+                VALUES (%s,%s,'paper.test','empty','PHYSICAL',%s)
                 """,
-                (write.account_id, NOW),
+                (empty_journal_id, write.account_id, NOW),
             )
 
+    unpaired_reversal_id = stable_id("unpaired-reversal")
     with pytest.raises(psycopg.errors.RaiseException, match="correction pair"):
         with psycopg.connect(DATABASE_URL) as connection:
             connection.execute(
@@ -1837,52 +2092,69 @@ def test_database_rejects_orphan_relations_fill_mismatch_empty_journal_and_bad_c
                 INSERT INTO paper_ledger_transactions
                     (transaction_id,account_id,business_event_type,business_event_id,
                      journal_kind,reversal_of,posted_at)
-                VALUES ('unpaired-reversal',%s,'paper.correction','correction-x',
+                VALUES (%s,%s,'paper.correction','correction-x',
                         'PHYSICAL',%s,%s)
                 """,
-                (write.account_id, write.journals[0].journal_id, NOW),
+                (
+                    unpaired_reversal_id,
+                    write.account_id,
+                    write.journals[0].journal_id,
+                    NOW,
+                ),
             )
             connection.execute(
                 """
                 INSERT INTO paper_ledger_entries
                     (transaction_id,line_no,account_code,commodity,debit,credit)
-                SELECT 'unpaired-reversal',line_no,account_code,commodity,credit,debit
+                SELECT %s,line_no,account_code,commodity,credit,debit
                 FROM paper_ledger_entries WHERE transaction_id=%s
                 """,
-                (write.journals[0].journal_id,),
+                (unpaired_reversal_id, write.journals[0].journal_id),
             )
 
+    wrong_kind_reversal_id = stable_id("wrong-kind-reversal")
+    wrong_kind_replacement_id = stable_id("wrong-kind-replacement")
     with pytest.raises(psycopg.errors.RaiseException, match="target or kind"):
         with psycopg.connect(DATABASE_URL) as connection:
             connection.execute(
                 "INSERT INTO paper_ledger_transactions"
                 "(transaction_id,account_id,business_event_type,business_event_id,"
                 "journal_kind,reversal_of,posted_at) VALUES "
-                "('wrong-kind-reversal',%s,'paper.correction','wrong-kind',"
+                "(%s,%s,'paper.correction','wrong-kind',"
                 "'VALUATION',%s,%s)",
-                (write.account_id, write.journals[0].journal_id, NOW),
+                (
+                    wrong_kind_reversal_id,
+                    write.account_id,
+                    write.journals[0].journal_id,
+                    NOW,
+                ),
             )
             connection.execute(
                 "INSERT INTO paper_ledger_transactions"
                 "(transaction_id,account_id,business_event_type,business_event_id,"
                 "journal_kind,replacement_for,posted_at) VALUES "
-                "('wrong-kind-replacement',%s,'paper.replacement','wrong-kind',"
+                "(%s,%s,'paper.replacement','wrong-kind',"
                 "'VALUATION',%s,%s)",
-                (write.account_id, write.journals[0].journal_id, NOW),
+                (
+                    wrong_kind_replacement_id,
+                    write.account_id,
+                    write.journals[0].journal_id,
+                    NOW,
+                ),
             )
             connection.execute(
                 "INSERT INTO paper_ledger_entries"
                 "(transaction_id,line_no,account_code,commodity,debit,credit) "
-                "SELECT 'wrong-kind-reversal',line_no,account_code,commodity,credit,debit "
+                "SELECT %s,line_no,account_code,commodity,credit,debit "
                 "FROM paper_ledger_entries WHERE transaction_id=%s",
-                (write.journals[0].journal_id,),
+                (wrong_kind_reversal_id, write.journals[0].journal_id),
             )
             connection.execute(
                 "INSERT INTO paper_ledger_entries"
                 "(transaction_id,line_no,account_code,commodity,debit,credit) "
-                "SELECT 'wrong-kind-replacement',line_no,account_code,commodity,debit,credit "
+                "SELECT %s,line_no,account_code,commodity,debit,credit "
                 "FROM paper_ledger_entries WHERE transaction_id=%s",
-                (write.journals[0].journal_id,),
+                (wrong_kind_replacement_id, write.journals[0].journal_id),
             )
 
     with pytest.raises(psycopg.errors.RaiseException):
@@ -2104,6 +2376,57 @@ def test_cancel_outbox_binds_exact_receipt_and_rejects_non_ascii_identity() -> N
                         forged.aggregate_version,
                     ),
                 )
+
+    assert cancelled.receipt is not None
+    duplicate_key = "cancel-second-receipt"
+    duplicate_hash = digest(duplicate_key)
+    duplicate_authorization = "auth-cancel-second-receipt"
+    duplicate_seq = cancelled.receipt.broker_seq + 1
+    with pytest.raises(psycopg.errors.RaiseException, match="receipt/order/attempt/input"):
+        with psycopg.connect(PAPER_WRITER_URL) as connection:
+            connection.execute(
+                "INSERT INTO paper_broker_inputs"
+                "(broker_seq,account_id,source_kind,source_key,payload_hash,observed_at) "
+                "VALUES (%s,%s,'TEST_COMMAND',%s,%s,%s)",
+                (
+                    duplicate_seq,
+                    initial.account_id,
+                    f"command:{duplicate_key}",
+                    duplicate_hash,
+                    NOW,
+                ),
+            )
+            connection.execute(
+                "INSERT INTO paper_authorization_attempts"
+                "(authorization_id,authorization_nonce,account_id,command_scope,"
+                "idempotency_key,namespace,request_hash,outcome,created_at) "
+                "VALUES (%s,%s,%s,'paper.cancel.v1',%s,'test',%s,"
+                "'CONSUMED_ORDER_CANCELLED',%s)",
+                (
+                    duplicate_authorization,
+                    "nonce-cancel-second-receipt",
+                    initial.account_id,
+                    duplicate_key,
+                    duplicate_hash,
+                    NOW,
+                ),
+            )
+            connection.execute(
+                "INSERT INTO paper_command_receipts"
+                "(scope,idempotency_key,account_id,request_hash,outcome,paper_order_id,"
+                "authorization_id,broker_seq,response,created_at) "
+                "VALUES ('paper.cancel.v1',%s,%s,%s,'ORDER_CANCELLED',%s,%s,%s,%s::jsonb,%s)",
+                (
+                    duplicate_key,
+                    initial.account_id,
+                    duplicate_hash,
+                    cancelled.order.order_id,
+                    duplicate_authorization,
+                    duplicate_seq,
+                    json.dumps({"order_id": cancelled.order.order_id, "status": "CANCELLED"}),
+                    NOW,
+                ),
+            )
 
 
 def test_downgrade_removes_a_migration_created_writer_role() -> None:

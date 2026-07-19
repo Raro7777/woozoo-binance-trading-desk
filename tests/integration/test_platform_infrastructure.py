@@ -1185,14 +1185,16 @@ def test_phase_four_postgres_enforces_balance_and_immutable_ledger() -> None:
                 """
                 INSERT INTO paper_ledger_transactions
                     (transaction_id,account_id,business_event_type,business_event_id,journal_kind,posted_at)
-                VALUES ('bad','ledger-bad','paper.test','bad','PHYSICAL',now())
+                VALUES ('bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+                        'ledger-bad','paper.test','bad','PHYSICAL',now())
                 """
             )
             connection.execute(
                 """
                 INSERT INTO paper_ledger_entries
                     (transaction_id,line_no,account_code,commodity,debit,credit)
-                VALUES ('bad',0,'paper.cash','USDT',1,0)
+                VALUES ('bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+                        0,'paper.cash','USDT',1,0)
                 """
             )
 
@@ -1205,7 +1207,8 @@ def test_phase_four_postgres_enforces_balance_and_immutable_ledger() -> None:
             """
             INSERT INTO paper_ledger_transactions
                 (transaction_id,account_id,business_event_type,business_event_id,journal_kind,posted_at)
-            VALUES ('good','ledger-good','paper.test','good','PHYSICAL',now())
+            VALUES ('cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+                    'ledger-good','paper.test','good','PHYSICAL',now())
             """
         )
         connection.execute(
@@ -1213,14 +1216,18 @@ def test_phase_four_postgres_enforces_balance_and_immutable_ledger() -> None:
             INSERT INTO paper_ledger_entries
                 (transaction_id,line_no,account_code,commodity,debit,credit)
             VALUES
-                ('good',0,'paper.cash','USDT',1,0),
-                ('good',1,'exchange.clearing','USDT',0,1)
+                ('cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+                 0,'paper.cash','USDT',1,0),
+                ('cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+                 1,'exchange.clearing','USDT',0,1)
             """
         )
     with pytest.raises(psycopg.errors.RaiseException, match="append-only"):
         with psycopg.connect(DATABASE_URL) as connection:
             connection.execute(
-                "UPDATE paper_ledger_entries SET debit=2 WHERE transaction_id='good' AND line_no=0"
+                "UPDATE paper_ledger_entries SET debit=2 "
+                "WHERE transaction_id='cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc' "
+                "AND line_no=0"
             )
 
 

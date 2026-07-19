@@ -44,6 +44,6 @@
     "rejectionData": {"type": "object", "additionalProperties": false, "required": ["request_hash", "reason"], "properties": {"request_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "reason": {"const": "INSUFFICIENT_FUNDS"}}},
     "authorizationData": {"type": "object", "additionalProperties": false, "required": ["authorization_id", "outcome"], "properties": {"authorization_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,63}$"}, "outcome": {"enum": ["BLOCKED", "CONSUMED"]}}},
     "ledgerPosted": {"allOf": [{"$ref": "#/$defs/base"}, {"properties": {"event_type": {"const": "ledger.transaction.posted.v1"}, "data": {"$ref": "#/$defs/ledgerData"}}}]},
-    "ledgerData": {"type": "object", "additionalProperties": false, "required": ["transaction_id"], "properties": {"transaction_id": {"type": "string", "minLength": 1, "maxLength": 64}}}
+    "ledgerData": {"type": "object", "additionalProperties": false, "required": ["transaction_id"], "properties": {"transaction_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}}
   }
 }

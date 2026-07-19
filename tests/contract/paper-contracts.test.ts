@@ -32,7 +32,11 @@ test("Phase 4 Paper contracts are closed and dormant until Phase 7", async () =>
   ];
   assert.equal(eventTypes.length, 7);
   const schema = JSON.parse(await readFile(resolve(import.meta.dirname, "../../packages/contracts/spec/paper-order.v1.json"), "utf8")) as Record<string, any>;
-  const registry = JSON.parse(await readFile(resolve(import.meta.dirname, "../../packages/contracts/spec/paper-domain-events.v1.json"), "utf8")) as { oneOf: unknown[]; "x-activation-phase": number };
+  const registry = JSON.parse(await readFile(resolve(import.meta.dirname, "../../packages/contracts/spec/paper-domain-events.v1.json"), "utf8")) as {
+    oneOf: unknown[];
+    "x-activation-phase": number;
+    $defs: { ledgerData: { properties: { transaction_id: { pattern: string } } } };
+  };
   const openapi = JSON.parse(await readFile(resolve(import.meta.dirname, "../../packages/contracts/spec/openapi.v1.json"), "utf8")) as { paths: Record<string, unknown> };
   assert.equal(schema.additionalProperties, false);
   assert.equal(schema["x-activation-phase"], 7);
@@ -48,5 +52,8 @@ test("Phase 4 Paper contracts are closed and dormant until Phase 7", async () =>
   assert.equal(clientOrderId.test("client-1"), true);
   assert.equal(clientOrderId.test("주문-1"), false);
   assert.equal(authorizationId.test("fixture-1"), true);
+  const transactionId = new RegExp(registry.$defs.ledgerData.properties.transaction_id.pattern);
+  assert.equal(transactionId.test("d".repeat(64)), true);
+  assert.equal(transactionId.test("ledger-\uC6D0\uC7A5"), false);
   assert.equal(authorizationId.test("승인"), false);
 });

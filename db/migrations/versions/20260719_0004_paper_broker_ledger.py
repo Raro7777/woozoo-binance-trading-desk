@@ -482,6 +482,10 @@ def upgrade() -> None:
             "journal_kind IN ('PHYSICAL','VALUATION')", name="ck_paper_journal_kind"
         ),
         sa.CheckConstraint(
+            "transaction_id ~ '^[a-f0-9]{64}$'",
+            name="ck_paper_ledger_transaction_id",
+        ),
+        sa.CheckConstraint(
             "NOT (reversal_of IS NOT NULL AND replacement_for IS NOT NULL)",
             name="ck_paper_single_correction_reference",
         ),
@@ -763,6 +767,51 @@ def upgrade() -> None:
               ON receipt.scope=paper_order.command_scope
              AND receipt.idempotency_key=paper_order.idempotency_key
             WHERE receipt.scope IS NULL OR receipt.paper_order_id<>paper_order.order_id
+          ) OR EXISTS (
+            SELECT 1 FROM paper_orders paper_order
+            LEFT JOIN LATERAL (
+              SELECT count(*) receipt_count
+              FROM paper_command_receipts receipt
+              WHERE receipt.paper_order_id=paper_order.order_id
+                AND receipt.outcome='ORDER_CANCELLED'
+            ) cancelled_receipts ON true
+            LEFT JOIN LATERAL (
+              SELECT count(*) event_count
+              FROM paper_order_events event
+              WHERE event.order_id=paper_order.order_id
+                AND event.event_type='paper.order.cancelled.v1'
+            ) cancelled_events ON true
+            LEFT JOIN LATERAL (
+              SELECT count(*) outbox_count
+              FROM paper_order_events event
+              JOIN outbox_events outbox
+                ON outbox.aggregate_type='paper_order'
+               AND outbox.aggregate_id=event.order_id
+               AND outbox.aggregate_version=event.order_version
+               AND outbox.event_type=event.event_type
+              WHERE event.order_id=paper_order.order_id
+                AND event.event_type='paper.order.cancelled.v1'
+            ) cancelled_outbox ON true
+            WHERE paper_order.status='CANCELLED'
+              AND (cancelled_receipts.receipt_count<>1
+                OR cancelled_events.event_count<>1
+                OR cancelled_outbox.outbox_count<>1)
+          ) OR EXISTS (
+            SELECT 1 FROM paper_command_receipts receipt
+            WHERE receipt.outcome='ORDER_CANCELLED'
+              AND NOT EXISTS (
+                SELECT 1 FROM paper_order_events event
+                JOIN paper_broker_inputs input ON input.source_key=event.source_key
+                JOIN outbox_events outbox
+                  ON outbox.aggregate_type='paper_order'
+                 AND outbox.aggregate_id=event.order_id
+                 AND outbox.aggregate_version=event.order_version
+                 AND outbox.event_type=event.event_type
+                WHERE event.order_id=receipt.paper_order_id
+                  AND event.event_type='paper.order.cancelled.v1'
+                  AND input.account_id=receipt.account_id
+                  AND input.broker_seq=receipt.broker_seq
+                  AND outbox.payload->'data'->>'cancel_id'=receipt.idempotency_key)
           ) THEN
             RAISE EXCEPTION 'Paper receipt/order/attempt/input consistency violation';
           END IF;
@@ -880,9 +929,14 @@ def upgrade() -> None:
                       SELECT rule.step_size FROM paper_symbol_rule_versions rule
                       WHERE rule.rule_version=fill.symbol_rule_version
                         AND rule.symbol=paper_order.symbol)-(
-                      SELECT COALESCE(sum(prior.quantity),0) FROM paper_fills prior
+                      SELECT COALESCE(sum(prior.quantity),0)
+                      FROM paper_fills prior
+                      JOIN paper_orders prior_order ON prior_order.order_id=prior.order_id
                       WHERE prior.source_key=fill.source_key
-                        AND (prior.broker_seq,prior.fill_id)<(fill.broker_seq,fill.fill_id)))
+                        AND (prior_order.accepted_broker_seq,prior_order.client_order_id,
+                             prior_order.order_id)<
+                            (paper_order.accepted_broker_seq,paper_order.client_order_id,
+                             paper_order.order_id)))
                OR NOT EXISTS (
                     SELECT 1 FROM paper_symbol_rule_versions rule
                     WHERE rule.rule_version=fill.symbol_rule_version
@@ -986,8 +1040,9 @@ def upgrade() -> None:
             LEFT JOIN LATERAL (
               SELECT count(*) lot_count,COALESCE(sum(lot.acquired_quantity),0) quantity,
                      COALESCE(sum(lot.quote_cost),0) basis,
-                     count(*) FILTER (WHERE lot.account_id<>paper_order.account_id
-                       OR lot.asset<>replace(paper_order.symbol,'USDT','')) bad_count
+                      count(*) FILTER (WHERE lot.account_id<>paper_order.account_id
+                        OR lot.asset<>replace(paper_order.symbol,'USDT','')
+                        OR lot.acquired_at IS DISTINCT FROM fill.created_at) bad_count
               FROM paper_inventory_lots lot WHERE lot.source_fill_id=fill.fill_id
             ) bought ON true
             LEFT JOIN LATERAL (
@@ -1085,6 +1140,14 @@ def upgrade() -> None:
                     SELECT 1 FROM paper_fills existing
                     WHERE existing.order_id=effect.order_id
                       AND existing.source_key=effect.source_key))
+               OR (effect.effect_kind='NO_FILL' AND EXISTS (
+                    SELECT 1 FROM paper_order_events terminal
+                    JOIN paper_broker_inputs terminal_input
+                      ON terminal_input.source_key=terminal.source_key
+                    WHERE terminal.order_id=paper_order.order_id
+                      AND terminal.event_type IN (
+                        'paper.order.filled.v1','paper.order.cancelled.v1')
+                      AND terminal_input.broker_seq<=input.broker_seq))
                OR (effect.effect_kind='NO_FILL' AND (
                      NOT EXISTS (
                        SELECT 1 FROM paper_order_events terminal
@@ -1434,7 +1497,7 @@ def upgrade() -> None:
              OR (p_event_type='ledger.transaction.posted.v1' AND
                  (NOT ((p_payload->'data') ? 'transaction_id') OR
                   jsonb_typeof(p_payload->'data'->'transaction_id')<>'string' OR
-                  length(p_payload->'data'->>'transaction_id') NOT BETWEEN 1 AND 64 OR
+                  p_payload->'data'->>'transaction_id' !~ '^[a-f0-9]{64}$' OR
                   p_payload->'data'->>'transaction_id' IS DISTINCT FROM p_aggregate_id OR
                   (SELECT count(*) FROM jsonb_object_keys(p_payload->'data'))<>1))
           THEN

@@ -3,8 +3,15 @@ from decimal import Decimal
 
 import pytest
 
-from paper_engine import ExecutionFixture, MarkFixture, OrderSide, OrderStatus, PaperEngine
+from paper_engine import (
+    ExecutionFixture,
+    MarkFixture,
+    OrderSide,
+    OrderStatus,
+    PaperEngine,
+)
 from paper_engine.decimal_policy import decimal_input
+from paper_engine.models import Journal, LedgerEntry
 
 
 def authorization(number: int = 1) -> ExecutionFixture:
@@ -132,6 +139,66 @@ def test_ord_002_command_and_authorization_are_single_effect() -> None:
             quantity_text="2",
             limit_price_text="100",
         )
+
+
+def test_shared_observation_uses_one_canonical_broker_sequence_and_budget() -> None:
+    engine = PaperEngine()
+    engine.seed_balance("USDT", "1000", seed_id="cash")
+    first = engine.create_limit_order(
+        idempotency_key="shared-first",
+        client_order_id="shared-first",
+        authorization=authorization(1),
+        symbol="BTCUSDT",
+        side=OrderSide.BUY,
+        quantity_text="0.05",
+        limit_price_text="100",
+    )
+    second = engine.create_limit_order(
+        idempotency_key="shared-second",
+        client_order_id="shared-second",
+        authorization=authorization(2),
+        symbol="BTCUSDT",
+        side=OrderSide.BUY,
+        quantity_text="0.1",
+        limit_price_text="100",
+    )
+
+    first_fill = engine.apply_book_observation(
+        order_id=first.order_id,
+        observation_id="shared-book",
+        best_bid_text="99",
+        best_ask_text="100",
+        displayed_quantity_text="2",
+    )
+    after_first = engine.broker_seq
+    second_fill = engine.apply_book_observation(
+        order_id=second.order_id,
+        observation_id="shared-book",
+        best_bid_text="99",
+        best_ask_text="100",
+        displayed_quantity_text="2",
+    )
+
+    assert first_fill is not None and second_fill is not None
+    assert first_fill.broker_seq == second_fill.broker_seq
+    assert engine.broker_seq == after_first
+    assert engine.observation_sequences["shared-book"] == first_fill.broker_seq
+    assert engine.observation_budgets["shared-book"][1] == Decimal("0.05")
+
+
+def test_ledger_transaction_id_rejects_unicode_and_non_hash_ids() -> None:
+    journal = Journal(
+        "원장-1",
+        "paper.seed",
+        "seed",
+        "PHYSICAL",
+        (
+            LedgerEntry("paper.available", "USDT", Decimal(1), Decimal(0)),
+            LedgerEntry("paper.opening-equity", "USDT", Decimal(0), Decimal(1)),
+        ),
+    )
+    with pytest.raises(ValueError, match="INVALID_LEDGER_TRANSACTION_ID"):
+        journal.assert_balanced()
 
 
 def test_phase_four_rejects_production_authorization() -> None:

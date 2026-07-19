@@ -66,6 +66,7 @@ class PaperEngine:
         self.command_receipts: dict[str, CommandReceipt] = {}
         self.observation_effects: set[tuple[str, str]] = set()
         self.observation_budgets: dict[str, tuple[str, Decimal]] = {}
+        self.observation_sequences: dict[str, int] = {}
         self.cancel_receipts: dict[str, tuple[str, PaperOrder]] = {}
         self.order_cancel_identity: dict[str, str] = {}
         self.outbox: tuple[dict[str, object], ...] = ()
@@ -332,11 +333,23 @@ class PaperEngine:
                 displayed * PARTICIPATION_RATE, SYMBOL_RULES[order.symbol]["step"]
             )
             self.observation_budgets[observation_id] = (observation_hash, remaining_budget)
+            seq = self._next_seq()
+            self.observation_sequences[observation_id] = seq
         else:
             if budget[0] != observation_hash:
                 raise ValueError("OBSERVATION_ID_CONFLICT")
             remaining_budget = budget[1]
-        seq = self._next_seq()
+            seq = self.observation_sequences.get(observation_id, 0)
+            if seq == 0:
+                matching_sequences = {
+                    fill.broker_seq
+                    for fill in self.fills.values()
+                    if fill.observation_id == observation_id
+                }
+                if len(matching_sequences) != 1:
+                    raise ValueError("OBSERVATION_SEQUENCE_MISSING")
+                seq = matching_sequences.pop()
+                self.observation_sequences[observation_id] = seq
         if not eligible or seq <= order.accepted_broker_seq:
             self.observation_effects.add((order_id, observation_id))
             return None
@@ -711,6 +724,7 @@ class PaperEngine:
                 (key, value[0], canonical(value[1]))
                 for key, value in sorted(self.observation_budgets.items())
             ],
+            "observation_sequences": sorted(self.observation_sequences.items()),
             "cancel_receipts": [
                 (key, value[0], str(value[1]))
                 for key, value in sorted(self.cancel_receipts.items())

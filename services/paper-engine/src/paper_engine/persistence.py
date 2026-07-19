@@ -244,6 +244,7 @@ def _validate_outbox(item: OutboxWrite) -> None:
         "order_id",
         "fill_id",
         "request_hash",
+        "transaction_id",
     }
     if any(
         len(data[field]) != 64
@@ -264,11 +265,7 @@ def _validate_outbox(item: OutboxWrite) -> None:
             and item.aggregate_id == _engine_id("authorization", data["authorization_id"])
         )
     else:
-        linked = (
-            bool(data["transaction_id"])
-            and len(data["transaction_id"]) <= 64
-            and data["transaction_id"] == item.aggregate_id
-        )
+        linked = data["transaction_id"] == item.aggregate_id
     if (
         payload["spec_version"] != "woozoo.event/v1"
         or payload["event_id"] != item.event_id
@@ -938,6 +935,7 @@ class PostgresPaperStore:
             }
             for (
                 source_key,
+                broker_seq,
                 payload_hash,
                 available_quantity,
                 symbol,
@@ -945,12 +943,12 @@ class PostgresPaperStore:
                 best_ask,
                 allocated,
             ) in connection.execute(
-                "SELECT input.source_key,input.payload_hash,input.available_quantity,"
+                "SELECT input.source_key,input.broker_seq,input.payload_hash,input.available_quantity,"
                 "input.symbol,input.best_bid,input.best_ask,"
                 "COALESCE(sum(fill.quantity),0) FROM paper_broker_inputs input LEFT JOIN "
                 "paper_fills fill ON fill.source_key=input.source_key "
                 "WHERE input.account_id=%s AND input.source_kind='RECORDED_BOOK' "
-                "GROUP BY input.source_key,input.payload_hash,input.available_quantity,"
+                "GROUP BY input.source_key,input.broker_seq,input.payload_hash,input.available_quantity,"
                 "input.symbol,input.best_bid,input.best_ask",
                 (account_id,),
             ).fetchall():
@@ -970,6 +968,7 @@ class PostgresPaperStore:
                     )
                     - allocated,
                 )
+                engine.observation_sequences[source_key] = broker_seq
             engine.outbox = tuple(
                 row[0]
                 for row in connection.execute(
