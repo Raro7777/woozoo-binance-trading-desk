@@ -1,0 +1,9 @@
+{
+  "api_version": "v1",
+  "event_spec_version": "woozoo.event/v1",
+  "health_path": "/api/v1/health",
+  "sources": {
+    "openapi.v1.json": "c566313d1f163856e0f2c1df40fd61c91b752b18e31a4ef1efdf9bd693c3957c",
+    "event-envelope.v1.json": "ed1155b1fa397b0d108674aaf9c2231af69f0e659d53c9763b68cbfed206e5f3"
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "woozoo.event/v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "spec_version",
+    "event_id",
+    "event_type",
+    "event_version",
+    "occurred_at",
+    "published_at",
+    "producer",
+    "correlation_id",
+    "causation_id",
+    "aggregate",
+    "data",
+    "payload_hash"
+  ],
+  "properties": {
+    "spec_version": {"const": "woozoo.event/v1"},
+    "event_id": {"type": "string"},
+    "event_type": {"type": "string", "minLength": 1},
+    "event_version": {"type": "integer", "minimum": 1},
+    "occurred_at": {"type": "string", "format": "date-time"},
+    "published_at": {"type": ["string", "null"], "format": "date-time"},
+    "producer": {"enum": ["control-api", "outbox-relay"]},
+    "correlation_id": {"type": "string"},
+    "causation_id": {"type": ["string", "null"]},
+    "aggregate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "version"],
+      "properties": {
+        "type": {"type": "string"},
+        "id": {"type": "string"},
+        "version": {"type": "integer", "minimum": 0}
+      }
+    },
+    "data": {"type": "object", "additionalProperties": false},
+    "payload_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+  }
+}
