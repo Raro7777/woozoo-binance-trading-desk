@@ -1,9 +1,66 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+import json
 
+from market_data_worker.normalization import make_raw_event
 from market_data_worker.pipeline import CollectorPipeline, InMemoryMarketStore
 from market_data_worker.types import QualityStatus
+
+
+def test_kline_updates_with_same_last_trade_id_have_distinct_source_identity() -> None:
+    received = datetime(2026, 7, 19, tzinfo=UTC)
+    base = {
+        "e": "kline",
+        "E": 1784419200100,
+        "s": "BTCUSDT",
+        "k": {
+            "t": 1784419200000,
+            "T": 1784419259999,
+            "s": "BTCUSDT",
+            "i": "1m",
+            "f": 100,
+            "L": 101,
+            "o": "60000",
+            "c": "60000.1",
+            "h": "60001",
+            "l": "59999",
+            "v": "1",
+            "n": 2,
+            "x": False,
+            "q": "60000",
+            "V": "0.5",
+            "Q": "30000",
+            "B": "0",
+        },
+    }
+    updated = json.loads(json.dumps(base))
+    updated["E"] = 1784419200200
+    updated["k"]["c"] = "60000.2"
+    closed = json.loads(json.dumps(updated))
+    closed["E"] = 1784419260000
+    closed["k"]["x"] = True
+
+    raw_base = make_raw_event(
+        "018f7000-0000-7000-8000-000000000001", "btcusdt@kline_1m", base, received
+    )
+    raw_updated = make_raw_event(
+        "018f7000-0000-7000-8000-000000000001", "btcusdt@kline_1m", updated, received
+    )
+    raw_closed = make_raw_event(
+        "018f7000-0000-7000-8000-000000000001", "btcusdt@kline_1m", closed, received
+    )
+
+    assert (
+        len(
+            {
+                raw_base.source_dedupe_key,
+                raw_updated.source_dedupe_key,
+                raw_closed.source_dedupe_key,
+            }
+        )
+        == 3
+    )
 
 
 SESSION_ID = "018f7000-0000-7000-8000-000000000001"

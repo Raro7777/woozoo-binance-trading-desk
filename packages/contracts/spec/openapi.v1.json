@@ -66,6 +66,63 @@
           }
         }
       }
+    },
+    "/api/v1/evidence/{evidence_id}": {
+      "get": {
+        "operationId": "getEvidenceSnapshot",
+        "parameters": [
+          {
+            "name": "evidence_id",
+            "in": "path",
+            "required": true,
+            "schema": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "immutable point-in-time Evidence snapshot",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/EvidenceSnapshotEnvelopeV1"}
+              }
+            }
+          },
+          "404": {
+            "description": "Evidence snapshot not found",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/EvidenceErrorEnvelopeV1"}
+              }
+            }
+          },
+          "503": {
+            "description": "Evidence projection unavailable",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/EvidenceErrorEnvelopeV1"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/commands/evidence-snapshots": {
+      "post": {
+        "operationId": "createEvidenceSnapshot",
+        "security": [{"InternalServiceMutualTLS": []}],
+        "parameters": [{"name": "Idempotency-Key", "in": "header", "required": true, "schema": {"type": "string", "minLength": 1, "maxLength": 128}}],
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {"$ref": "#/components/schemas/EvidenceCommandV1"}}}
+        },
+        "responses": {
+          "200": {"description": "exact idempotent retry", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/EvidenceCommandReceiptEnvelopeV1"}}}},
+          "201": {"description": "Evidence snapshot created", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/EvidenceCommandReceiptEnvelopeV1"}}}},
+          "400": {"description": "closed command schema invalid", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/EvidenceCommandErrorEnvelopeV1"}}}},
+          "403": {"description": "authenticated internal service principal required", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/EvidenceCommandErrorEnvelopeV1"}}}},
+          "409": {"description": "idempotency conflict", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/EvidenceCommandErrorEnvelopeV1"}}}}
+        }
+      }
     }
   },
   "components": {
@@ -212,6 +269,167 @@
           "error": {"$ref": "#/components/schemas/MarketErrorV1"},
           "meta": {"$ref": "#/components/schemas/MetaV1"}
         }
+      },
+      "EvidenceItemV1": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["item_type", "item_id", "raw_event_id", "raw_payload_hash"],
+        "properties": {
+          "item_type": {"enum": ["normalized_market_event", "feature_observation"]},
+          "item_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "raw_event_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "raw_payload_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+        }
+      },
+      "EvidenceSnapshotDataV1": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["evidence_id", "evidence_digest", "symbol", "as_of", "knowledge_cutoff", "recipe_version", "input_digest", "quality", "quality_reasons", "collector_session_id", "watermark_digest", "items", "candles", "features"],
+        "properties": {
+          "evidence_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "evidence_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "symbol": {"enum": ["BTCUSDT", "ETHUSDT"]},
+          "as_of": {"type": "string", "format": "date-time"},
+          "knowledge_cutoff": {"type": "string", "format": "date-time"},
+          "recipe_version": {"const": "woozoo.evidence.closed-candles-approved-features/v1"},
+          "input_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "quality": {"const": "healthy"},
+          "quality_reasons": {"type": "array", "maxItems": 0},
+          "collector_session_id": {"type": "string", "format": "uuid"},
+          "watermark_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "items": {"type": "array", "minItems": 256, "maxItems": 256, "items": {"$ref": "#/components/schemas/EvidenceItemV1"}},
+          "candles": {"type": "array", "minItems": 84, "maxItems": 84, "items": {"$ref": "#/components/schemas/EvidenceCandleV1"}},
+          "features": {"type": "array", "minItems": 12, "maxItems": 12, "items": {"$ref": "#/components/schemas/EvidenceFeatureV1"}}
+        }
+      },
+      "EvidenceCandleV1": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["normalized_event_id", "raw_event_id", "raw_payload_hash", "interval", "event_time", "received_at", "open_time", "close_time", "open", "high", "low", "close", "base_volume"],
+        "properties": {
+          "normalized_event_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "raw_event_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "raw_payload_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "interval": {"enum": ["1m", "5m", "1h", "4h"]},
+          "event_time": {"type": "string", "format": "date-time"},
+          "received_at": {"type": "string", "format": "date-time"},
+          "open_time": {"type": "string", "format": "date-time"},
+          "close_time": {"type": "string", "format": "date-time"},
+          "open": {"$ref": "#/components/schemas/PositiveDecimalString"},
+          "high": {"$ref": "#/components/schemas/PositiveDecimalString"},
+          "low": {"$ref": "#/components/schemas/PositiveDecimalString"},
+          "close": {"$ref": "#/components/schemas/PositiveDecimalString"},
+          "base_volume": {"$ref": "#/components/schemas/NonNegativeDecimalString"}
+        }
+      },
+      "EvidenceFeatureV1": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["feature_id", "name", "definition_version", "interval", "feature_time", "value", "input_digest"],
+        "properties": {
+          "feature_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "name": {"enum": ["close_return_1", "close_sma_20", "close_rsi_14"]},
+          "definition_version": {"const": "woozoo.feature.ohlcv-return-sma20-rsi14/v1"},
+          "interval": {"enum": ["1m", "5m", "1h", "4h"]},
+          "feature_time": {"type": "string", "format": "date-time"},
+          "value": {"$ref": "#/components/schemas/FixedScale18SignedDecimalString"},
+          "input_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+        }
+      },
+      "NonNegativeDecimalString": {
+        "type": "string", "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+      },
+      "PositiveDecimalString": {
+        "type": "string", "pattern": "^([1-9][0-9]*)(\\.[0-9]+)?$|^0\\.[0-9]*[1-9][0-9]*$"
+      },
+      "FixedScale18SignedDecimalString": {
+        "type": "string", "pattern": "^-?(0|[1-9][0-9]*)\\.[0-9]{18}$"
+      },
+      "EvidenceErrorV1": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "message"],
+        "properties": {
+          "code": {"enum": ["EVIDENCE_NOT_FOUND", "EVIDENCE_PROJECTION_UNAVAILABLE"]},
+          "message": {"type": "string"}
+        }
+      },
+      "EvidenceCommandV1": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["symbol", "as_of", "knowledge_cutoff"],
+        "properties": {
+          "symbol": {"enum": ["BTCUSDT", "ETHUSDT"]},
+          "as_of": {"type": "string", "format": "date-time"},
+          "knowledge_cutoff": {"type": "string", "format": "date-time"}
+        }
+      },
+      "EvidenceCommandReceiptV1": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["evidence_id", "evidence_digest", "created"],
+        "properties": {
+          "evidence_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "evidence_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "created": {"type": "boolean"}
+        }
+      },
+      "EvidenceCommandReceiptEnvelopeV1": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["api_version", "request_id", "correlation_id", "served_at", "data", "meta"],
+        "properties": {
+          "api_version": {"const": "v1"}, "request_id": {"type": "string"},
+          "correlation_id": {"type": "string"}, "served_at": {"type": "string", "format": "date-time"},
+          "data": {"$ref": "#/components/schemas/EvidenceCommandReceiptV1"},
+          "meta": {"$ref": "#/components/schemas/MetaV1"}
+        }
+      },
+      "EvidenceCommandErrorV1": {
+        "type": "object", "additionalProperties": false, "required": ["code"],
+        "properties": {"code": {"enum": ["SCHEMA_INVALID", "IDEMPOTENCY_CONFLICT", "CALLER_UNAUTHORIZED"]}}
+      },
+      "EvidenceCommandErrorEnvelopeV1": {
+        "type": "object", "additionalProperties": false,
+        "required": ["api_version", "request_id", "correlation_id", "served_at", "error", "meta"],
+        "properties": {
+          "api_version": {"const": "v1"}, "request_id": {"type": "string"},
+          "correlation_id": {"type": "string"}, "served_at": {"type": "string", "format": "date-time"},
+          "error": {"$ref": "#/components/schemas/EvidenceCommandErrorV1"},
+          "meta": {"$ref": "#/components/schemas/MetaV1"}
+        }
+      },
+      "EvidenceSnapshotEnvelopeV1": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["api_version", "request_id", "correlation_id", "served_at", "data", "meta"],
+        "properties": {
+          "api_version": {"const": "v1"},
+          "request_id": {"type": "string"},
+          "correlation_id": {"type": "string"},
+          "served_at": {"type": "string", "format": "date-time"},
+          "data": {"$ref": "#/components/schemas/EvidenceSnapshotDataV1"},
+          "meta": {"$ref": "#/components/schemas/MetaV1"}
+        }
+      },
+      "EvidenceErrorEnvelopeV1": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["api_version", "request_id", "correlation_id", "served_at", "error", "meta"],
+        "properties": {
+          "api_version": {"const": "v1"},
+          "request_id": {"type": "string"},
+          "correlation_id": {"type": "string"},
+          "served_at": {"type": "string", "format": "date-time"},
+          "error": {"$ref": "#/components/schemas/EvidenceErrorV1"},
+          "meta": {"$ref": "#/components/schemas/MetaV1"}
+        }
+      }
+    },
+    "securitySchemes": {
+      "InternalServiceMutualTLS": {
+        "type": "mutualTLS",
+        "description": "Trusted ingress authenticates and injects the allowlisted internal service principal into the ASGI scope."
       }
     }
   }

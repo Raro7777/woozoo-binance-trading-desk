@@ -1,0 +1,19 @@
+{
+  "schema_version": "woozoo.evidence.replay-manifest/v1",
+  "phase": 3,
+  "source_revision": "binance-spot-api-docs@29c227d84058dd2be3fe3b42ab368d1d1ce910e5",
+  "feature_definition_version": "woozoo.feature.ohlcv-return-sma20-rsi14/v1",
+  "evidence_recipe_version": "woozoo.evidence.closed-candles-approved-features/v1",
+  "fixed_seed": 0,
+  "timezone": "UTC",
+  "network_allowed": false,
+  "scenarios": [
+    {"id": "EVID-001", "command": "pnpm test:unit", "artifact": "artifacts/unit/EVID-001.json"},
+    {"id": "EVID-002", "command": "pnpm test:contracts", "artifact": "artifacts/contracts/EVID-002.json"},
+    {"id": "EVID-003", "command": "pnpm test:property", "artifact": "artifacts/property/EVID-003.json"},
+    {"id": "EVID-004", "command": "pnpm test:replay", "artifact": "artifacts/replay/EVID-004.json"},
+    {"id": "EVID-005", "command": "pnpm test:integration", "artifact": "artifacts/integration/EVID-005.json"},
+    {"id": "EVID-006", "command": "pnpm test:failure", "artifact": "artifacts/failure/EVID-006.json"},
+    {"id": "EVID-007", "command": "pnpm test:safety", "artifact": "artifacts/safety/EVID-007.json"}
+  ]
+}

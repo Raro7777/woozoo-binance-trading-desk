@@ -9,6 +9,7 @@ const target = process.argv[2];
 const deterministicEnvironment = { ...process.env, TZ: "UTC", PYTHONHASHSEED: "0" };
 const sourceRevision = "binance-spot-api-docs@29c227d84058dd2be3fe3b42ab368d1d1ce910e5";
 const policyVersion = "woozoo.market.collector-policy/v1";
+const evidenceRecipeVersion = "woozoo.evidence.closed-candles-approved-features/v1";
 
 function run(command, args) {
   const result = process.platform === "win32" && [pnpm, "corepack"].includes(command)
@@ -44,7 +45,13 @@ async function revisionEvidence() {
     env: deterministicEnvironment,
   });
   if (commit.status !== 0 || files.status !== 0) throw new Error("cannot capture revision evidence");
-  const paths = files.stdout.split("\0").filter(Boolean).sort();
+  const excludedPrefixes = [".codex-remote-attachments/", "artifacts/", "_workspace/"];
+  const paths = files.stdout
+    .split("\0")
+    .filter(Boolean)
+    .map((path) => path.replaceAll("\\", "/"))
+    .filter((path) => !excludedPrefixes.some((prefix) => path.startsWith(prefix)))
+    .sort();
   const manifest = createHash("sha256");
   for (const path of paths) {
     manifest.update(path.replaceAll("\\", "/"));
@@ -69,6 +76,7 @@ async function scenarios(
   commands,
   executedTestCount = ids.length,
   commandsAlreadyPassed = false,
+  metadata = {},
 ) {
   if (!commandsAlreadyPassed) {
     for (const [command, args] of commands) run(command, args);
@@ -88,6 +96,7 @@ async function scenarios(
       fixed_seed: 0,
       timezone: "UTC",
       test_count: executedTestCount,
+      ...metadata,
       ...revision,
     };
     const output_digest = createHash("sha256").update(JSON.stringify(result)).digest("hex");
@@ -100,7 +109,7 @@ async function scenarios(
   }
 }
 
-async function dataScenario(area, id, nodeIds) {
+async function dataScenario(area, id, nodeIds, metadata = {}) {
   const resultPath = resolve(root, "artifacts", ".pytest-results", `${id}.xml`);
   await mkdir(resolve(resultPath, ".."), { recursive: true });
   const command = [
@@ -125,7 +134,7 @@ async function dataScenario(area, id, nodeIds) {
   ) {
     throw new Error(`${id} must execute every declared node with zero failure, error, or skip`);
   }
-  await scenarios(area, [id], [command], nodeIds.length, true);
+  await scenarios(area, [id], [command], nodeIds.length, true, metadata);
 }
 
 const actions = {
@@ -138,10 +147,30 @@ const actions = {
     run("python", ["-m", "uv", "run", "--locked", "mypy"]);
     runPnpm(["-r", "--if-present", "run", "typecheck"]);
   },
-  "test:unit": () => scenarios("unit", ["CORE-001"], [["python", ["-m", "uv", "run", "--locked", "pytest", "tests/unit", "-q"]]]),
-  "test:contracts": () => scenarios("contracts", ["CONTRACT-001", "DATA-CONTRACT-001"], [["node", ["scripts/generate-contracts.mjs", "--check"]], ["corepack", [pnpm, "exec", "tsc", "-p", "tests/contract/tsconfig.json"]], ["corepack", [pnpm, "exec", "tsx", "--test", "tests/contract/contracts.test.ts", "tests/contract/market-data-contracts.test.ts"]], ["python", ["-m", "uv", "run", "--locked", "pytest", "tests/contract/test_python_contract_bindings.py", "-q"]]]),
-  "test:safety": () => scenarios("safety", ["SAFE-001", "SAFE-002", "SAFE-003", "SAFE-004", "SAFE-005"], [["python", ["-m", "uv", "run", "--locked", "pytest", "tests/safety", "-q"]], ["node", ["scripts/capability-zero.mjs"]], ["corepack", [pnpm, "exec", "tsx", "--test", "tests/safety/capability-zero.test.ts"]]]),
-  "test:integration": () => scenarios("integration", ["PLAT-001", "PLAT-002", "PLAT-003"], [["corepack", [pnpm, "--filter", "@woozoo/trading-room-web", "run", "build"]], ["python", ["-m", "uv", "run", "--locked", "pytest", "tests/integration", "-q"]], ["corepack", [pnpm, "exec", "tsx", "--test", "tests/integration/trading-room-web.test.ts"]]]),
+  "test:unit": async () => {
+    await scenarios("unit", ["CORE-001"], [["python", ["-m", "uv", "run", "--locked", "pytest", "tests/unit", "-q"]]]);
+    await dataScenario("unit", "EVID-001", [
+      "tests/unit/test_evidence_features.py::test_derives_approved_decimal_features_with_ordered_provenance",
+      "tests/unit/test_evidence_features.py::test_wilder_rsi_has_deterministic_flat_and_all_loss_edges[closes0-50.000000000000000000]",
+      "tests/unit/test_evidence_features.py::test_wilder_rsi_has_deterministic_flat_and_all_loss_edges[closes1-0.000000000000000000]",
+      "tests/unit/test_evidence_settings.py::test_evidence_settings_require_paper_mode_and_dedicated_database_url",
+    ], { schema_version: "woozoo.evidence.replay-manifest/v1", evidence_recipe_version: evidenceRecipeVersion });
+  },
+  "test:contracts": async () => {
+    await scenarios("contracts", ["CONTRACT-001", "DATA-CONTRACT-001"], [["node", ["scripts/generate-contracts.mjs", "--check"]], ["corepack", [pnpm, "exec", "tsc", "-p", "tests/contract/tsconfig.json"]], ["corepack", [pnpm, "exec", "tsx", "--test", "tests/contract/contracts.test.ts", "tests/contract/market-data-contracts.test.ts", "tests/contract/evidence-contracts.test.ts"]], ["python", ["-m", "uv", "run", "--locked", "pytest", "tests/contract", "-q"]]]);
+    await dataScenario("contracts", "EVID-002", ["tests/contract/test_evidence_contract.py::test_evid_002_snapshot_contract_is_closed_and_consumer_complete"], { schema_version: "woozoo.evidence.replay-manifest/v1", evidence_recipe_version: evidenceRecipeVersion });
+  },
+  "test:safety": async () => {
+    await scenarios("safety", ["SAFE-001", "SAFE-002", "SAFE-003", "SAFE-004", "SAFE-005"], [["python", ["-m", "uv", "run", "--locked", "pytest", "tests/safety", "-q"]], ["node", ["scripts/capability-zero.mjs"]], ["corepack", [pnpm, "exec", "tsx", "--test", "tests/safety/capability-zero.test.ts"]]]);
+    await dataScenario("safety", "EVID-007", [
+      "tests/safety/test_phase3_evidence_capabilities.py::test_evidence_worker_has_no_network_or_later_phase_capability",
+      "tests/safety/test_phase3_evidence_capabilities.py::test_phase_three_registers_only_the_approved_evidence_command_route",
+    ], { schema_version: "woozoo.evidence.replay-manifest/v1", evidence_recipe_version: evidenceRecipeVersion });
+  },
+  "test:integration": async () => {
+    await scenarios("integration", ["PLAT-001", "PLAT-002", "PLAT-003"], [["corepack", [pnpm, "--filter", "@woozoo/trading-room-web", "run", "build"]], ["python", ["-m", "uv", "run", "--locked", "pytest", "tests/integration", "-q"]], ["corepack", [pnpm, "exec", "tsx", "--test", "tests/integration/trading-room-web.test.ts"]]]);
+    await dataScenario("integration", "EVID-005", ["tests/integration/test_platform_infrastructure.py::test_phase_three_evidence_is_atomic_idempotent_and_append_only"], { schema_version: "woozoo.evidence.replay-manifest/v1", evidence_recipe_version: evidenceRecipeVersion });
+  },
   "test:replay": async () => {
     await dataScenario("replay", "DATA-001", [
       "tests/replay/test_market_data_replay.py::test_data_001_recorded_replay_is_deterministic_and_deduplicated",
@@ -156,6 +185,10 @@ const actions = {
       "tests/integration/test_platform_infrastructure.py::test_postgres_restart_restores_closed_kline_grid_continuity",
     ]);
     run("python", ["-m", "uv", "run", "--locked", "pytest", "tests/replay", "-q"]);
+    await dataScenario("replay", "EVID-004", [
+      "tests/unit/test_evidence_builder.py::test_builder_is_deterministic_and_prior_snapshot_is_immutable_under_late_arrival",
+      "tests/unit/test_evidence_builder.py::test_newer_cutoff_deterministically_replaces_a_same_bucket_late_materialization",
+    ], { schema_version: "woozoo.evidence.replay-manifest/v1", evidence_recipe_version: evidenceRecipeVersion });
   },
   "test:failure": async () => {
     await dataScenario("failure", "DATA-003", [
@@ -184,6 +217,14 @@ const actions = {
       "tests/integration/test_platform_infrastructure.py::test_postgres_restart_restores_closed_kline_grid_continuity",
     ]);
     run("python", ["-m", "uv", "run", "--locked", "pytest", "tests/failure", "-q"]);
+    await dataScenario("failure", "EVID-006", [
+      "tests/unit/test_evidence_builder.py::test_builder_fails_closed_when_an_interval_has_no_complete_window",
+      "tests/unit/test_evidence_builder.py::test_builder_rejects_every_non_healthy_quality[degraded]",
+      "tests/unit/test_evidence_builder.py::test_builder_rejects_every_non_healthy_quality[stale]",
+      "tests/unit/test_evidence_builder.py::test_builder_rejects_every_non_healthy_quality[invalid]",
+      "tests/unit/test_evidence_builder.py::test_builder_rejects_every_non_healthy_quality[reconnecting]",
+      "tests/unit/test_evidence_builder.py::test_builder_rejects_a_terminal_window_that_is_stale_at_the_cutoffs",
+    ], { schema_version: "woozoo.evidence.replay-manifest/v1", evidence_recipe_version: evidenceRecipeVersion });
   },
   "test:property": async () => {
     await dataScenario("property", "DATA-007", [
@@ -191,6 +232,13 @@ const actions = {
       "tests/failure/test_market_data_supervisor.py::test_live_supervisor_uses_bounded_queue_and_persists_overflow_failure",
     ]);
     run("python", ["-m", "uv", "run", "--locked", "pytest", "tests/property", "-q"]);
+    await dataScenario("property", "EVID-003", [
+      "tests/property/test_evidence_boundaries.py::test_dual_cutoff_is_independently_inclusive[event_delta0-received_delta0-True]",
+      "tests/property/test_evidence_boundaries.py::test_dual_cutoff_is_independently_inclusive[event_delta1-received_delta1-True]",
+      "tests/property/test_evidence_boundaries.py::test_dual_cutoff_is_independently_inclusive[event_delta2-received_delta2-False]",
+      "tests/property/test_evidence_boundaries.py::test_dual_cutoff_is_independently_inclusive[event_delta3-received_delta3-False]",
+      "tests/unit/test_evidence_features.py::test_feature_derivation_rejects_incomplete_or_gapped_windows",
+    ], { schema_version: "woozoo.evidence.replay-manifest/v1", evidence_recipe_version: evidenceRecipeVersion });
   },
   build: async () => {
     run("node", ["scripts/generate-contracts.mjs", "--check"]);

@@ -24,7 +24,7 @@
     "event_version": {"type": "integer", "minimum": 1},
     "occurred_at": {"type": "string", "format": "date-time"},
     "published_at": {"type": ["string", "null"], "format": "date-time"},
-    "producer": {"enum": ["control-api", "outbox-relay", "market-data-worker"]},
+    "producer": {"enum": ["control-api", "outbox-relay", "market-data-worker", "evidence-worker"]},
     "correlation_id": {"type": "string"},
     "causation_id": {"type": ["string", "null"]},
     "aggregate": {

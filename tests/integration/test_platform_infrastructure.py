@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import contextmanager
+from dataclasses import replace
 import hashlib
 import json
 import os
@@ -12,6 +13,7 @@ import time
 from typing import Iterator
 from uuid import uuid4
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 
 import psycopg
 from psycopg.types.json import Jsonb
@@ -19,6 +21,11 @@ import httpx
 import pytest
 
 from control_api.app import create_app
+from control_api.evidence_projection import PostgresEvidenceProjection
+from evidence_worker.builder import EvidenceBuildError
+from evidence_worker.persistence import PostgresEvidenceStore
+import evidence_worker.persistence as evidence_persistence
+from evidence_worker.runner import materialize_evidence_command
 from market_data_worker.capabilities import KlineInterval, PublicRestRequest, RestCapability, Symbol
 from market_data_worker.persistence import PostgresMarketStore
 from market_data_worker.normalization import make_raw_event, normalize
@@ -40,6 +47,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DATABASE_URL = "postgresql://postgres@127.0.0.1:5433/woozoo"
 MARKET_WRITER_URL = "postgresql://woozoo_market_writer@127.0.0.1:5433/woozoo"
 CONTROL_READER_URL = "postgresql://woozoo_control_reader@127.0.0.1:5433/woozoo"
+EVIDENCE_WRITER_URL = "postgresql://woozoo_evidence_writer@127.0.0.1:5433/woozoo"
 REDIS_URL = "redis://127.0.0.1:6380/0"
 ENVIRONMENT = {
     "TRADING_MODE": "paper",
@@ -167,6 +175,315 @@ def test_plat_003_redis_loss_never_changes_postgres_authority() -> None:
                 assert cursor.fetchone() == (request_hash, "accepted")
     finally:
         run("docker", "compose", "up", "-d", "--wait", "redis")
+
+
+def test_phase_three_evidence_is_atomic_idempotent_and_append_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run(sys.executable, "-m", "alembic", "upgrade", "head")
+    session_id = str(uuid4())
+    base = datetime(2026, 7, 1, tzinfo=UTC)
+    intervals = {
+        "1m": timedelta(minutes=1),
+        "5m": timedelta(minutes=5),
+        "1h": timedelta(hours=1),
+        "4h": timedelta(hours=4),
+    }
+    as_of = base + timedelta(hours=84)
+    with psycopg.connect(DATABASE_URL) as connection:
+        connection.execute(
+            """
+            INSERT INTO collector_sessions
+                (id, source, connection_id, allowlist_version, status, started_at)
+            VALUES (%s,'binance_spot_public',%s,
+                    'binance-spot-public.v1@29c227d84058dd2be3fe3b42ab368d1d1ce910e5',
+                    'healthy',%s)
+            """,
+            (session_id, f"evidence-{session_id}", base),
+        )
+        sequence = 1
+        for interval, delta in intervals.items():
+            for offset in range(21):
+                open_time = as_of - delta * (21 - offset)
+                close_time = open_time + delta
+                raw_id = hashlib.sha256(f"raw:{interval}:{offset}".encode()).hexdigest()
+                event_id = hashlib.sha256(f"normalized:{interval}:{offset}".encode()).hexdigest()
+                raw_hash = hashlib.sha256(f"payload:{interval}:{offset}".encode()).hexdigest()
+                price = Decimal(100 + offset)
+                payload = {
+                    "kind": "kline",
+                    "interval": interval,
+                    "open_time": open_time.isoformat().replace("+00:00", "Z"),
+                    "close_time": close_time.isoformat().replace("+00:00", "Z"),
+                    "open": str(price),
+                    "high": str(price + 1),
+                    "low": str(price - 1),
+                    "close": str(price),
+                    "base_volume": "10",
+                    "trade_count": 1,
+                    "closed": True,
+                }
+                connection.execute(
+                    """
+                    INSERT INTO raw_market_events
+                        (id,collector_session_id,source,stream,symbol,record_kind,
+                         source_dedupe_key,payload_bytes,payload_hash,source_event_time,
+                         received_at,ingested_at,sequence,schema_version)
+                    VALUES (%s,%s,'binance_spot_public',%s,'BTCUSDT','stream_message',
+                            %s,%s,%s,%s,%s,%s,%s,'woozoo.raw-market-event/v1')
+                    """,
+                    (
+                        raw_id,
+                        session_id,
+                        f"btcusdt@kline_{interval}",
+                        f"evidence:{interval}:{offset}",
+                        json.dumps(payload).encode(),
+                        raw_hash,
+                        close_time,
+                        close_time,
+                        close_time,
+                        sequence,
+                    ),
+                )
+                connection.execute(
+                    """
+                    INSERT INTO normalized_market_events
+                        (id,raw_event_id,event_type,schema_version,source,symbol,event_time,
+                         received_at,sequence,raw_payload_hash,correlation_id,quality_status,
+                         quality_reasons,stream_watermark,payload)
+                    VALUES (%s,%s,'kline','woozoo.market-event/v1',
+                            'binance_spot_public','BTCUSDT',%s,%s,%s,%s,%s,'healthy',
+                            %s,%s,%s)
+                    """,
+                    (
+                        event_id,
+                        raw_id,
+                        close_time,
+                        close_time,
+                        sequence,
+                        raw_hash,
+                        session_id,
+                        Jsonb([]),
+                        Jsonb(
+                            {
+                                "session_id": session_id,
+                                "stream": interval,
+                                "last_sequence": sequence,
+                                "observed_at": close_time.isoformat(),
+                            }
+                        ),
+                        Jsonb(payload),
+                    ),
+                )
+                sequence += 1
+        unapproved_payload = {
+            "kind": "kline",
+            "interval": "1m",
+            "open_time": (as_of - timedelta(minutes=1)).isoformat().replace("+00:00", "Z"),
+            "close_time": as_of.isoformat().replace("+00:00", "Z"),
+            "open": "120",
+            "high": "121",
+            "low": "119",
+            "close": "120",
+            "base_volume": "10",
+            "trade_count": 1,
+            "closed": True,
+        }
+        connection.execute(
+            """
+            INSERT INTO raw_market_events
+                (id,collector_session_id,source,stream,symbol,record_kind,
+                 source_dedupe_key,payload_bytes,payload_hash,source_event_time,
+                 received_at,ingested_at,sequence,schema_version)
+            VALUES (%s,%s,'binance_spot_public','btcusdt@kline_1m','BTCUSDT',
+                    'stream_message','unapproved-schema',%s,%s,%s,%s,%s,%s,
+                    'woozoo.raw-market-event/v1')
+            """,
+            (
+                "e" * 64,
+                session_id,
+                json.dumps(unapproved_payload).encode(),
+                "d" * 64,
+                as_of,
+                as_of,
+                as_of,
+                sequence,
+            ),
+        )
+        connection.execute(
+            """
+            INSERT INTO normalized_market_events
+                (id,raw_event_id,event_type,schema_version,source,symbol,event_time,
+                 received_at,sequence,raw_payload_hash,correlation_id,quality_status,
+                 quality_reasons,stream_watermark,payload)
+            VALUES (%s,%s,'kline','unapproved/v99','binance_spot_public','BTCUSDT',
+                    %s,%s,%s,%s,%s,'healthy',%s,%s,%s)
+            """,
+            (
+                "f" * 64,
+                "e" * 64,
+                as_of,
+                as_of,
+                sequence,
+                "d" * 64,
+                session_id,
+                Jsonb([]),
+                Jsonb(
+                    {
+                        "session_id": session_id,
+                        "stream": "1m",
+                        "last_sequence": sequence,
+                        "observed_at": as_of.isoformat(),
+                    }
+                ),
+                Jsonb(unapproved_payload),
+            ),
+        )
+
+    store = PostgresEvidenceStore(EVIDENCE_WRITER_URL)
+    command_environment = {
+        "TRADING_MODE": "paper",
+        "EVIDENCE_DATABASE_URL": EVIDENCE_WRITER_URL,
+    }
+    command_result = materialize_evidence_command(
+        command_environment,
+        idempotency_key="integration-evidence-command",
+        service_principal="internal-evidence-scheduler",
+        symbol="BTCUSDT",
+        as_of=as_of,
+        knowledge_cutoff=as_of,
+        created_at=as_of,
+    )
+    retry_result = materialize_evidence_command(
+        command_environment,
+        idempotency_key="integration-evidence-command",
+        service_principal="internal-evidence-scheduler",
+        symbol="BTCUSDT",
+        as_of=as_of,
+        knowledge_cutoff=as_of,
+        created_at=as_of + timedelta(seconds=1),
+    )
+    with pytest.raises(ValueError, match="IDEMPOTENCY_CONFLICT"):
+        materialize_evidence_command(
+            command_environment,
+            idempotency_key="integration-evidence-command",
+            service_principal="internal-evidence-scheduler",
+            symbol="BTCUSDT",
+            as_of=as_of,
+            knowledge_cutoff=as_of + timedelta(seconds=1),
+            created_at=as_of + timedelta(seconds=1),
+        )
+
+    snapshot = store.build_snapshot(symbol="BTCUSDT", as_of=as_of, knowledge_cutoff=as_of)
+    assert command_result.created is True
+    assert retry_result.created is False
+    assert retry_result.evidence_id == command_result.evidence_id == snapshot.evidence_id
+    assert "f" * 64 not in {candle.normalized_event_id for candle in snapshot.candles}
+    assert store.append_snapshot(snapshot, created_at=as_of) is False
+    with pytest.raises(ValueError, match="durable source authority"):
+        store.append_snapshot(replace(snapshot, quality="stale"), created_at=as_of)
+    projected = PostgresEvidenceProjection(CONTROL_READER_URL).get(snapshot.evidence_id)
+    assert projected is not None
+    assert len(snapshot.items) == 256
+    assert len(projected.items) == 256
+    assert len(projected.candles) == 84
+    assert len(projected.features) == 12
+    with psycopg.connect(EVIDENCE_WRITER_URL) as connection:
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            connection.execute("SELECT payload_bytes FROM raw_market_events LIMIT 1")
+    with psycopg.connect(DATABASE_URL) as connection:
+        assert connection.execute("SELECT count(*) FROM evidence_snapshots").fetchone() == (1,)
+        assert connection.execute("SELECT count(*) FROM feature_observations").fetchone() == (12,)
+        assert connection.execute(
+            "SELECT count(*) FROM outbox_events WHERE event_type='evidence.snapshot.created.v1'"
+        ).fetchone() == (1,)
+        with pytest.raises(psycopg.errors.RaiseException):
+            connection.execute(
+                "UPDATE evidence_snapshots SET quality_status='degraded' WHERE evidence_id=%s",
+                (snapshot.evidence_id,),
+            )
+
+    later_snapshot = store.build_snapshot(
+        symbol="BTCUSDT",
+        as_of=as_of,
+        knowledge_cutoff=as_of + timedelta(seconds=1),
+    )
+    conflicting_hash = "9" * 64
+    with psycopg.connect(DATABASE_URL) as connection:
+        connection.execute(
+            """
+            INSERT INTO outbox_events
+                (event_id,event_type,payload,payload_hash,occurred_at,published_at)
+            VALUES (%s,'test.atomic.conflict.v1',%s,%s,%s,NULL)
+            """,
+            (str(uuid4()), Jsonb({}), conflicting_hash, as_of),
+        )
+        existing_feature_count = connection.execute(
+            "SELECT count(*) FROM feature_observations"
+        ).fetchone()
+        existing_item_count = connection.execute("SELECT count(*) FROM evidence_items").fetchone()
+
+    original_outbox_payload = evidence_persistence._outbox_payload
+
+    def conflicting_outbox_payload(snapshot: object, occurred_at: datetime) -> dict[str, object]:
+        event = original_outbox_payload(snapshot, occurred_at)  # type: ignore[arg-type]
+        event["payload_hash"] = conflicting_hash
+        return event
+
+    monkeypatch.setattr(evidence_persistence, "_outbox_payload", conflicting_outbox_payload)
+    with pytest.raises(psycopg.errors.UniqueViolation):
+        store.materialize_command(
+            idempotency_key="atomic-failure-command",
+            service_principal="internal-evidence-scheduler",
+            symbol="BTCUSDT",
+            as_of=as_of,
+            knowledge_cutoff=as_of + timedelta(seconds=1),
+            created_at=as_of + timedelta(seconds=1),
+        )
+    with psycopg.connect(DATABASE_URL) as connection:
+        assert connection.execute(
+            "SELECT count(*) FROM evidence_snapshots WHERE evidence_id=%s",
+            (later_snapshot.evidence_id,),
+        ).fetchone() == (0,)
+        assert connection.execute("SELECT count(*) FROM feature_observations").fetchone() == (
+            existing_feature_count
+        )
+        assert connection.execute("SELECT count(*) FROM evidence_items").fetchone() == (
+            existing_item_count
+        )
+        assert connection.execute(
+            "SELECT count(*) FROM evidence_command_receipts "
+            "WHERE idempotency_key='atomic-failure-command'"
+        ).fetchone() == (0,)
+
+    monkeypatch.setattr(evidence_persistence, "_outbox_payload", original_outbox_payload)
+    independent_cutoff_snapshot = store.build_snapshot(
+        symbol="BTCUSDT",
+        as_of=base + timedelta(hours=100),
+        knowledge_cutoff=as_of,
+    )
+    assert store.append_snapshot(
+        independent_cutoff_snapshot, created_at=base + timedelta(hours=100)
+    )
+
+    invalid_observed_at = as_of + timedelta(seconds=2)
+    with psycopg.connect(DATABASE_URL) as connection:
+        connection.execute(
+            """
+            INSERT INTO data_quality_events (id,scope,status,reason,observed_at,raw_event_id)
+            VALUES (%s,'market_data','invalid','SCHEMA_INVALID',%s,NULL)
+            """,
+            (
+                hashlib.sha256(b"quality:1m:invalid-gap").hexdigest(),
+                invalid_observed_at,
+            ),
+        )
+    with pytest.raises(EvidenceBuildError, match="healthy quality"):
+        store.build_snapshot(
+            symbol="BTCUSDT",
+            as_of=as_of,
+            knowledge_cutoff=invalid_observed_at,
+        )
 
 
 def test_phase_two_market_history_is_durable_projected_and_append_only() -> None:

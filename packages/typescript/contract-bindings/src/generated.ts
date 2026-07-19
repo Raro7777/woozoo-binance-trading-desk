@@ -53,3 +53,16 @@ export type MarketDomainEventBindingV1 =
   | MarketDomainEventEnvelopeBindingV1<"market.raw.appended.v1", MarketRawAppendedDataBindingV1>
   | MarketDomainEventEnvelopeBindingV1<"market.normalized.recorded.v1", MarketEventBindingV1>
   | MarketDomainEventEnvelopeBindingV1<"market.quality.changed.v1", MarketQualityChangedDataBindingV1>;
+export type EvidenceItemBindingV1 = { item_type: "normalized_market_event" | "feature_observation"; item_id: string; raw_event_id: string; raw_payload_hash: string };
+export type EvidenceCandleBindingV1 = { normalized_event_id: string; raw_event_id: string; raw_payload_hash: string; interval: "1m" | "5m" | "1h" | "4h"; event_time: string; received_at: string; open_time: string; close_time: string; open: string; high: string; low: string; close: string; base_volume: string };
+export type EvidenceFeatureBindingV1 = { feature_id: string; name: "close_return_1" | "close_sma_20" | "close_rsi_14"; definition_version: "woozoo.feature.ohlcv-return-sma20-rsi14/v1"; interval: "1m" | "5m" | "1h" | "4h"; feature_time: string; value: string; input_digest: string };
+export type EvidenceSnapshotBindingV1 = { evidence_id: string; evidence_digest: string; symbol: "BTCUSDT" | "ETHUSDT"; as_of: string; knowledge_cutoff: string; recipe_version: "woozoo.evidence.closed-candles-approved-features/v1"; input_digest: string; quality: "healthy"; quality_reasons: []; collector_session_id: string; watermark_digest: string; items: EvidenceItemBindingV1[]; candles: EvidenceCandleBindingV1[]; features: EvidenceFeatureBindingV1[] };
+export type EvidenceSnapshotEnvelopeBindingV1 = { api_version: "v1"; request_id: string; correlation_id: string; served_at: string; data: EvidenceSnapshotBindingV1; meta: { resource_version: null; next_cursor: null } };
+export type EvidenceErrorBindingV1 = { api_version: "v1"; request_id: string; correlation_id: string; served_at: string; error: { code: "EVIDENCE_NOT_FOUND" | "EVIDENCE_PROJECTION_UNAVAILABLE"; message: string }; meta: { resource_version: null; next_cursor: null } };
+export type EvidenceDomainEventBindingV1 = { spec_version: "woozoo.event/v1"; event_id: string; event_type: "evidence.snapshot.created.v1"; event_version: 1; occurred_at: string; published_at: string | null; producer: "evidence-worker"; correlation_id: string; causation_id: string | null; aggregate: { type: "evidence_snapshot"; id: string; version: number }; data: EvidenceSnapshotBindingV1; payload_hash: string };
+export type EvidenceCommandBindingV1 = { symbol: "BTCUSDT" | "ETHUSDT"; as_of: string; knowledge_cutoff: string };
+export type EvidenceCommandReceiptBindingV1 = { evidence_id: string; evidence_digest: string; created: boolean };
+export type EvidenceCommandReceiptEnvelopeBindingV1 = { api_version: "v1"; request_id: string; correlation_id: string; served_at: string; data: EvidenceCommandReceiptBindingV1; meta: { resource_version: null; next_cursor: null } };
+export type EvidenceCommandErrorEnvelopeBindingV1 = { api_version: "v1"; request_id: string; correlation_id: string; served_at: string; error: { code: "SCHEMA_INVALID" | "IDEMPOTENCY_CONFLICT" | "CALLER_UNAUTHORIZED" }; meta: { resource_version: null; next_cursor: null } };
+export const evidencePathTemplate = "/api/v1/evidence/{evidence_id}" as const;
+export const evidenceCommandPath = "/api/v1/commands/evidence-snapshots" as const;

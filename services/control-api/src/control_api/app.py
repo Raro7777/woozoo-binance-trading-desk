@@ -16,6 +16,12 @@ from platform_core.primitives import new_request_id, utc_now
 from platform_core.redaction import redact
 
 from .dependencies import DependencySnapshot, HealthProbe, PlatformHealthProbe
+from .evidence_projection import (
+    EVIDENCE_ID_PATTERN,
+    EvidenceProjection,
+    EvidenceProjectionUnavailable,
+    PostgresEvidenceProjection,
+)
 from .market_projection import (
     MarketProjectionUnavailable,
     MarketStatusProjection,
@@ -59,6 +65,13 @@ def _market_error(code: str, message: str, status_code: int) -> JSONResponse:
     return JSONResponse(redact(envelope), status_code=status_code)
 
 
+def _evidence_error(code: str, message: str, status_code: int) -> JSONResponse:
+    envelope = _base_envelope()
+    envelope["error"] = {"code": code, "message": message}
+    envelope["meta"] = {"resource_version": None, "next_cursor": None}
+    return JSONResponse(redact(envelope), status_code=status_code)
+
+
 def _iso(value: datetime) -> str:
     return value.isoformat().replace("+00:00", "Z")
 
@@ -67,12 +80,14 @@ def create_app(
     environment: Mapping[str, str] | None = None,
     probe: HealthProbe | None = None,
     market_projection: MarketStatusProjection | None = None,
+    evidence_projection: EvidenceProjection | None = None,
 ) -> FastAPI:
     values = os.environ if environment is None else environment
     settings = PlatformSettings.from_mapping(values).require_service_dependencies()
     health_probe = probe or PlatformHealthProbe()
     assert settings.database_url is not None
     market_status = market_projection or PostgresMarketStatusProjection(settings.database_url)
+    evidence_reader = evidence_projection or PostgresEvidenceProjection(settings.database_url)
     app = ContractBoundFastAPI(docs_url=None, openapi_url=None, redoc_url=None)
 
     @app.get(HEALTH_PATH)
@@ -127,6 +142,77 @@ def create_app(
                 "last_sequence": snapshot.last_sequence,
                 "observed_at": _iso(snapshot.watermark_observed_at),
             },
+        }
+        envelope["meta"] = {"resource_version": None, "next_cursor": None}
+        return JSONResponse(redact(envelope))
+
+    @app.get("/api/v1/evidence/{evidence_id}")
+    def get_evidence(evidence_id: str) -> JSONResponse:
+        if EVIDENCE_ID_PATTERN.fullmatch(evidence_id) is None:
+            return _evidence_error("EVIDENCE_NOT_FOUND", "evidence snapshot is not available", 404)
+        try:
+            snapshot = evidence_reader.get(evidence_id)
+        except EvidenceProjectionUnavailable:
+            return _evidence_error(
+                "EVIDENCE_PROJECTION_UNAVAILABLE",
+                "evidence projection is unavailable",
+                503,
+            )
+        if snapshot is None:
+            return _evidence_error("EVIDENCE_NOT_FOUND", "evidence snapshot is not available", 404)
+
+        envelope = _base_envelope()
+        envelope["data"] = {
+            "evidence_id": snapshot.evidence_id,
+            "evidence_digest": snapshot.evidence_digest,
+            "symbol": snapshot.symbol,
+            "as_of": _iso(snapshot.as_of),
+            "knowledge_cutoff": _iso(snapshot.knowledge_cutoff),
+            "recipe_version": snapshot.recipe_version,
+            "input_digest": snapshot.input_digest,
+            "quality": snapshot.quality,
+            "quality_reasons": list(snapshot.quality_reasons),
+            "collector_session_id": snapshot.collector_session_id,
+            "watermark_digest": snapshot.watermark_digest,
+            "items": [
+                {
+                    "item_type": item.item_type,
+                    "item_id": item.item_id,
+                    "raw_event_id": item.raw_event_id,
+                    "raw_payload_hash": item.raw_payload_hash,
+                }
+                for item in snapshot.items
+            ],
+            "candles": [
+                {
+                    "normalized_event_id": candle.normalized_event_id,
+                    "raw_event_id": candle.raw_event_id,
+                    "raw_payload_hash": candle.raw_payload_hash,
+                    "interval": candle.interval,
+                    "event_time": _iso(candle.event_time),
+                    "received_at": _iso(candle.received_at),
+                    "open_time": candle.open_time,
+                    "close_time": candle.close_time,
+                    "open": candle.open,
+                    "high": candle.high,
+                    "low": candle.low,
+                    "close": candle.close,
+                    "base_volume": candle.base_volume,
+                }
+                for candle in snapshot.candles
+            ],
+            "features": [
+                {
+                    "feature_id": feature.feature_id,
+                    "name": feature.name,
+                    "definition_version": feature.definition_version,
+                    "interval": feature.interval,
+                    "feature_time": _iso(feature.feature_time),
+                    "value": feature.value,
+                    "input_digest": feature.input_digest,
+                }
+                for feature in snapshot.features
+            ],
         }
         envelope["meta"] = {"resource_version": None, "next_cursor": None}
         return JSONResponse(redact(envelope))

@@ -68,6 +68,7 @@ def test_plat_001_exposes_only_the_paper_health_shell() -> None:
     assert {route.path for route in app.routes} == {
         "/api/v1/health",
         "/api/v1/markets/{symbol}/status",
+        "/api/v1/evidence/{evidence_id}",
     }
 
 

@@ -145,6 +145,7 @@ def make_raw_event(
         source_time = milliseconds(parsed["E"], "E")
     sequence: int | None = None
     prefix = "invalid"
+    source_key_override: str | None = None
     if parsed.get("e") == "trade" and isinstance(parsed.get("t"), int):
         sequence = parsed["t"]
         prefix = "trade"
@@ -152,13 +153,30 @@ def make_raw_event(
         sequence = parsed["u"]
         prefix = "book_ticker"
     elif parsed.get("e") == "kline" and isinstance(parsed.get("k"), dict):
-        last_trade = parsed["k"].get("L")
+        kline_payload = parsed["k"]
+        last_trade = kline_payload.get("L")
         if isinstance(last_trade, int):
             sequence = last_trade
         prefix = "kline"
+        interval = kline_payload.get("i")
+        open_time = kline_payload.get("t")
+        closed = kline_payload.get("x")
+        source_event = parsed.get("E")
+        if (
+            isinstance(interval, str)
+            and isinstance(open_time, int)
+            and not isinstance(open_time, bool)
+            and isinstance(closed, bool)
+            and isinstance(source_event, int)
+            and not isinstance(source_event, bool)
+        ):
+            source_key_override = (
+                f"kline:{allowed_symbol or '-'}:{interval}:{open_time}:"
+                f"{source_event}:{int(closed)}:{payload_hash}"
+            )
     elif parsed.get("e") == "serverShutdown":
         prefix = "server_shutdown"
-    source_key = (
+    source_key = source_key_override or (
         f"{prefix}:{allowed_symbol or '-'}:{sequence if sequence is not None else payload_hash}"
     )
     identity = "|".join((session_id, stream, received_at.isoformat(), payload_hash))

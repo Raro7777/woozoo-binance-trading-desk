@@ -1,7 +1,12 @@
 // Generated bindings are the only public contract surface for TypeScript consumers.
-export { healthPath, marketStatusPathTemplate } from "./generated.js";
+export { evidencePathTemplate, healthPath, marketStatusPathTemplate } from "./generated.js";
 export type {
   DependencyUnavailableBindingV1,
+  EvidenceDomainEventBindingV1,
+  EvidenceErrorBindingV1,
+  EvidenceItemBindingV1,
+  EvidenceSnapshotBindingV1,
+  EvidenceSnapshotEnvelopeBindingV1,
   MarketDomainEventBindingV1,
   MarketDomainEventEnvelopeBindingV1,
   MarketEventBindingV1,
