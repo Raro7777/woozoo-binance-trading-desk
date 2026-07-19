@@ -15,6 +15,8 @@ export type {
   MarketStatusBindingV1,
   MarketStatusErrorBindingV1,
   PlatformHealthBindingV1,
+  PaperDomainEventBindingV1,
+  PaperOrderBindingV1,
   PostgresDependencyBindingV1,
   RedisDependencyBindingV1,
 } from "./generated.js";

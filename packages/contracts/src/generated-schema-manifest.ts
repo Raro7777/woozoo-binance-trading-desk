@@ -4,6 +4,9 @@ export const EVENT_SPEC_VERSION = "woozoo.event/v1" as const;
 export const MARKET_EVENT_SPEC_VERSION = "woozoo.market-event/v1" as const;
 export const EVIDENCE_SNAPSHOT_SPEC_VERSION = "woozoo.evidence-snapshot/v1" as const;
 export const EVIDENCE_DOMAIN_EVENT_SPEC_VERSION = "woozoo.evidence-domain-events/v1" as const;
+export const PAPER_ORDER_SPEC_VERSION = "woozoo.paper-order/v1" as const;
+export const PAPER_DOMAIN_EVENT_SPEC_VERSION = "woozoo.paper-domain-events/v1" as const;
+export const PAPER_ACTIVATION_PHASE = 7 as const;
 export const MARKET_SOURCE = "binance_spot_public" as const;
 export const HEALTH_PATH = "/api/v1/health" as const;
 export const MARKET_STATUS_PATH_TEMPLATE = "/api/v1/markets/{symbol}/status" as const;
@@ -15,5 +18,7 @@ export const CONTRACT_SOURCE_DIGESTS = {
   "market-event.v1.json": "6eedfb52b8d28748542a5851df6960b4b495e520f1386a0b4efca933069511dd",
   "market-domain-events.v1.json": "c0e883dc53c6394355c9baa70e4ef642307eb2a0f13ef0fe9cb581f6dcf2dfc4",
   "evidence-snapshot.v1.json": "2e60fb66732bcdea794f9a6ecaa519cae3a1fd3fa5b5890f11839cdeb5e99b8c",
-  "evidence-domain-events.v1.json": "af113814267e596fa453b5036a8f5d6e579fce133ee03efee9cca785d3f1d749"
+  "evidence-domain-events.v1.json": "af113814267e596fa453b5036a8f5d6e579fce133ee03efee9cca785d3f1d749",
+  "paper-order.v1.json": "2a4048f7c038e394fda9d212de6486998ca61b42ff12c21fe03f0db8714220d5",
+  "paper-domain-events.v1.json": "c99666546c9dc46b346dd8b2c429e99f13f03052123777b4511d5330da6ae2c0"
 } as const;

@@ -1,0 +1,35 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
+import test from "node:test";
+
+import type {
+  PaperDomainEventBindingV1,
+  PaperOrderBindingV1,
+} from "../../packages/typescript/contract-bindings/src/index.js";
+
+test("Phase 4 Paper contracts are closed and dormant until Phase 7", async () => {
+  const order: PaperOrderBindingV1 = {
+    order_id: "a".repeat(64), client_order_id: "client-1", authorization_id: "fixture-1",
+    authorization_namespace: "test", symbol: "BTCUSDT", side: "BUY",
+    order_type: "LIMIT", time_in_force: "GTC", quantity: "1.000000000000000000",
+    limit_price: "100.000000000000000000", filled_quantity: "0.000000000000000000",
+    status: "OPEN", version: 1,
+  };
+  const event: PaperDomainEventBindingV1 = {
+    spec_version: "woozoo.event/v1", event_id: "b".repeat(64),
+    event_type: "paper.order.accepted.v1", event_version: 1,
+    occurred_at: "2026-07-19T00:00:00Z", producer: "paper-engine",
+    activation_phase: 7, aggregate_id: order.order_id, aggregate_version: 1,
+    payload_hash: "c".repeat(64),
+  };
+  assert.equal(event.activation_phase, 7);
+  const schema = JSON.parse(await readFile(resolve(import.meta.dirname, "../../packages/contracts/spec/paper-order.v1.json"), "utf8")) as Record<string, unknown>;
+  const registry = JSON.parse(await readFile(resolve(import.meta.dirname, "../../packages/contracts/spec/paper-domain-events.v1.json"), "utf8")) as { oneOf: unknown[]; "x-activation-phase": number };
+  const openapi = JSON.parse(await readFile(resolve(import.meta.dirname, "../../packages/contracts/spec/openapi.v1.json"), "utf8")) as { paths: Record<string, unknown> };
+  assert.equal(schema.additionalProperties, false);
+  assert.equal(schema["x-activation-phase"], 7);
+  assert.equal(registry.oneOf.length, 5);
+  assert.equal(registry["x-activation-phase"], 7);
+  assert.equal(Object.keys(openapi.paths).some((path) => path.includes("paper")), false);
+});

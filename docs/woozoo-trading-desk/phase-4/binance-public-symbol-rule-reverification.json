@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "verified_at": "2026-07-19T10:53:33Z",
+  "source": "https://data-api.binance.vision/api/v3/exchangeInfo?symbols=%5B%22BTCUSDT%22,%22ETHUSDT%22%5D",
+  "authentication": "NONE",
+  "http_status": 200,
+  "response_bytes": 10241,
+  "raw_response_sha256": "c30f738ad7fd6d8e1378b9a8ef022c78c801cf4d1bc0b005f8870c188364a788",
+  "adopted_rules": {
+    "BTCUSDT": {
+      "status": "TRADING",
+      "base_asset": "BTC",
+      "quote_asset": "USDT",
+      "tick_size": "0.01000000",
+      "step_size": "0.00001000",
+      "min_quantity": "0.00001000",
+      "min_notional": "5.00000000"
+    },
+    "ETHUSDT": {
+      "status": "TRADING",
+      "base_asset": "ETH",
+      "quote_asset": "USDT",
+      "tick_size": "0.01000000",
+      "step_size": "0.00010000",
+      "min_quantity": "0.00010000",
+      "min_notional": "5.00000000"
+    }
+  },
+  "boundary": "This public response pins Phase 4 Paper validation only. It authorizes no private, account, Testnet or external order capability."
+}

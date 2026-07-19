@@ -15,6 +15,8 @@ CONTRACT_SOURCE_DIGESTS = {
     "market-domain-events.v1.json": "c0e883dc53c6394355c9baa70e4ef642307eb2a0f13ef0fe9cb581f6dcf2dfc4",
     "evidence-snapshot.v1.json": "2e60fb66732bcdea794f9a6ecaa519cae3a1fd3fa5b5890f11839cdeb5e99b8c",
     "evidence-domain-events.v1.json": "af113814267e596fa453b5036a8f5d6e579fce133ee03efee9cca785d3f1d749",
+    "paper-order.v1.json": "2a4048f7c038e394fda9d212de6486998ca61b42ff12c21fe03f0db8714220d5",
+    "paper-domain-events.v1.json": "c99666546c9dc46b346dd8b2c429e99f13f03052123777b4511d5330da6ae2c0",
 }
 
 QualityStatusV1 = Literal["healthy", "degraded", "stale", "invalid", "reconnecting"]
@@ -262,3 +264,19 @@ class EvidenceCommandErrorEnvelopeBindingV1(TypedDict):
     served_at: str
     error: EvidenceCommandErrorBindingV1
     meta: dict[str, None]
+
+
+class PaperOrderBindingV1(TypedDict):
+    order_id: str
+    client_order_id: str
+    authorization_id: str
+    authorization_namespace: Literal["test"]
+    symbol: Literal["BTCUSDT", "ETHUSDT"]
+    side: Literal["BUY", "SELL"]
+    order_type: Literal["LIMIT"]
+    time_in_force: Literal["GTC"]
+    quantity: str
+    limit_price: str
+    filled_quantity: str
+    status: Literal["OPEN", "PARTIALLY_FILLED", "FILLED", "CANCELLED"]
+    version: int

@@ -1,0 +1,20 @@
+{
+  "schema_version": "woozoo.paper.scenario-manifest/v1",
+  "phase": 4,
+  "financial_policy_version": "woozoo.paper.financial-policy/v1",
+  "activation_phase": 7,
+  "network_enabled": false,
+  "required_scenarios": [
+    {"id": "FIN-001", "command": "pnpm test:property", "oracle": "commodity balance, conservation, duplicate neutrality"},
+    {"id": "FIN-002", "command": "pnpm test:property", "oracle": "insufficient cash/long inventory creates no order or journal"},
+    {"id": "FIN-003", "command": "pnpm test:unit", "oracle": "fixed partial-fill FIFO fee and PnL values"},
+    {"id": "FIN-004", "command": "pnpm test:integration", "oracle": "immutable ledger and reversal plus replacement"},
+    {"id": "ORD-001", "command": "pnpm test:property", "oracle": "partial fill, duplicate, cancel and terminal monotonicity"},
+    {"id": "ORD-002", "command": "pnpm test:replay", "oracle": "same command and restart produce one identical effect"},
+    {"id": "ATOM-001", "command": "pnpm test:failure", "oracle": "injected pre-commit failure rolls back all effects"},
+    {"id": "ATOM-002", "command": "pnpm test:replay", "oracle": "commit/ack loss retry adds no effect"},
+    {"id": "PAPER-CONTRACT-001", "command": "pnpm test:contracts", "oracle": "closed dormant schemas and active Paper route zero"},
+    {"id": "PAPER-SAFE-001", "command": "pnpm test:safety", "oracle": "network, credential, external order and production ingress zero"},
+    {"id": "PAPER-MIGRATION-001", "command": "pnpm test:integration", "oracle": "migration, test namespace and no future FK"}
+  ]
+}

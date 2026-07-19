@@ -108,10 +108,16 @@ def platform_services() -> Iterator[None]:
     with integration_infrastructure_lock():
         run("docker", "compose", "up", "-d", "--wait", "postgres", "redis")
         try:
+            run(sys.executable, "-m", "alembic", "downgrade", "20260719_0003")
             run(sys.executable, "-m", "alembic", "upgrade", "head")
             with psycopg.connect(DATABASE_URL) as connection:
                 connection.execute(
-                    "TRUNCATE data_quality_events, normalized_market_events, "
+                    "TRUNCATE paper_reconciliation_checkpoints, paper_ledger_entries, "
+                    "paper_ledger_transactions, paper_lot_consumptions, paper_inventory_lots, "
+                    "paper_fills, paper_order_events, paper_orders, paper_broker_inputs, "
+                    "paper_authorization_attempts, paper_command_receipts, paper_asset_balances, "
+                    "paper_accounts, paper_symbol_rule_versions, paper_policy_versions, "
+                    "data_quality_events, normalized_market_events, "
                     "raw_market_events, market_status_projections, "
                     "stream_watermark_projections, collector_sessions, outbox_events "
                     "RESTART IDENTITY CASCADE"
@@ -1166,3 +1172,67 @@ def test_postgres_restart_restores_closed_kline_grid_continuity() -> None:
         observed_at + timedelta(seconds=1),
     )
     assert not skipped.accepted and skipped.reason == "kline_gap"
+
+
+def test_phase_four_postgres_enforces_balance_and_immutable_ledger() -> None:
+    with pytest.raises(psycopg.errors.RaiseException, match="not balanced per commodity"):
+        with psycopg.connect(DATABASE_URL) as connection:
+            connection.execute(
+                """
+                INSERT INTO paper_ledger_transactions
+                    (transaction_id,business_event_type,business_event_id,journal_kind,posted_at)
+                VALUES ('bad','paper.test','bad','PHYSICAL',now())
+                """
+            )
+            connection.execute(
+                """
+                INSERT INTO paper_ledger_entries
+                    (transaction_id,line_no,account_code,commodity,debit,credit)
+                VALUES ('bad',0,'paper.cash','USDT',1,0)
+                """
+            )
+
+    with psycopg.connect(DATABASE_URL) as connection:
+        connection.execute(
+            """
+            INSERT INTO paper_ledger_transactions
+                (transaction_id,business_event_type,business_event_id,journal_kind,posted_at)
+            VALUES ('good','paper.test','good','PHYSICAL',now())
+            """
+        )
+        connection.execute(
+            """
+            INSERT INTO paper_ledger_entries
+                (transaction_id,line_no,account_code,commodity,debit,credit)
+            VALUES
+                ('good',0,'paper.cash','USDT',1,0),
+                ('good',1,'exchange.clearing','USDT',0,1)
+            """
+        )
+    with pytest.raises(psycopg.errors.RaiseException, match="append-only"):
+        with psycopg.connect(DATABASE_URL) as connection:
+            connection.execute(
+                "UPDATE paper_ledger_entries SET debit=2 WHERE transaction_id='good' AND line_no=0"
+            )
+
+
+def test_phase_four_schema_has_dormant_test_namespace_and_no_future_fk() -> None:
+    with psycopg.connect(DATABASE_URL) as connection:
+        constraints = connection.execute(
+            """
+            SELECT pg_get_constraintdef(oid)
+            FROM pg_constraint
+            WHERE conrelid IN ('paper_accounts'::regclass, 'paper_authorization_attempts'::regclass)
+            ORDER BY conname
+            """
+        ).fetchall()
+        foreign_targets = connection.execute(
+            """
+            SELECT confrelid::regclass::text
+            FROM pg_constraint
+            WHERE contype='f' AND conrelid='paper_orders'::regclass
+            ORDER BY confrelid::regclass::text
+            """
+        ).fetchall()
+    assert sum("namespace" in row[0] and "test" in row[0] for row in constraints) == 2
+    assert [row[0] for row in foreign_targets] == ["paper_accounts", "paper_broker_inputs"]

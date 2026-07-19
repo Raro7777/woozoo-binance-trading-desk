@@ -33,6 +33,16 @@ async function fixtureManifestDigest() {
   return hash.digest("hex");
 }
 
+async function paperMetadata() {
+  const fixture = await readFile(resolve(root, "tests", "fixtures", "paper-domain", "p4-oracle-v1.json"));
+  return {
+    schema_version: "woozoo.paper.replay-manifest/v1",
+    financial_policy_version: "woozoo.paper.financial-policy/v1",
+    oracle_fixture_sha256: createHash("sha256").update(fixture).digest("hex"),
+    network_enabled: false,
+  };
+}
+
 async function revisionEvidence() {
   const commit = spawnSync("git", ["rev-parse", "HEAD"], {
     cwd: root,
@@ -155,10 +165,14 @@ const actions = {
       "tests/unit/test_evidence_features.py::test_wilder_rsi_has_deterministic_flat_and_all_loss_edges[closes1-0.000000000000000000]",
       "tests/unit/test_evidence_settings.py::test_evidence_settings_require_paper_mode_and_dedicated_database_url",
     ], { schema_version: "woozoo.evidence.replay-manifest/v1", evidence_recipe_version: evidenceRecipeVersion });
+    await dataScenario("unit", "FIN-003", [
+      "tests/property/test_paper_financial_properties.py::test_fin_003_exact_partial_fill_fifo_and_pnl_oracle",
+    ], await paperMetadata());
   },
   "test:contracts": async () => {
-    await scenarios("contracts", ["CONTRACT-001", "DATA-CONTRACT-001"], [["node", ["scripts/generate-contracts.mjs", "--check"]], ["corepack", [pnpm, "exec", "tsc", "-p", "tests/contract/tsconfig.json"]], ["corepack", [pnpm, "exec", "tsx", "--test", "tests/contract/contracts.test.ts", "tests/contract/market-data-contracts.test.ts", "tests/contract/evidence-contracts.test.ts"]], ["python", ["-m", "uv", "run", "--locked", "pytest", "tests/contract", "-q"]]]);
+    await scenarios("contracts", ["CONTRACT-001", "DATA-CONTRACT-001"], [["node", ["scripts/generate-contracts.mjs", "--check"]], ["corepack", [pnpm, "exec", "tsc", "-p", "tests/contract/tsconfig.json"]], ["corepack", [pnpm, "exec", "tsx", "--test", "tests/contract/contracts.test.ts", "tests/contract/market-data-contracts.test.ts", "tests/contract/evidence-contracts.test.ts", "tests/contract/paper-contracts.test.ts"]], ["python", ["-m", "uv", "run", "--locked", "pytest", "tests/contract", "-q"]]]);
     await dataScenario("contracts", "EVID-002", ["tests/contract/test_evidence_contract.py::test_evid_002_snapshot_contract_is_closed_and_consumer_complete"], { schema_version: "woozoo.evidence.replay-manifest/v1", evidence_recipe_version: evidenceRecipeVersion });
+    await scenarios("contracts", ["PAPER-CONTRACT-001"], [["corepack", [pnpm, "exec", "tsx", "--test", "tests/contract/paper-contracts.test.ts"]]], 1, false, await paperMetadata());
   },
   "test:safety": async () => {
     await scenarios("safety", ["SAFE-001", "SAFE-002", "SAFE-003", "SAFE-004", "SAFE-005"], [["python", ["-m", "uv", "run", "--locked", "pytest", "tests/safety", "-q"]], ["node", ["scripts/capability-zero.mjs"]], ["corepack", [pnpm, "exec", "tsx", "--test", "tests/safety/capability-zero.test.ts"]]]);
@@ -166,10 +180,21 @@ const actions = {
       "tests/safety/test_phase3_evidence_capabilities.py::test_evidence_worker_has_no_network_or_later_phase_capability",
       "tests/safety/test_phase3_evidence_capabilities.py::test_phase_three_registers_only_the_approved_evidence_command_route",
     ], { schema_version: "woozoo.evidence.replay-manifest/v1", evidence_recipe_version: evidenceRecipeVersion });
+    await dataScenario("safety", "PAPER-SAFE-001", [
+      "tests/safety/test_phase4_paper_boundaries.py::test_phase_four_has_no_active_paper_route_or_network_ingress",
+      "tests/safety/test_phase4_paper_boundaries.py::test_phase_four_settings_reject_credential_vocabulary",
+    ], await paperMetadata());
   },
   "test:integration": async () => {
     await scenarios("integration", ["PLAT-001", "PLAT-002", "PLAT-003"], [["corepack", [pnpm, "--filter", "@woozoo/trading-room-web", "run", "build"]], ["python", ["-m", "uv", "run", "--locked", "pytest", "tests/integration", "-q"]], ["corepack", [pnpm, "exec", "tsx", "--test", "tests/integration/trading-room-web.test.ts"]]]);
     await dataScenario("integration", "EVID-005", ["tests/integration/test_platform_infrastructure.py::test_phase_three_evidence_is_atomic_idempotent_and_append_only"], { schema_version: "woozoo.evidence.replay-manifest/v1", evidence_recipe_version: evidenceRecipeVersion });
+    await dataScenario("integration", "FIN-004", [
+      "tests/integration/test_paper_ledger_immutability.py::test_fin_004_posted_journal_is_immutable_and_correction_is_reversal_replacement",
+      "tests/integration/test_platform_infrastructure.py::test_phase_four_postgres_enforces_balance_and_immutable_ledger",
+    ], await paperMetadata());
+    await dataScenario("integration", "PAPER-MIGRATION-001", [
+      "tests/integration/test_paper_migration_contract.py::test_phase_four_migration_closes_financial_and_activation_boundaries",
+    ], await paperMetadata());
   },
   "test:replay": async () => {
     await dataScenario("replay", "DATA-001", [
@@ -189,6 +214,12 @@ const actions = {
       "tests/unit/test_evidence_builder.py::test_builder_is_deterministic_and_prior_snapshot_is_immutable_under_late_arrival",
       "tests/unit/test_evidence_builder.py::test_newer_cutoff_deterministically_replaces_a_same_bucket_late_materialization",
     ], { schema_version: "woozoo.evidence.replay-manifest/v1", evidence_recipe_version: evidenceRecipeVersion });
+    await dataScenario("replay", "ORD-002", [
+      "tests/replay/test_paper_restart_replay.py::test_ord_002_restart_replay_has_identical_digest_and_single_effect",
+    ], await paperMetadata());
+    await dataScenario("replay", "ATOM-002", [
+      "tests/replay/test_paper_restart_replay.py::test_atom_002_ack_loss_retry_returns_same_order_without_new_effect",
+    ], await paperMetadata());
   },
   "test:failure": async () => {
     await dataScenario("failure", "DATA-003", [
@@ -225,6 +256,9 @@ const actions = {
       "tests/unit/test_evidence_builder.py::test_builder_rejects_every_non_healthy_quality[reconnecting]",
       "tests/unit/test_evidence_builder.py::test_builder_rejects_a_terminal_window_that_is_stale_at_the_cutoffs",
     ], { schema_version: "woozoo.evidence.replay-manifest/v1", evidence_recipe_version: evidenceRecipeVersion });
+    await dataScenario("failure", "ATOM-001", [
+      "tests/failure/test_paper_atomicity.py::test_atom_001_injected_commit_failure_rolls_back_every_effect",
+    ], await paperMetadata());
   },
   "test:property": async () => {
     await dataScenario("property", "DATA-007", [
@@ -239,6 +273,15 @@ const actions = {
       "tests/property/test_evidence_boundaries.py::test_dual_cutoff_is_independently_inclusive[event_delta3-received_delta3-False]",
       "tests/unit/test_evidence_features.py::test_feature_derivation_rejects_incomplete_or_gapped_windows",
     ], { schema_version: "woozoo.evidence.replay-manifest/v1", evidence_recipe_version: evidenceRecipeVersion });
+    await dataScenario("property", "FIN-001", [
+      "tests/property/test_paper_financial_properties.py::test_fin_001_generated_fill_cancel_sequences_conserve_and_balance",
+    ], await paperMetadata());
+    await dataScenario("property", "FIN-002", [
+      "tests/property/test_paper_financial_properties.py::test_fin_002_insufficient_cash_or_long_inventory_has_zero_order_and_ledger_effect",
+    ], await paperMetadata());
+    await dataScenario("property", "ORD-001", [
+      "tests/unit/test_paper_engine.py::test_ord_001_partial_fill_duplicate_cancel_and_terminal_monotonicity",
+    ], await paperMetadata());
   },
   build: async () => {
     run("node", ["scripts/generate-contracts.mjs", "--check"]);

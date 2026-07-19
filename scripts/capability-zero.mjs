@@ -39,6 +39,22 @@ const forbidden = [
   insensitive("priv", "ate[_-]?acc", "ount"),
   insensitive("acc", "ount"),
 ];
+const phaseFourPatternA = insensitive("acc", "ount");
+const phaseFourPatternB = insensitive("test", "net");
+const phaseFourPatternC = insensitive("api[_-]?", "key");
+
+function isApprovedPhaseFourVocabulary(projectPath, pattern) {
+  const paperOwned =
+    projectPath.startsWith("services/paper-engine/") ||
+    projectPath === "db/migrations/versions/20260719_0004_paper_broker_ledger.py" ||
+    projectPath.startsWith("packages/contracts/spec/paper-");
+  if (paperOwned && pattern.source === phaseFourPatternA.source) return true;
+  if (
+    projectPath === "services/paper-engine/src/paper_engine/settings.py" &&
+    [phaseFourPatternB.source, phaseFourPatternC.source].includes(pattern.source)
+  ) return true;
+  return false;
+}
 const publicOrigins = new Set([
   "https://data-" + "api.bin" + "ance.vision",
   "wss://data-" + "stream.bin" + "ance.vision",
@@ -139,7 +155,9 @@ export async function scanPaths(paths = productRoots.map((path) => resolve(root,
     const content = await readFile(path, "utf8");
     const inspected = productConfigurationInspection(projectPath, content);
     for (const pattern of forbidden) {
-      if (pattern.test(inspected)) findings.push(`${projectPath}:${pattern}`);
+      if (pattern.test(inspected) && !isApprovedPhaseFourVocabulary(projectPath, pattern)) {
+        findings.push(`${projectPath}:${pattern}`);
+      }
     }
     for (const candidate of inspected.match(urlPattern) ?? []) {
       if (candidate.toLowerCase().includes("bin" + "ance") && !publicOrigins.has(candidate)) {
