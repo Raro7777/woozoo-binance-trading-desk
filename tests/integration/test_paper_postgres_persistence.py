@@ -175,7 +175,7 @@ def complete_write(*, suffix: str = "base") -> AtomicPaperWrite:
         "BTCUSDT",
         "99.000000000000000000",
         "100.000000000000000000",
-        "0.100000000000000000",
+        "0.050000000000000000",
     )
     receipt = CommandReceiptWrite(
         scope="paper.create.v1",
@@ -297,7 +297,7 @@ def complete_write(*, suffix: str = "base") -> AtomicPaperWrite:
                 book_source,
                 book_payload_hash,
                 NOW,
-                Decimal("0.100000000000000000"),
+                Decimal("0.050000000000000000"),
                 "BTCUSDT",
                 Decimal("99.000000000000000000"),
                 Decimal("100.000000000000000000"),
@@ -970,13 +970,13 @@ def test_restart_restores_floor_stepped_observation_budget_and_hash() -> None:
     write = complete_write(suffix="floor-budget")
     book = replace(
         write.broker_inputs[1],
-        available_quantity=Decimal("0.100090000000000000"),
+        available_quantity=Decimal("0.050090000000000000"),
         payload_hash=engine_id(
             "observation",
             "BTCUSDT",
             "99.000000000000000000",
             "100.000000000000000000",
-            "0.100090000000000000",
+            "0.050090000000000000",
         ),
     )
     write = replace(write, broker_inputs=(write.broker_inputs[0], book))
@@ -984,24 +984,130 @@ def test_restart_restores_floor_stepped_observation_budget_and_hash() -> None:
     hydrated = PostgresPaperStore(PAPER_WRITER_URL).hydrate_engine(write.account_id)
     assert hydrated.observation_budgets[book.source_key] == (
         book.payload_hash,
-        Decimal("0.005000000000000000"),
+        Decimal("0.000000000000000000"),
+    )
+
+
+def test_observation_no_fill_requires_ineligibility_or_exhausted_budget() -> None:
+    opened, eligible_fill = split_open_and_fill(suffix="eligible-no-fill")
+    store = PostgresPaperStore(PAPER_WRITER_URL)
+    store.commit(opened)
+    eligible_no_fill = replace(
+        eligible_fill,
+        balances=(),
+        order=opened.order,
+        order_events=(),
+        fills=(),
+        lots=(),
+        journals=(),
+        outbox=(),
+    )
+    with pytest.raises(psycopg.errors.RaiseException, match="fill/order consistency"):
+        store.commit(eligible_no_fill)
+
+    ineligible_open, ineligible_fill = split_open_and_fill(suffix="ineligible-no-fill")
+    store.commit(ineligible_open)
+    source = ineligible_fill.broker_inputs[0]
+    ineligible_source = replace(
+        source,
+        best_ask=Decimal("10001"),
+        payload_hash=engine_id(
+            "observation",
+            "BTCUSDT",
+            "99.000000000000000000",
+            "10001.000000000000000000",
+            "0.050000000000000000",
+        ),
+    )
+    ineligible_no_fill = replace(
+        ineligible_fill,
+        broker_inputs=(ineligible_source,),
+        balances=(),
+        order=ineligible_open.order,
+        order_events=(),
+        fills=(),
+        lots=(),
+        journals=(),
+        outbox=(),
+    )
+    assert store.commit(ineligible_no_fill).created is True
+    restarted = store.hydrate_engine(ineligible_open.account_id)
+    assert (ineligible_open.order.order_id, ineligible_source.source_key) in (
+        restarted.observation_effects
     )
 
 
 def test_restart_completes_shared_observation_for_second_order_once() -> None:
     initial = complete_write(suffix="shared-observation")
     observation_seq = initial.order.accepted_broker_seq + 2
+    shared_book = replace(
+        initial.broker_inputs[1],
+        broker_seq=observation_seq,
+        available_quantity=Decimal("0.1"),
+        payload_hash=engine_id(
+            "observation",
+            "BTCUSDT",
+            "99.000000000000000000",
+            "100.000000000000000000",
+            "0.100000000000000000",
+        ),
+    )
     initial = replace(
         initial,
         broker_inputs=(
             initial.broker_inputs[0],
-            replace(initial.broker_inputs[1], broker_seq=observation_seq),
+            shared_book,
+        ),
+        balances=(
+            BalanceWrite("USDT", Decimal("149.95"), Decimal(0), 1),
+            BalanceWrite("BTC", Decimal("0.005"), Decimal(0), 1),
+        ),
+        order=replace(
+            initial.order,
+            quantity=Decimal("0.005"),
+            status=OrderStatus.FILLED,
+            held_amount=Decimal(0),
+        ),
+        order_events=(
+            initial.order_events[0],
+            replace(initial.order_events[1], event_type="paper.order.filled.v1"),
         ),
         fills=(replace(initial.fills[0], broker_seq=observation_seq),),
+        journals=(
+            initial.journals[0],
+            replace(
+                initial.journals[1],
+                entries=(
+                    LedgerEntry("paper.held", "USDT", Decimal("50.05"), Decimal(0)),
+                    LedgerEntry("paper.available", "USDT", Decimal(0), Decimal("50.05")),
+                ),
+            ),
+            *initial.journals[2:],
+        ),
+        outbox=(
+            initial.outbox[0],
+            outbox(
+                "paper.order.filled.v1",
+                initial.order.order_id,
+                2,
+                {"order_id": initial.order.order_id, "fill_id": initial.fills[0].fill_id},
+            ),
+        ),
     )
     store = PostgresPaperStore(PAPER_WRITER_URL)
     store.commit(initial)
     opened, filled = second_order_on_shared_observation(initial)
+    opened = replace(
+        opened,
+        balances=(BalanceWrite("USDT", Decimal("99.9"), Decimal("50.05"), 2),),
+    )
+    filled = replace(
+        filled,
+        balances=(
+            BalanceWrite("USDT", Decimal("99.9"), Decimal(0), 3),
+            BalanceWrite("BTC", Decimal("0.01"), Decimal(0), 2),
+        ),
+    )
     store.commit(opened)
     first = PostgresPaperStore(PAPER_WRITER_URL).commit(filled)
     retry = PostgresPaperStore(PAPER_WRITER_URL).commit(filled)
@@ -1081,12 +1187,70 @@ def test_sell_fill_binds_fifo_basis_and_exact_ledger_amounts() -> None:
     store.commit(bad_initial)
     store.commit(cancel_write(bad_initial))
     bad_opened, bad_fill = sell_order_after_cancel(bad_initial)
+    bad_opened = replace(
+        bad_opened,
+        balances=(BalanceWrite("BTC", Decimal("0.004"), Decimal("0.001"), 3),),
+        order=replace(bad_opened.order, quantity=Decimal("0.001"), held_amount=Decimal("0.001")),
+        journals=(
+            replace(
+                bad_opened.journals[0],
+                entries=(
+                    LedgerEntry("paper.held", "BTC", Decimal("0.001"), Decimal(0)),
+                    LedgerEntry("paper.available", "BTC", Decimal(0), Decimal("0.001")),
+                ),
+            ),
+        ),
+    )
     store.commit(bad_opened)
-    bad_consumption = replace(
-        bad_fill.consumptions[0], quantity=Decimal("0.001"), quote_basis=Decimal("10.01")
+    bad_fill = replace(
+        bad_fill,
+        balances=(
+            BalanceWrite("BTC", Decimal("0.004"), Decimal(0), 4),
+            BalanceWrite("USDT", Decimal("161.938"), Decimal(0), 3),
+        ),
+        order=replace(
+            bad_fill.order,
+            quantity=Decimal("0.001"),
+            filled_quantity=Decimal("0.001"),
+        ),
+        fills=(
+            replace(
+                bad_fill.fills[0],
+                quantity=Decimal("0.001"),
+                fee_amount=Decimal("0.012"),
+            ),
+        ),
+        consumptions=(
+            replace(
+                bad_fill.consumptions[0],
+                quantity=Decimal("0.001"),
+                quote_basis=Decimal("1"),
+            ),
+        ),
+        journals=(
+            replace(
+                bad_fill.journals[0],
+                entries=(
+                    LedgerEntry("exchange.clearing", "BTC", Decimal("0.001"), Decimal(0)),
+                    LedgerEntry("paper.held", "BTC", Decimal(0), Decimal("0.001")),
+                    LedgerEntry("paper.available", "USDT", Decimal("11.988"), Decimal(0)),
+                    LedgerEntry("paper.fee", "USDT", Decimal("0.012"), Decimal(0)),
+                    LedgerEntry("exchange.clearing", "USDT", Decimal(0), Decimal("12")),
+                ),
+            ),
+            replace(
+                bad_fill.journals[1],
+                entries=(
+                    LedgerEntry("paper.disposal-value", "USDT_VAL", Decimal("12"), Decimal(0)),
+                    LedgerEntry("paper.realized-pnl", "USDT_VAL", Decimal(0), Decimal("10.988")),
+                    LedgerEntry("paper.inventory-basis", "USDT_VAL", Decimal(0), Decimal("1")),
+                    LedgerEntry("paper.fee-value", "USDT_VAL", Decimal(0), Decimal("0.012")),
+                ),
+            ),
+        ),
     )
     with pytest.raises(psycopg.errors.RaiseException, match="fill/order consistency"):
-        store.commit(replace(bad_fill, consumptions=(bad_consumption,)))
+        store.commit(bad_fill)
 
 
 def test_concurrent_command_and_observation_retries_return_one_stored_effect() -> None:
@@ -1166,7 +1330,7 @@ def test_database_rejects_incomplete_financial_state_and_liquidity_overallocatio
             "BTCUSDT",
             "99.000000000000000000",
             "10001.000000000000000000",
-            "0.100000000000000000",
+            "0.050000000000000000",
         ),
     )
     ineligible = replace(
@@ -1184,7 +1348,7 @@ def test_database_rejects_incomplete_financial_state_and_liquidity_overallocatio
             "ETHUSDT",
             "99.000000000000000000",
             "100.000000000000000000",
-            "0.100000000000000000",
+            "0.050000000000000000",
         ),
     )
     with pytest.raises(psycopg.errors.RaiseException, match="fill/order consistency"):
@@ -1206,6 +1370,31 @@ def test_database_rejects_incomplete_financial_state_and_liquidity_overallocatio
     )
     with pytest.raises(psycopg.errors.RaiseException, match="fill/order consistency"):
         PostgresPaperStore(DATABASE_URL).commit(invalid_open)
+    holdless, _ = split_open_and_fill(suffix="missing-hold-authority")
+    holdless = replace(
+        holdless,
+        balances=(BalanceWrite("USDT", Decimal("200"), Decimal(0), 1),),
+        journals=(holdless.journals[0],),
+    )
+    with pytest.raises(psycopg.errors.RaiseException, match="fill/order consistency"):
+        PostgresPaperStore(DATABASE_URL).commit(holdless)
+    reversed_causality = complete_write(suffix="reversed-causality")
+    evidence_seq = reversed_causality.order.accepted_broker_seq + 2
+    reversed_causality = replace(
+        reversed_causality,
+        broker_inputs=(
+            reversed_causality.broker_inputs[0],
+            replace(reversed_causality.broker_inputs[1], broker_seq=evidence_seq),
+        ),
+        fills=(
+            replace(
+                reversed_causality.fills[0],
+                broker_seq=reversed_causality.order.accepted_broker_seq + 1,
+            ),
+        ),
+    )
+    with pytest.raises(psycopg.errors.RaiseException, match="fill/order consistency"):
+        PostgresPaperStore(DATABASE_URL).commit(reversed_causality)
     mismatched_lot = complete_write(suffix="mismatched-lot")
     lot = replace(
         mismatched_lot.lots[0],
@@ -1236,6 +1425,64 @@ def test_failed_reconciliation_checkpoint_holds_new_lifecycle_command() -> None:
         )
     with pytest.raises(RuntimeError, match="PAPER_RECONCILIATION_HOLD"):
         PostgresPaperStore(PAPER_WRITER_URL).commit(cancel_write(initial))
+
+
+def test_terminal_order_cannot_append_a_new_accepted_version() -> None:
+    initial = complete_write(suffix="terminal-monotonic")
+    store = PostgresPaperStore(PAPER_WRITER_URL)
+    store.commit(initial)
+    cancelled = cancel_write(initial)
+    store.commit(cancelled)
+    assert cancelled.order is not None and cancelled.receipt is not None
+    broker_seq = cancelled.receipt.broker_seq + 1
+    source_key = f"command:forged-reopen:{initial.account_id}"
+    event = outbox(
+        "paper.order.accepted.v1",
+        cancelled.order.order_id,
+        4,
+        {"order_id": cancelled.order.order_id},
+    )
+    with pytest.raises(psycopg.errors.RaiseException, match="fill/order consistency"):
+        with psycopg.connect(DATABASE_URL) as connection:
+            connection.execute(
+                "INSERT INTO paper_broker_inputs"
+                "(broker_seq,account_id,source_kind,source_key,payload_hash,observed_at) "
+                "VALUES (%s,%s,'TEST_COMMAND',%s,%s,%s)",
+                (broker_seq, initial.account_id, source_key, digest(source_key), NOW),
+            )
+            connection.execute(
+                "UPDATE paper_orders SET version=4 WHERE order_id=%s",
+                (cancelled.order.order_id,),
+            )
+            connection.execute(
+                "INSERT INTO paper_order_events"
+                "(event_id,order_id,order_version,event_type,source_key,payload_hash,occurred_at) "
+                "VALUES (%s,%s,4,'paper.order.accepted.v1',%s,%s,%s)",
+                (
+                    stable_id(f"forged-reopen:{cancelled.order.order_id}"),
+                    cancelled.order.order_id,
+                    source_key,
+                    digest("forged-reopen"),
+                    NOW,
+                ),
+            )
+            connection.execute(
+                "SELECT append_paper_outbox(%s,%s,%s::jsonb,%s,%s,%s,%s,%s)",
+                (
+                    event.event_id,
+                    event.event_type,
+                    json.dumps(event.payload),
+                    event.payload_hash,
+                    event.occurred_at,
+                    event.aggregate_type,
+                    event.aggregate_id,
+                    event.aggregate_version,
+                ),
+            )
+            connection.execute(
+                "INSERT INTO paper_outbox_links(event_id,account_id) VALUES (%s,%s)",
+                (event.event_id, initial.account_id),
+            )
 
 
 def test_database_rejects_orphan_relations_fill_mismatch_empty_journal_and_bad_correction() -> None:
@@ -1299,6 +1546,39 @@ def test_database_rejects_orphan_relations_fill_mismatch_empty_journal_and_bad_c
                 SELECT 'unpaired-reversal',line_no,account_code,commodity,credit,debit
                 FROM paper_ledger_entries WHERE transaction_id=%s
                 """,
+                (write.journals[0].journal_id,),
+            )
+
+    with pytest.raises(psycopg.errors.RaiseException, match="target or kind"):
+        with psycopg.connect(DATABASE_URL) as connection:
+            connection.execute(
+                "INSERT INTO paper_ledger_transactions"
+                "(transaction_id,account_id,business_event_type,business_event_id,"
+                "journal_kind,reversal_of,posted_at) VALUES "
+                "('wrong-kind-reversal',%s,'paper.correction','wrong-kind',"
+                "'VALUATION',%s,%s)",
+                (write.account_id, write.journals[0].journal_id, NOW),
+            )
+            connection.execute(
+                "INSERT INTO paper_ledger_transactions"
+                "(transaction_id,account_id,business_event_type,business_event_id,"
+                "journal_kind,replacement_for,posted_at) VALUES "
+                "('wrong-kind-replacement',%s,'paper.replacement','wrong-kind',"
+                "'VALUATION',%s,%s)",
+                (write.account_id, write.journals[0].journal_id, NOW),
+            )
+            connection.execute(
+                "INSERT INTO paper_ledger_entries"
+                "(transaction_id,line_no,account_code,commodity,debit,credit) "
+                "SELECT 'wrong-kind-reversal',line_no,account_code,commodity,credit,debit "
+                "FROM paper_ledger_entries WHERE transaction_id=%s",
+                (write.journals[0].journal_id,),
+            )
+            connection.execute(
+                "INSERT INTO paper_ledger_entries"
+                "(transaction_id,line_no,account_code,commodity,debit,credit) "
+                "SELECT 'wrong-kind-replacement',line_no,account_code,commodity,debit,credit "
+                "FROM paper_ledger_entries WHERE transaction_id=%s",
                 (write.journals[0].journal_id,),
             )
 
@@ -1425,6 +1705,53 @@ def test_writer_commit_succeeds_and_unledgered_balance_update_is_rejected() -> N
                     unlinked.aggregate_version,
                 ),
             )
+    assert write.authorization_attempt is not None
+    authorization_id = write.authorization_attempt.authorization_id
+    authorization = outbox(
+        "paper.authorization.attempted.v1",
+        engine_id("authorization", authorization_id),
+        1,
+        {"authorization_id": authorization_id, "outcome": "CONSUMED"},
+    )
+
+    def append_direct(item: OutboxWrite) -> None:
+        with psycopg.connect(PAPER_WRITER_URL) as connection:
+            connection.execute(
+                "SELECT append_paper_outbox(%s,%s,%s::jsonb,%s,%s,%s,%s,%s)",
+                (
+                    item.event_id,
+                    item.event_type,
+                    json.dumps(item.payload),
+                    item.payload_hash,
+                    item.occurred_at,
+                    item.aggregate_type,
+                    item.aggregate_id,
+                    item.aggregate_version,
+                ),
+            )
+
+    forged_event_id = replace(
+        authorization,
+        event_id="f" * 64,
+        payload={**authorization.payload, "event_id": "f" * 64},
+    )
+    with pytest.raises(psycopg.errors.RaiseException, match="derived Paper outbox"):
+        append_direct(forged_event_id)
+    forged_payload_hash = replace(
+        authorization,
+        payload_hash="e" * 64,
+        payload={**authorization.payload, "payload_hash": "e" * 64},
+    )
+    with pytest.raises(psycopg.errors.RaiseException, match="derived Paper outbox"):
+        append_direct(forged_payload_hash)
+    forged_aggregate = outbox(
+        "paper.authorization.attempted.v1",
+        "c" * 64,
+        1,
+        {"authorization_id": authorization_id, "outcome": "CONSUMED"},
+    )
+    with pytest.raises(psycopg.errors.RaiseException, match="derived Paper outbox"):
+        append_direct(forged_aggregate)
 
 
 def test_downgrade_preserves_a_preexisting_writer_role() -> None:

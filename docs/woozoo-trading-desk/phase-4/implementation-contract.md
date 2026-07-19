@@ -61,6 +61,15 @@ boundary proves zero partial effect. Reconciliation compares the union of durabl
 and physical-ledger commodities, persists a fail-closed checkpoint, and any latest failed
 checkpoint places subsequent new lifecycle commands on HOLD.
 
+The database derives rather than trusts durable identity and lifecycle authority. It
+recomputes every outbox event ID and payload hash from the canonical event material, binds
+authorization and fill/cancel references to their owning aggregates, and rejects lifecycle
+events after a terminal state. An eligible observation may record `NO_FILL` only when its
+floor-stepped canonical budget is exhausted. Each order has an exact two-line hold journal;
+terminal release equals the residual hold. Fill quantity is the exact remaining-order versus
+remaining-observation minimum, and SELL basis is the exact proportional or residual basis of
+the oldest available lot, so callers cannot choose a newer lot or supply their own PnL basis.
+
 Commit-time templates also bind book symbol and side-specific quote eligibility, quote fee
 asset, BUY lot quantity/cost, SELL consumption quantity/FIFO basis, and every physical and
 valuation journal amount to the fill. The security-definer outbox entry point accepts only

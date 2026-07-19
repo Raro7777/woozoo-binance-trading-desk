@@ -32,6 +32,7 @@ def _constraint_trigger(table: str, name: str, function: str, events: str) -> No
 
 
 def upgrade() -> None:
+    op.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto")
     # Phase 1 used UUIDs for the generic outbox. Paper domain identifiers are
     # content-addressed SHA-256 values, so widen the shared key without changing
     # any existing UUID value.
@@ -547,6 +548,21 @@ def upgrade() -> None:
     """)
 
     op.execute("""
+        CREATE FUNCTION paper_quantize_half_even(p_value numeric) RETURNS numeric AS $$
+        WITH scaled AS (SELECT p_value*1e18 AS value),
+        parts AS (
+          SELECT trunc(value) AS whole,value-trunc(value) AS fraction FROM scaled
+        )
+        SELECT CASE
+          WHEN fraction>0.5 OR (fraction=0.5 AND mod(whole,2)<>0)
+          THEN (whole+1)/1e18
+          ELSE whole/1e18
+        END FROM parts
+        $$ LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE
+    """)
+    op.execute("REVOKE ALL ON FUNCTION paper_quantize_half_even(numeric) FROM PUBLIC")
+
+    op.execute("""
         CREATE FUNCTION reject_paper_history_mutation() RETURNS trigger AS $$
         BEGIN RAISE EXCEPTION 'Paper receipt, fill, lot and ledger history is append-only'; END;
         $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public
@@ -628,6 +644,9 @@ def upgrade() -> None:
                   AND correction.business_event_type<>'paper.replacement')
               OR ((correction.reversal_of IS NOT NULL OR correction.replacement_for IS NOT NULL)
                   AND (original.reversal_of IS NOT NULL OR original.replacement_for IS NOT NULL))
+              OR ((correction.reversal_of IS NOT NULL OR correction.replacement_for IS NOT NULL)
+                  AND (correction.account_id<>original.account_id
+                       OR correction.journal_kind<>original.journal_kind))
           ) THEN
             RAISE EXCEPTION 'Invalid Paper correction pair target or kind';
           END IF;
@@ -753,6 +772,66 @@ def upgrade() -> None:
                       AND paper_order.quantity>=rule.min_quantity
                       AND paper_order.quantity*paper_order.limit_price>=rule.min_notional)
           ) OR EXISTS (
+            SELECT 1 FROM paper_orders paper_order
+            JOIN paper_policy_versions policy ON policy.policy_version='quote-fee-v1'
+            LEFT JOIN LATERAL (
+              SELECT count(entry.*) entry_count,
+                COALESCE(sum(entry.debit) FILTER (
+                  WHERE entry.account_code='paper.held'
+                    AND entry.commodity=paper_order.held_asset),0) held_debit,
+                COALESCE(sum(entry.credit) FILTER (
+                  WHERE entry.account_code='paper.available'
+                    AND entry.commodity=paper_order.held_asset),0) available_credit
+              FROM paper_ledger_transactions tx
+              JOIN paper_ledger_entries entry USING(transaction_id)
+              WHERE tx.account_id=paper_order.account_id
+                AND tx.business_event_type='paper.hold'
+                AND tx.business_event_id=paper_order.order_id
+                AND tx.journal_kind='PHYSICAL'
+            ) hold_posting ON true
+            LEFT JOIN LATERAL (
+              SELECT count(entry.*) entry_count,
+                COALESCE(sum(entry.debit) FILTER (
+                  WHERE entry.account_code='paper.available'
+                    AND entry.commodity=paper_order.held_asset),0) available_debit,
+                COALESCE(sum(entry.credit) FILTER (
+                  WHERE entry.account_code='paper.held'
+                    AND entry.commodity=paper_order.held_asset),0) held_credit
+              FROM paper_ledger_transactions tx
+              JOIN paper_ledger_entries entry USING(transaction_id)
+              WHERE tx.account_id=paper_order.account_id
+                AND tx.business_event_type='paper.hold-release'
+                AND tx.business_event_id=paper_order.order_id
+                AND tx.journal_kind='PHYSICAL'
+            ) released ON true
+            LEFT JOIN LATERAL (
+              SELECT CASE WHEN paper_order.side='BUY' THEN
+                  ceil(paper_order.quantity*paper_order.limit_price*1e18)/1e18+
+                  ceil(paper_order.quantity*paper_order.limit_price*
+                       policy.fee_rate*1e18)/1e18
+                ELSE paper_order.quantity END AS initial_amount,
+                CASE WHEN paper_order.side='BUY' THEN COALESCE((
+                  SELECT sum(fill.quantity*fill.price+fill.fee_amount)
+                  FROM paper_fills fill WHERE fill.order_id=paper_order.order_id),0)
+                ELSE COALESCE((SELECT sum(fill.quantity) FROM paper_fills fill
+                               WHERE fill.order_id=paper_order.order_id),0) END AS consumed
+            ) authority ON true
+            WHERE hold_posting.entry_count<>2
+               OR hold_posting.held_debit<>authority.initial_amount
+               OR hold_posting.available_credit<>authority.initial_amount
+               OR paper_order.held_amount<>CASE
+                    WHEN paper_order.status IN ('FILLED','CANCELLED') THEN 0
+                    ELSE authority.initial_amount-authority.consumed END
+               OR released.available_debit<>CASE
+                    WHEN paper_order.status IN ('FILLED','CANCELLED')
+                    THEN authority.initial_amount-authority.consumed ELSE 0 END
+               OR released.held_credit<>CASE
+                    WHEN paper_order.status IN ('FILLED','CANCELLED')
+                    THEN authority.initial_amount-authority.consumed ELSE 0 END
+               OR released.entry_count<>CASE
+                    WHEN paper_order.status IN ('FILLED','CANCELLED')
+                     AND authority.initial_amount-authority.consumed>0 THEN 2 ELSE 0 END
+          ) OR EXISTS (
             SELECT 1 FROM paper_fills fill
             JOIN paper_orders paper_order ON paper_order.order_id=fill.order_id
             JOIN paper_broker_inputs input
@@ -761,6 +840,7 @@ def upgrade() -> None:
               ON policy.policy_version=fill.fee_policy_version
             WHERE fill.broker_seq<=paper_order.accepted_broker_seq
                OR input.broker_seq<=paper_order.accepted_broker_seq
+               OR fill.broker_seq<input.broker_seq
                OR input.account_id<>paper_order.account_id
                OR input.source_kind<>'RECORDED_BOOK'
                OR input.symbol<>paper_order.symbol
@@ -770,6 +850,21 @@ def upgrade() -> None:
                OR fill.fee_rate<>policy.fee_rate
                OR fill.fee_amount<>
                   ceil(fill.quantity*fill.price*policy.fee_rate*1e18)/1e18
+               OR fill.quantity<>least(
+                    paper_order.quantity-(
+                      SELECT COALESCE(sum(prior.quantity),0) FROM paper_fills prior
+                      WHERE prior.order_id=fill.order_id
+                        AND (prior.broker_seq,prior.fill_id)<(fill.broker_seq,fill.fill_id)),
+                    floor(input.available_quantity*policy.participation_rate/(
+                      SELECT rule.step_size FROM paper_symbol_rule_versions rule
+                      WHERE rule.rule_version=fill.symbol_rule_version
+                        AND rule.symbol=paper_order.symbol))*(
+                      SELECT rule.step_size FROM paper_symbol_rule_versions rule
+                      WHERE rule.rule_version=fill.symbol_rule_version
+                        AND rule.symbol=paper_order.symbol)-(
+                      SELECT COALESCE(sum(prior.quantity),0) FROM paper_fills prior
+                      WHERE prior.source_key=fill.source_key
+                        AND (prior.broker_seq,prior.fill_id)<(fill.broker_seq,fill.fill_id)))
                OR NOT EXISTS (
                     SELECT 1 FROM paper_symbol_rule_versions rule
                     WHERE rule.rule_version=fill.symbol_rule_version
@@ -920,6 +1015,39 @@ def upgrade() -> None:
                     OR sold.consumption_count=0 OR sold.bad_count<>0
                     OR sold.quantity<>fill.quantity OR bought.lot_count<>0))
           ) OR EXISTS (
+            SELECT 1 FROM paper_lot_consumptions item
+            JOIN paper_inventory_lots lot ON lot.lot_id=item.lot_id
+            JOIN paper_fills sale ON sale.fill_id=item.source_fill_id
+            JOIN paper_orders sale_order ON sale_order.order_id=sale.order_id
+            JOIN paper_fills acquisition ON acquisition.fill_id=lot.source_fill_id
+            JOIN paper_orders acquisition_order ON acquisition_order.order_id=acquisition.order_id
+            LEFT JOIN LATERAL (
+              SELECT COALESCE(sum(prior.quantity),0) quantity,
+                     COALESCE(sum(prior.quote_basis),0) basis
+              FROM paper_lot_consumptions prior
+              JOIN paper_fills prior_sale ON prior_sale.fill_id=prior.source_fill_id
+              WHERE prior.lot_id=lot.lot_id
+                AND (prior_sale.broker_seq,prior_sale.fill_id)<(sale.broker_seq,sale.fill_id)
+            ) used_before ON true
+            WHERE sale_order.side<>'SELL' OR acquisition_order.side<>'BUY'
+               OR acquisition.broker_seq>=sale.broker_seq
+               OR item.quantity>lot.acquired_quantity-used_before.quantity
+               OR item.quote_basis<>CASE
+                    WHEN item.quantity=lot.acquired_quantity-used_before.quantity
+                    THEN lot.quote_cost-used_before.basis
+                    ELSE paper_quantize_half_even(
+                           lot.quote_cost*item.quantity/lot.acquired_quantity)
+                  END
+               OR EXISTS (
+                    SELECT 1 FROM paper_inventory_lots older
+                    WHERE older.account_id=lot.account_id AND older.asset=lot.asset
+                      AND (older.acquired_at,older.source_fill_id)<
+                          (lot.acquired_at,lot.source_fill_id)
+                      AND older.acquired_quantity>(
+                        SELECT COALESCE(sum(older_use.quantity),0)
+                        FROM paper_lot_consumptions older_use
+                        WHERE older_use.lot_id=older.lot_id))
+          ) OR EXISTS (
             SELECT 1 FROM paper_observation_effects effect
             JOIN paper_orders paper_order ON paper_order.order_id=effect.order_id
             JOIN paper_broker_inputs input ON input.source_key=effect.source_key
@@ -935,6 +1063,28 @@ def upgrade() -> None:
                     SELECT 1 FROM paper_fills existing
                     WHERE existing.order_id=effect.order_id
                       AND existing.source_key=effect.source_key))
+               OR (effect.effect_kind='NO_FILL' AND (
+                    paper_order.status IN ('FILLED','CANCELLED')
+                    OR (((paper_order.side='BUY' AND input.best_ask<=paper_order.limit_price)
+                       OR (paper_order.side='SELL' AND input.best_bid>=paper_order.limit_price))
+                      AND floor(input.available_quantity*(
+                            SELECT policy.participation_rate FROM paper_policy_versions policy
+                            WHERE policy.policy_version='quote-fee-v1')/(
+                            SELECT rule.step_size FROM paper_symbol_rule_versions rule
+                            WHERE rule.rule_version='spot-public-rules-2026-07-19'
+                              AND rule.symbol=paper_order.symbol))*(
+                            SELECT rule.step_size FROM paper_symbol_rule_versions rule
+                            WHERE rule.rule_version='spot-public-rules-2026-07-19'
+                              AND rule.symbol=paper_order.symbol)-(
+                            SELECT COALESCE(sum(prior_fill.quantity),0)
+                            FROM paper_observation_effects prior_effect
+                            JOIN paper_orders prior_order ON prior_order.order_id=prior_effect.order_id
+                            JOIN paper_fills prior_fill ON prior_fill.fill_id=prior_effect.fill_id
+                            WHERE prior_effect.source_key=effect.source_key
+                              AND (prior_order.accepted_broker_seq,prior_order.client_order_id,
+                                   prior_order.order_id)<
+                                  (paper_order.accepted_broker_seq,paper_order.client_order_id,
+                                   paper_order.order_id))>0)))
                OR EXISTS (
                     SELECT 1 FROM paper_orders candidate
                     WHERE candidate.account_id=paper_order.account_id
@@ -971,6 +1121,51 @@ def upgrade() -> None:
               FROM paper_order_events event WHERE event.order_id=paper_order.order_id
             ) history ON true
             WHERE history.event_count<>paper_order.version OR history.max_version<>paper_order.version
+          ) OR EXISTS (
+            SELECT 1 FROM paper_orders paper_order
+            LEFT JOIN paper_order_events latest
+              ON latest.order_id=paper_order.order_id
+             AND latest.order_version=paper_order.version
+            WHERE latest.event_id IS NULL
+               OR (paper_order.status='OPEN'
+                   AND latest.event_type<>'paper.order.accepted.v1')
+               OR (paper_order.status='PARTIALLY_FILLED'
+                   AND latest.event_type<>'paper.order.partially-filled.v1')
+               OR (paper_order.status='FILLED'
+                   AND latest.event_type<>'paper.order.filled.v1')
+               OR (paper_order.status='CANCELLED'
+                   AND latest.event_type<>'paper.order.cancelled.v1')
+               OR EXISTS (
+                    SELECT 1 FROM paper_order_events terminal
+                    WHERE terminal.order_id=paper_order.order_id
+                      AND terminal.order_version<paper_order.version
+                      AND terminal.event_type IN (
+                        'paper.order.filled.v1','paper.order.cancelled.v1'))
+          ) OR EXISTS (
+            SELECT 1 FROM paper_order_events event
+            JOIN paper_orders paper_order ON paper_order.order_id=event.order_id
+            LEFT JOIN paper_broker_inputs input ON input.source_key=event.source_key
+            WHERE event.event_type NOT IN (
+                    'paper.order.accepted.v1','paper.order.partially-filled.v1',
+                    'paper.order.filled.v1','paper.order.cancelled.v1')
+               OR (event.order_version=1 AND (
+                    event.event_type<>'paper.order.accepted.v1'
+                    OR input.source_kind IS DISTINCT FROM 'TEST_COMMAND'
+                    OR input.broker_seq IS DISTINCT FROM paper_order.accepted_broker_seq))
+               OR (event.order_version>1 AND event.event_type='paper.order.accepted.v1')
+               OR (event.event_type IN (
+                    'paper.order.partially-filled.v1','paper.order.filled.v1')
+                   AND NOT EXISTS (
+                    SELECT 1 FROM paper_fills fill
+                    WHERE fill.order_id=event.order_id
+                      AND fill.source_key=event.source_key))
+               OR (event.event_type='paper.order.cancelled.v1' AND (
+                    input.source_kind IS DISTINCT FROM 'TEST_COMMAND'
+                    OR NOT EXISTS (
+                      SELECT 1 FROM paper_command_receipts receipt
+                      WHERE receipt.paper_order_id=event.order_id
+                        AND receipt.broker_seq=input.broker_seq
+                        AND receipt.outcome='ORDER_CANCELLED')))
           ) OR EXISTS (
             SELECT 1 FROM paper_order_events event
             LEFT JOIN outbox_events outbox
@@ -1074,6 +1269,10 @@ def upgrade() -> None:
           p_payload_hash varchar, p_occurred_at timestamptz,
           p_aggregate_type varchar, p_aggregate_id varchar, p_aggregate_version bigint
         ) RETURNS void AS $$
+        DECLARE
+          v_canonical_data text;
+          v_event_material text;
+          v_payload_material text;
         BEGIN
           IF p_event_type NOT IN (
                'paper.order.accepted.v1','paper.order.partially-filled.v1',
@@ -1169,6 +1368,41 @@ def upgrade() -> None:
           THEN
             RAISE EXCEPTION 'Invalid closed Paper outbox event data';
           END IF;
+          v_canonical_data := CASE
+            WHEN p_event_type='paper.order.accepted.v1' THEN
+              '{"order_id":'||to_jsonb(p_payload->'data'->>'order_id')::text||'}'
+            WHEN p_event_type IN ('paper.order.partially-filled.v1','paper.order.filled.v1') THEN
+              '{"fill_id":'||to_jsonb(p_payload->'data'->>'fill_id')::text||
+              ',"order_id":'||to_jsonb(p_payload->'data'->>'order_id')::text||'}'
+            WHEN p_event_type='paper.order.cancelled.v1' THEN
+              '{"cancel_id":'||to_jsonb(p_payload->'data'->>'cancel_id')::text||
+              ',"order_id":'||to_jsonb(p_payload->'data'->>'order_id')::text||'}'
+            WHEN p_event_type='paper.order.rejected.v1' THEN
+              '{"reason":'||to_jsonb(p_payload->'data'->>'reason')::text||
+              ',"request_hash":'||to_jsonb(p_payload->'data'->>'request_hash')::text||'}'
+            WHEN p_event_type='paper.authorization.attempted.v1' THEN
+              '{"authorization_id":'||to_jsonb(p_payload->'data'->>'authorization_id')::text||
+              ',"outcome":'||to_jsonb(p_payload->'data'->>'outcome')::text||'}'
+            ELSE '{"transaction_id":'||
+              to_jsonb(p_payload->'data'->>'transaction_id')::text||'}'
+          END;
+          v_event_material := '['||to_jsonb('event'::text)::text||','||
+            to_jsonb(p_event_type::text)::text||','||to_jsonb(p_aggregate_id::text)::text||','||
+            to_jsonb(p_aggregate_version::text)::text||']';
+          v_payload_material := '['||to_jsonb('event-payload'::text)::text||','||
+            to_jsonb(p_event_type::text)::text||','||to_jsonb(p_aggregate_id::text)::text||','||
+            to_jsonb(p_aggregate_version::text)::text||','||to_jsonb(v_canonical_data)::text||']';
+          IF p_event_id<>encode(digest(convert_to(v_event_material,'UTF8'),'sha256'),'hex')
+             OR p_payload_hash<>
+                encode(digest(convert_to(v_payload_material,'UTF8'),'sha256'),'hex')
+             OR (p_event_type='paper.authorization.attempted.v1' AND
+                 p_aggregate_id<>encode(digest(convert_to(
+                   '['||to_jsonb('authorization'::text)::text||','||
+                   to_jsonb(p_payload->'data'->>'authorization_id')::text||']','UTF8'),
+                   'sha256'),'hex'))
+          THEN
+            RAISE EXCEPTION 'Invalid derived Paper outbox identity';
+          END IF;
           IF (p_event_type IN (
                 'paper.order.accepted.v1','paper.order.partially-filled.v1',
                 'paper.order.filled.v1','paper.order.cancelled.v1') AND
@@ -1177,6 +1411,22 @@ def upgrade() -> None:
                   WHERE event.order_id=p_aggregate_id
                     AND event.order_version=p_aggregate_version
                     AND event.event_type=p_event_type))
+             OR (p_event_type IN (
+                   'paper.order.partially-filled.v1','paper.order.filled.v1') AND
+                 NOT EXISTS (
+                   SELECT 1 FROM paper_order_events event
+                   JOIN paper_fills fill
+                     ON fill.order_id=event.order_id AND fill.source_key=event.source_key
+                   WHERE event.order_id=p_aggregate_id
+                     AND event.order_version=p_aggregate_version
+                     AND event.event_type=p_event_type
+                     AND fill.fill_id=p_payload->'data'->>'fill_id'))
+             OR (p_event_type='paper.order.cancelled.v1' AND
+                 NOT EXISTS (
+                   SELECT 1 FROM paper_command_receipts receipt
+                   WHERE receipt.paper_order_id=p_aggregate_id
+                     AND receipt.idempotency_key=p_payload->'data'->>'cancel_id'
+                     AND receipt.outcome='ORDER_CANCELLED'))
              OR (p_event_type='paper.order.rejected.v1' AND
                  NOT EXISTS (
                    SELECT 1 FROM paper_command_receipts receipt
@@ -1290,6 +1540,7 @@ def downgrade() -> None:
     )
     op.execute("DROP FUNCTION IF EXISTS assert_paper_correction_pair CASCADE")
     op.execute("DROP FUNCTION IF EXISTS assert_paper_ledger_balanced CASCADE")
+    op.execute("DROP FUNCTION IF EXISTS paper_quantize_half_even(numeric) CASCADE")
     op.execute("DROP VIEW IF EXISTS paper_ledger_balance_v1")
     op.execute("DROP VIEW IF EXISTS paper_outbox_events_v1")
     for table in (
