@@ -192,11 +192,14 @@ const actions = {
       "tests/integration/test_paper_ledger_immutability.py::test_fin_004_posted_journal_is_immutable_and_correction_is_reversal_replacement",
       "tests/integration/test_platform_infrastructure.py::test_phase_four_postgres_enforces_balance_and_immutable_ledger",
       "tests/integration/test_paper_postgres_persistence.py::test_atomic_write_is_durable_idempotent_and_restart_stable",
-      "tests/integration/test_paper_postgres_persistence.py::test_reconciliation_failure_is_durable_and_writer_has_only_narrow_updates",
+      "tests/integration/test_paper_postgres_persistence.py::test_writer_commit_succeeds_and_unledgered_balance_update_is_rejected",
+      "tests/integration/test_paper_postgres_persistence.py::test_database_rejects_incomplete_financial_state_and_liquidity_overallocation",
+      "tests/integration/test_paper_postgres_persistence.py::test_failed_reconciliation_checkpoint_holds_new_lifecycle_command",
     ], await paperMetadata());
     await dataScenario("integration", "PAPER-MIGRATION-001", [
       "tests/integration/test_paper_migration_contract.py::test_phase_four_migration_closes_financial_and_activation_boundaries",
       "tests/integration/test_paper_postgres_persistence.py::test_downgrade_preserves_a_preexisting_writer_role",
+      "tests/integration/test_paper_postgres_persistence.py::test_downgrade_removes_a_migration_created_writer_role",
     ], await paperMetadata());
   },
   "test:replay": async () => {
@@ -219,6 +222,9 @@ const actions = {
     ], { schema_version: "woozoo.evidence.replay-manifest/v1", evidence_recipe_version: evidenceRecipeVersion });
     await dataScenario("replay", "ORD-002", [
       "tests/replay/test_paper_restart_replay.py::test_ord_002_restart_replay_has_identical_digest_and_single_effect",
+      "tests/integration/test_paper_postgres_persistence.py::test_restart_continues_existing_order_with_distinct_cancel_command",
+      "tests/integration/test_paper_postgres_persistence.py::test_restart_applies_and_idempotently_replays_observation_fill",
+      "tests/integration/test_paper_postgres_persistence.py::test_rejected_command_is_durable_orderless_and_restart_idempotent",
     ], await paperMetadata());
     await dataScenario("replay", "ATOM-002", [
       "tests/replay/test_paper_restart_replay.py::test_atom_002_ack_loss_retry_returns_same_order_without_new_effect",

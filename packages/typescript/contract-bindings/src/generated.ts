@@ -67,4 +67,11 @@ export type EvidenceCommandErrorEnvelopeBindingV1 = { api_version: "v1"; request
 export const evidencePathTemplate = "/api/v1/evidence/{evidence_id}" as const;
 export const evidenceCommandPath = "/api/v1/commands/evidence-snapshots" as const;
 export type PaperOrderBindingV1 = { order_id: string; client_order_id: string; authorization_id: string; authorization_namespace: "test"; symbol: "BTCUSDT" | "ETHUSDT"; side: "BUY" | "SELL"; order_type: "LIMIT"; time_in_force: "GTC"; quantity: string; limit_price: string; filled_quantity: string; status: "OPEN" | "PARTIALLY_FILLED" | "FILLED" | "CANCELLED"; version: number };
-export type PaperDomainEventBindingV1 = { spec_version: "woozoo.event/v1"; event_id: string; event_type: "paper.order.accepted.v1" | "paper.order.partially-filled.v1" | "paper.order.filled.v1" | "paper.order.cancelled.v1" | "ledger.transaction.posted.v1"; event_version: 1; occurred_at: string; producer: "paper-engine"; activation_phase: 7; aggregate_id: string; aggregate_version: number; payload_hash: string };
+export type PaperDomainEventEnvelopeBindingV1<TType extends string, TData> = { spec_version: "woozoo.event/v1"; event_id: string; event_type: TType; event_version: 1; occurred_at: string; producer: "paper-engine"; activation_phase: 7; aggregate_id: string; aggregate_version: number; payload_hash: string; data: TData };
+export type PaperDomainEventBindingV1 =
+  | PaperDomainEventEnvelopeBindingV1<"paper.order.accepted.v1", { order_id: string }>
+  | PaperDomainEventEnvelopeBindingV1<"paper.order.partially-filled.v1" | "paper.order.filled.v1", { order_id: string; fill_id: string }>
+  | PaperDomainEventEnvelopeBindingV1<"paper.order.cancelled.v1", { order_id: string; cancel_id: string }>
+  | PaperDomainEventEnvelopeBindingV1<"paper.order.rejected.v1", { request_hash: string; reason: "INSUFFICIENT_FUNDS" }>
+  | PaperDomainEventEnvelopeBindingV1<"paper.authorization.attempted.v1", { authorization_id: string; outcome: "BLOCKED" | "CONSUMED" }>
+  | PaperDomainEventEnvelopeBindingV1<"ledger.transaction.posted.v1", { transaction_id: string }>;

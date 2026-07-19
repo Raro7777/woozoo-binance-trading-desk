@@ -148,3 +148,38 @@ def test_ord_001_one_observation_budget_is_shared_across_orders() -> None:
             displayed_quantity_text="1",
         )
     assert sum(fill.quantity for fill in engine.fills.values()) == Decimal("0.100000000000000000")
+
+
+def test_ord_001_shared_observation_requires_canonical_order_allocation() -> None:
+    engine = PaperEngine()
+    engine.seed_balance("USDT", "1000", seed_id="canonical-seed")
+    first, second = [
+        engine.create_limit_order(
+            idempotency_key=f"canonical-create-{number}",
+            client_order_id=f"canonical-client-{number}",
+            authorization=fixture(number + 10),
+            symbol="BTCUSDT",
+            side=OrderSide.BUY,
+            quantity_text="0.1",
+            limit_price_text="100",
+        )
+        for number in (1, 2)
+    ]
+    sequence_before = engine.broker_seq
+    with pytest.raises(ValueError, match="NON_CANONICAL_OBSERVATION_ORDER"):
+        engine.apply_book_observation(
+            order_id=second.order_id,
+            observation_id="canonical-shared",
+            best_bid_text="99",
+            best_ask_text="100",
+            displayed_quantity_text="1",
+        )
+    assert engine.broker_seq == sequence_before
+    assert engine.observation_budgets == {}
+    engine.apply_book_observation(
+        order_id=first.order_id,
+        observation_id="canonical-shared",
+        best_bid_text="99",
+        best_ask_text="100",
+        displayed_quantity_text="1",
+    )

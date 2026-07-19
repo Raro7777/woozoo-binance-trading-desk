@@ -41,12 +41,19 @@ reject mutations of receipts, fills, lots, consumptions and ledger history. Same
 idempotency key/hash replays the stored result and a different hash conflicts.
 
 The calculation engine remains IO-free, while an internal non-ingress Postgres store is
-the durable authority. It commits receipt, authorization attempt, ordered inputs, domain
-state, FIFO lots, ledger entries and outbox in one database transaction. Failure injection
-at each SQL boundary proves zero partial effect; a restarted store returns the same stored
-response and semantic digest. Reconciliation compares durable balances with physical
-ledger postings and persists a fail-closed checkpoint. Recorded commands and observations
-also rebuild the same in-memory semantic digest without wall-clock or random identity inputs.
+the durable authority. It commits receipt, authorization attempt, ordered inputs, versioned
+order/balance state, FIFO lots, ledger entries and a schema-checked outbox in one database
+transaction. The store supports orderless rejected receipts and distinct create, observation,
+fill and cancel lifecycle writes. It hydrates the deterministic engine from durable rows after
+restart, including receipts, allocation budgets, lots, journals and event history.
+
+Deferred commit-time checks bind fills to immutable fee/symbol policies, recorded-book
+liquidity, physical and valuation journals, FIFO conservation, complete balance commodities,
+order history and outbox versions. The minimum-privilege writer can mutate only versioned
+order/balance projections; unledgered changes fail at commit. Failure injection at each SQL
+boundary proves zero partial effect. Reconciliation compares the union of durable balances
+and physical-ledger commodities, persists a fail-closed checkpoint, and any latest failed
+checkpoint places subsequent new lifecycle commands on HOLD.
 
 ## Required acceptance denominator
 

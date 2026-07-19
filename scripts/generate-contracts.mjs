@@ -387,8 +387,18 @@ class EvidenceCommandErrorEnvelopeBindingV1(TypedDict):
     meta: dict[str, None]
 `;
 
-const paperTsBindings = `export type PaperOrderBindingV1 = { order_id: string; client_order_id: string; authorization_id: string; authorization_namespace: "test"; symbol: "BTCUSDT" | "ETHUSDT"; side: "BUY" | "SELL"; order_type: "LIMIT"; time_in_force: "GTC"; quantity: string; limit_price: string; filled_quantity: string; status: "OPEN" | "PARTIALLY_FILLED" | "FILLED" | "CANCELLED"; version: number };\nexport type PaperDomainEventBindingV1 = { spec_version: "woozoo.event/v1"; event_id: string; event_type: "paper.order.accepted.v1" | "paper.order.partially-filled.v1" | "paper.order.filled.v1" | "paper.order.cancelled.v1" | "ledger.transaction.posted.v1"; event_version: 1; occurred_at: string; producer: "paper-engine"; activation_phase: 7; aggregate_id: string; aggregate_version: number; payload_hash: string };\n`;
+const paperTsBindings = `export type PaperOrderBindingV1 = { order_id: string; client_order_id: string; authorization_id: string; authorization_namespace: "test"; symbol: "BTCUSDT" | "ETHUSDT"; side: "BUY" | "SELL"; order_type: "LIMIT"; time_in_force: "GTC"; quantity: string; limit_price: string; filled_quantity: string; status: "OPEN" | "PARTIALLY_FILLED" | "FILLED" | "CANCELLED"; version: number };
+export type PaperDomainEventEnvelopeBindingV1<TType extends string, TData> = { spec_version: "woozoo.event/v1"; event_id: string; event_type: TType; event_version: 1; occurred_at: string; producer: "paper-engine"; activation_phase: 7; aggregate_id: string; aggregate_version: number; payload_hash: string; data: TData };
+export type PaperDomainEventBindingV1 =
+  | PaperDomainEventEnvelopeBindingV1<"paper.order.accepted.v1", { order_id: string }>
+  | PaperDomainEventEnvelopeBindingV1<"paper.order.partially-filled.v1" | "paper.order.filled.v1", { order_id: string; fill_id: string }>
+  | PaperDomainEventEnvelopeBindingV1<"paper.order.cancelled.v1", { order_id: string; cancel_id: string }>
+  | PaperDomainEventEnvelopeBindingV1<"paper.order.rejected.v1", { request_hash: string; reason: "INSUFFICIENT_FUNDS" }>
+  | PaperDomainEventEnvelopeBindingV1<"paper.authorization.attempted.v1", { authorization_id: string; outcome: "BLOCKED" | "CONSUMED" }>
+  | PaperDomainEventEnvelopeBindingV1<"ledger.transaction.posted.v1", { transaction_id: string }>;
+`;
 const paperPyBindings = `\nclass PaperOrderBindingV1(TypedDict):\n    order_id: str\n    client_order_id: str\n    authorization_id: str\n    authorization_namespace: Literal["test"]\n    symbol: Literal["BTCUSDT", "ETHUSDT"]\n    side: Literal["BUY", "SELL"]\n    order_type: Literal["LIMIT"]\n    time_in_force: Literal["GTC"]\n    quantity: str\n    limit_price: str\n    filled_quantity: str\n    status: Literal["OPEN", "PARTIALLY_FILLED", "FILLED", "CANCELLED"]\n    version: int\n`;
+const paperPyEventBindings = `\nclass PaperDomainEventBindingV1(TypedDict):\n    spec_version: Literal["woozoo.event/v1"]\n    event_id: str\n    event_type: Literal[\n        "paper.order.accepted.v1",\n        "paper.order.partially-filled.v1",\n        "paper.order.filled.v1",\n        "paper.order.cancelled.v1",\n        "paper.order.rejected.v1",\n        "paper.authorization.attempted.v1",\n        "ledger.transaction.posted.v1",\n    ]\n    event_version: Literal[1]\n    occurred_at: str\n    producer: Literal["paper-engine"]\n    activation_phase: Literal[7]\n    aggregate_id: str\n    aggregate_version: int\n    payload_hash: str\n    data: dict[str, str]\n`;
 
 const outputs = new Map([
   [resolve(root, "packages/contracts/schema-manifest.json"), manifestJson],
@@ -396,7 +406,7 @@ const outputs = new Map([
   [resolve(root, "packages/typescript/contract-bindings/src/generated.ts"), `${tsBindings}${marketTsBindings}${domainTsBindings}${strictEvidenceTsBindings}${paperTsBindings}`],
   [
     resolve(root, "packages/python/platform-core/src/platform_core/generated_contracts.py"),
-    `${strictPyBindings}${evidencePyBindings}${paperPyBindings}`
+    `${strictPyBindings}${evidencePyBindings}${paperPyBindings}${paperPyEventBindings}`
       .replace(
         'Literal["SCHEMA_INVALID", "IDEMPOTENCY_CONFLICT"]',
         'Literal["SCHEMA_INVALID", "IDEMPOTENCY_CONFLICT", "CALLER_UNAUTHORIZED"]',

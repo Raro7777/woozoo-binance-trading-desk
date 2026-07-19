@@ -116,7 +116,7 @@ def platform_services() -> Iterator[None]:
                     "paper_ledger_transactions, paper_lot_consumptions, paper_inventory_lots, "
                     "paper_fills, paper_order_events, paper_orders, paper_broker_inputs, "
                     "paper_authorization_attempts, paper_command_receipts, paper_asset_balances, "
-                    "paper_accounts, paper_symbol_rule_versions, paper_policy_versions, "
+                    "paper_accounts, "
                     "data_quality_events, normalized_market_events, "
                     "raw_market_events, market_status_projections, "
                     "stream_watermark_projections, collector_sessions, outbox_events "

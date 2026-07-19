@@ -15,8 +15,8 @@ CONTRACT_SOURCE_DIGESTS = {
     "market-domain-events.v1.json": "c0e883dc53c6394355c9baa70e4ef642307eb2a0f13ef0fe9cb581f6dcf2dfc4",
     "evidence-snapshot.v1.json": "2e60fb66732bcdea794f9a6ecaa519cae3a1fd3fa5b5890f11839cdeb5e99b8c",
     "evidence-domain-events.v1.json": "af113814267e596fa453b5036a8f5d6e579fce133ee03efee9cca785d3f1d749",
-    "paper-order.v1.json": "2a4048f7c038e394fda9d212de6486998ca61b42ff12c21fe03f0db8714220d5",
-    "paper-domain-events.v1.json": "9ce88199e1f46371794a4618630bb44a7b6683ab7de0f422567e277019fd2556",
+    "paper-order.v1.json": "7368f9ff52c93d7571ecdb3349d46846c66cc0963f0d2591d4f7ef2881e2851d",
+    "paper-domain-events.v1.json": "6b0a5abbb88b7fa408ed795eebee64e6dfcf45b40f4e043e75d26874c5767178",
 }
 
 QualityStatusV1 = Literal["healthy", "degraded", "stale", "invalid", "reconnecting"]
@@ -280,3 +280,25 @@ class PaperOrderBindingV1(TypedDict):
     filled_quantity: str
     status: Literal["OPEN", "PARTIALLY_FILLED", "FILLED", "CANCELLED"]
     version: int
+
+
+class PaperDomainEventBindingV1(TypedDict):
+    spec_version: Literal["woozoo.event/v1"]
+    event_id: str
+    event_type: Literal[
+        "paper.order.accepted.v1",
+        "paper.order.partially-filled.v1",
+        "paper.order.filled.v1",
+        "paper.order.cancelled.v1",
+        "paper.order.rejected.v1",
+        "paper.authorization.attempted.v1",
+        "ledger.transaction.posted.v1",
+    ]
+    event_version: Literal[1]
+    occurred_at: str
+    producer: Literal["paper-engine"]
+    activation_phase: Literal[7]
+    aggregate_id: str
+    aggregate_version: int
+    payload_hash: str
+    data: dict[str, str]

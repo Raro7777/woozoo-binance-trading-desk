@@ -32,6 +32,36 @@ def _constraint_trigger(table: str, name: str, function: str, events: str) -> No
 
 
 def upgrade() -> None:
+    # Phase 1 used UUIDs for the generic outbox. Paper domain identifiers are
+    # content-addressed SHA-256 values, so widen the shared key without changing
+    # any existing UUID value.
+    op.drop_constraint(
+        "outbox_delivery_attempts_event_id_fkey",
+        "outbox_delivery_attempts",
+        type_="foreignkey",
+    )
+    op.alter_column(
+        "outbox_events",
+        "event_id",
+        existing_type=postgresql.UUID(as_uuid=False),
+        type_=sa.String(64),
+        postgresql_using="event_id::text",
+    )
+    op.alter_column(
+        "outbox_delivery_attempts",
+        "event_id",
+        existing_type=postgresql.UUID(as_uuid=False),
+        type_=sa.String(64),
+        postgresql_using="event_id::text",
+    )
+    op.create_foreign_key(
+        "outbox_delivery_attempts_event_id_fkey",
+        "outbox_delivery_attempts",
+        "outbox_events",
+        ["event_id"],
+        ["event_id"],
+        ondelete="RESTRICT",
+    )
     op.add_column("outbox_events", sa.Column("aggregate_type", sa.String(64), nullable=True))
     op.add_column("outbox_events", sa.Column("aggregate_id", sa.String(64), nullable=True))
     op.add_column("outbox_events", sa.Column("aggregate_version", sa.BigInteger(), nullable=True))
@@ -83,6 +113,13 @@ def upgrade() -> None:
         ),
     )
     op.create_table(
+        "paper_outbox_links",
+        sa.Column("event_id", sa.String(64), primary_key=True),
+        sa.Column("account_id", sa.String(64), nullable=False),
+        sa.ForeignKeyConstraint(["event_id"], ["outbox_events.event_id"], ondelete="RESTRICT"),
+        sa.ForeignKeyConstraint(["account_id"], ["paper_accounts.account_id"], ondelete="RESTRICT"),
+    )
+    op.create_table(
         "paper_asset_balances",
         sa.Column("account_id", sa.String(64), primary_key=True),
         sa.Column("asset", sa.String(8), primary_key=True),
@@ -102,6 +139,7 @@ def upgrade() -> None:
         sa.Column("source_key", sa.String(128), nullable=False, unique=True),
         sa.Column("payload_hash", sa.String(64), nullable=False),
         sa.Column("observed_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("available_quantity", MONEY, nullable=True),
         sa.ForeignKeyConstraint(
             ["account_id"],
             ["paper_accounts.account_id"],
@@ -114,6 +152,11 @@ def upgrade() -> None:
             "source_kind IN ('TEST_COMMAND','RECORDED_BOOK')", name="ck_p4_broker_input_kind"
         ),
         sa.CheckConstraint("length(payload_hash)=64", name="ck_paper_input_hash"),
+        sa.CheckConstraint(
+            "(source_kind='TEST_COMMAND' AND available_quantity IS NULL) OR "
+            "(source_kind='RECORDED_BOOK' AND available_quantity>0)",
+            name="ck_paper_input_liquidity",
+        ),
     )
     op.create_table(
         "paper_command_receipts",
@@ -143,10 +186,11 @@ def upgrade() -> None:
         ),
         sa.CheckConstraint("length(request_hash)=64", name="ck_paper_receipt_hash"),
         sa.CheckConstraint(
-            "outcome IN ('ORDER_CREATED','REJECTED')", name="ck_paper_receipt_outcome"
+            "outcome IN ('ORDER_CREATED','ORDER_CANCELLED','REJECTED')",
+            name="ck_paper_receipt_outcome",
         ),
         sa.CheckConstraint(
-            "(outcome='ORDER_CREATED')=(paper_order_id IS NOT NULL)",
+            "(outcome IN ('ORDER_CREATED','ORDER_CANCELLED'))=(paper_order_id IS NOT NULL)",
             name="ck_paper_receipt_order_presence",
         ),
     )
@@ -180,7 +224,8 @@ def upgrade() -> None:
         sa.CheckConstraint("namespace='test'", name="ck_p4_authorization_test_only"),
         sa.CheckConstraint("length(request_hash)=64", name="ck_paper_attempt_hash"),
         sa.CheckConstraint(
-            "outcome IN ('CONSUMED_ORDER_CREATED','BLOCKED')", name="ck_paper_authorization_outcome"
+            "outcome IN ('CONSUMED_ORDER_CREATED','CONSUMED_ORDER_CANCELLED','BLOCKED')",
+            name="ck_paper_authorization_outcome",
         ),
         sa.CheckConstraint(
             "(outcome='BLOCKED')=(reason_code IS NOT NULL)", name="ck_paper_attempt_reason"
@@ -294,8 +339,14 @@ def upgrade() -> None:
         sa.Column("fee_rate", MONEY, nullable=False),
         sa.Column("fee_amount", MONEY, nullable=False),
         sa.Column("fee_policy_version", sa.String(64), nullable=False),
+        sa.Column("symbol_rule_version", sa.String(64), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.ForeignKeyConstraint(["order_id"], ["paper_orders.order_id"], ondelete="RESTRICT"),
+        sa.ForeignKeyConstraint(
+            ["fee_policy_version"],
+            ["paper_policy_versions.policy_version"],
+            ondelete="RESTRICT",
+        ),
         sa.ForeignKeyConstraint(
             ["broker_seq", "source_key"],
             ["paper_broker_inputs.broker_seq", "paper_broker_inputs.source_key"],
@@ -308,6 +359,10 @@ def upgrade() -> None:
         sa.CheckConstraint(
             "fee_asset IN ('BTC','ETH','USDT') AND fee_rate>=0 AND fee_amount>=0",
             name="ck_paper_fill_fee",
+        ),
+        sa.CheckConstraint(
+            "symbol_rule_version='spot-public-rules-2026-07-19'",
+            name="ck_paper_fill_symbol_rule_version",
         ),
     )
     op.create_table(
@@ -430,12 +485,38 @@ def upgrade() -> None:
         sa.CheckConstraint("status IN ('HEALTHY','FAILED')", name="ck_paper_reconciliation_status"),
     )
 
+    # These immutable Phase 4 policies are part of the frozen oracle and public
+    # Binance rule projection. Runtime writers may reference, but never mutate,
+    # these exact versions.
+    op.execute("""
+        INSERT INTO paper_policy_versions
+          (policy_version,fee_rate,participation_rate,quantity_step,payload_hash,created_at)
+        VALUES
+          ('quote-fee-v1',0.001,0.10,0.00000001,
+           'e4ea0eb74588aefcae6d6a6e556d04964f56b4160a9231aa200ce71dfbe09040',
+           '2026-07-19T00:00:00Z')
+    """)
+    op.execute("""
+        INSERT INTO paper_symbol_rule_versions
+          (rule_version,symbol,tick_size,step_size,min_quantity,min_notional,
+           source_payload_hash,observed_at)
+        VALUES
+          ('spot-public-rules-2026-07-19','BTCUSDT',0.01,0.00001,0.00001,5,
+           'c30f738ad7fd6d8e1378b9a8ef022c78c801cf4d1bc0b005f8870c188364a788',
+           '2026-07-19T00:00:00Z'),
+          ('spot-public-rules-2026-07-19','ETHUSDT',0.01,0.0001,0.0001,5,
+           'c30f738ad7fd6d8e1378b9a8ef022c78c801cf4d1bc0b005f8870c188364a788',
+           '2026-07-19T00:00:00Z')
+    """)
+
     op.execute("""
         CREATE FUNCTION reject_paper_history_mutation() RETURNS trigger AS $$
         BEGIN RAISE EXCEPTION 'Paper receipt, fill, lot and ledger history is append-only'; END;
         $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public
     """)
     for table in (
+        "paper_policy_versions",
+        "paper_symbol_rule_versions",
         "paper_command_receipts",
         "paper_authorization_attempts",
         "paper_broker_inputs",
@@ -446,6 +527,7 @@ def upgrade() -> None:
         "paper_ledger_transactions",
         "paper_ledger_entries",
         "paper_reconciliation_checkpoints",
+        "paper_outbox_links",
     ):
         _append_only(table)
 
@@ -453,6 +535,12 @@ def upgrade() -> None:
         CREATE VIEW paper_ledger_balance_v1 AS
         SELECT transaction_id, commodity, sum(debit)-sum(credit) AS imbalance
         FROM paper_ledger_entries GROUP BY transaction_id, commodity
+    """)
+    op.execute("""
+        CREATE VIEW paper_outbox_events_v1 AS
+        SELECT link.account_id,event.event_id,event.event_type,event.aggregate_id,
+               event.aggregate_version,event.payload_hash,event.payload,event.occurred_at
+        FROM paper_outbox_links link JOIN outbox_events event USING(event_id)
     """)
     op.execute("""
         CREATE FUNCTION assert_paper_ledger_balanced() RETURNS trigger AS $$
@@ -583,6 +671,10 @@ def upgrade() -> None:
                     OR paper_order.command_scope<>receipt.scope
                     OR paper_order.idempotency_key<>receipt.idempotency_key
                     OR paper_order.accepted_broker_seq<>receipt.broker_seq))
+               OR (receipt.outcome='ORDER_CANCELLED' AND (
+                    attempt.outcome<>'CONSUMED_ORDER_CANCELLED'
+                    OR paper_order.order_id IS NULL OR paper_order.status<>'CANCELLED'
+                    OR paper_order.account_id<>receipt.account_id))
                OR (receipt.outcome='REJECTED' AND attempt.outcome<>'BLOCKED')
           ) OR EXISTS (
             SELECT 1 FROM paper_authorization_attempts attempt
@@ -619,9 +711,52 @@ def upgrade() -> None:
             JOIN paper_orders paper_order ON paper_order.order_id=fill.order_id
             JOIN paper_broker_inputs input
               ON input.broker_seq=fill.broker_seq AND input.source_key=fill.source_key
+            JOIN paper_policy_versions policy
+              ON policy.policy_version=fill.fee_policy_version
             WHERE fill.broker_seq<=paper_order.accepted_broker_seq
                OR input.account_id<>paper_order.account_id
                OR input.source_kind<>'RECORDED_BOOK'
+               OR fill.fee_rate<>policy.fee_rate
+               OR fill.fee_amount<>
+                  ceil(fill.quantity*fill.price*policy.fee_rate*1e18)/1e18
+               OR NOT EXISTS (
+                    SELECT 1 FROM paper_symbol_rule_versions rule
+                    WHERE rule.rule_version=fill.symbol_rule_version
+                      AND rule.symbol=paper_order.symbol)
+          ) OR EXISTS (
+            SELECT 1 FROM paper_broker_inputs input
+            JOIN paper_policy_versions policy ON policy.policy_version='quote-fee-v1'
+            WHERE input.source_kind='RECORDED_BOOK' AND (
+              SELECT COALESCE(sum(fill.quantity),0) FROM paper_fills fill
+              WHERE fill.source_key=input.source_key
+            )>input.available_quantity*policy.participation_rate
+          ) OR EXISTS (
+            SELECT 1 FROM paper_fills fill
+            JOIN paper_orders paper_order ON paper_order.order_id=fill.order_id
+            WHERE NOT EXISTS (
+              SELECT 1 FROM paper_ledger_transactions tx
+              WHERE tx.business_event_type='paper.fill'
+                AND tx.business_event_id=fill.fill_id AND tx.journal_kind='PHYSICAL'
+                AND tx.account_id=paper_order.account_id
+            ) OR NOT EXISTS (
+              SELECT 1 FROM paper_ledger_transactions tx
+              WHERE tx.business_event_type='paper.fill'
+                AND tx.business_event_id=fill.fill_id AND tx.journal_kind='VALUATION'
+                AND tx.account_id=paper_order.account_id
+            ) OR (paper_order.side='BUY' AND NOT EXISTS (
+              SELECT 1 FROM paper_inventory_lots lot WHERE lot.source_fill_id=fill.fill_id
+            )) OR (paper_order.side='SELL' AND NOT EXISTS (
+              SELECT 1 FROM paper_lot_consumptions item WHERE item.source_fill_id=fill.fill_id
+            ))
+          ) OR EXISTS (
+            SELECT 1 FROM paper_inventory_lots lot
+            LEFT JOIN LATERAL (
+              SELECT COALESCE(sum(quantity),0) quantity,
+                     COALESCE(sum(quote_basis),0) quote_basis
+              FROM paper_lot_consumptions item WHERE item.lot_id=lot.lot_id
+            ) used ON true
+            WHERE used.quantity>lot.acquired_quantity OR used.quote_basis>lot.quote_cost
+               OR (used.quantity=lot.acquired_quantity AND used.quote_basis<>lot.quote_cost)
           ) OR EXISTS (
             SELECT 1 FROM paper_orders paper_order
             LEFT JOIN LATERAL (
@@ -640,6 +775,42 @@ def upgrade() -> None:
           ) THEN
             RAISE EXCEPTION 'Paper fill/order consistency or durable outbox violation';
           END IF;
+          IF EXISTS (
+            SELECT 1 FROM paper_asset_balances balance
+            LEFT JOIN LATERAL (
+              SELECT COALESCE(sum(entry.debit-entry.credit),0) amount
+              FROM paper_ledger_transactions tx
+              JOIN paper_ledger_entries entry USING(transaction_id)
+              WHERE tx.account_id=balance.account_id
+                AND tx.journal_kind='PHYSICAL' AND entry.commodity=balance.asset
+                AND entry.account_code IN ('paper.available','paper.asset')
+            ) available ON true
+            LEFT JOIN LATERAL (
+              SELECT COALESCE(sum(entry.debit-entry.credit),0) amount
+              FROM paper_ledger_transactions tx
+              JOIN paper_ledger_entries entry USING(transaction_id)
+              WHERE tx.account_id=balance.account_id
+                AND tx.journal_kind='PHYSICAL' AND entry.commodity=balance.asset
+                AND entry.account_code='paper.held'
+            ) held ON true
+            WHERE balance.available<>available.amount OR balance.held<>held.amount
+          ) OR EXISTS (
+            SELECT 1 FROM paper_ledger_transactions tx
+            JOIN paper_ledger_entries entry USING(transaction_id)
+            WHERE tx.journal_kind='PHYSICAL'
+              AND entry.account_code IN ('paper.available','paper.asset','paper.held')
+              AND NOT EXISTS (
+                SELECT 1 FROM paper_asset_balances balance
+                WHERE balance.account_id=tx.account_id AND balance.asset=entry.commodity)
+          ) OR EXISTS (
+            SELECT 1 FROM paper_orders paper_order
+            WHERE NOT EXISTS (
+              SELECT 1 FROM paper_asset_balances balance
+              WHERE balance.account_id=paper_order.account_id
+                AND balance.asset=paper_order.held_asset)
+          ) THEN
+            RAISE EXCEPTION 'Paper balance/ledger authority mismatch';
+          END IF;
           RETURN NULL;
         END;
         $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public
@@ -651,6 +822,11 @@ def upgrade() -> None:
         "paper_orders",
         "paper_order_events",
         "paper_fills",
+        "paper_asset_balances",
+        "paper_inventory_lots",
+        "paper_lot_consumptions",
+        "paper_ledger_transactions",
+        "paper_ledger_entries",
         "outbox_events",
     ):
         _constraint_trigger(
@@ -659,6 +835,38 @@ def upgrade() -> None:
             "assert_paper_relational_consistency",
             "INSERT OR UPDATE OR DELETE",
         )
+
+    op.execute("""
+        CREATE FUNCTION append_paper_outbox(
+          p_event_id varchar, p_event_type varchar, p_payload jsonb,
+          p_payload_hash varchar, p_occurred_at timestamptz,
+          p_aggregate_type varchar, p_aggregate_id varchar, p_aggregate_version bigint
+        ) RETURNS void AS $$
+        BEGIN
+          IF (p_event_type NOT LIKE 'paper.%' AND p_event_type<>'ledger.transaction.posted.v1')
+             OR p_event_id !~ '^[a-f0-9]{64}$'
+             OR p_payload_hash !~ '^[a-f0-9]{64}$'
+             OR p_payload->>'event_id' IS DISTINCT FROM p_event_id
+             OR p_payload->>'event_type' IS DISTINCT FROM p_event_type
+             OR p_payload->>'payload_hash' IS DISTINCT FROM p_payload_hash
+             OR p_payload->>'producer' IS DISTINCT FROM 'paper-engine'
+             OR p_payload->>'spec_version' IS DISTINCT FROM 'woozoo.event/v1'
+             OR p_payload->>'activation_phase' IS DISTINCT FROM '7'
+             OR NOT (p_payload ? 'data')
+             OR p_payload->>'aggregate_id' IS DISTINCT FROM p_aggregate_id
+             OR (p_payload->>'aggregate_version')::bigint IS DISTINCT FROM p_aggregate_version
+          THEN
+            RAISE EXCEPTION 'Invalid closed Paper outbox envelope';
+          END IF;
+          INSERT INTO outbox_events
+            (event_id,event_type,payload,payload_hash,occurred_at,
+             aggregate_type,aggregate_id,aggregate_version)
+          VALUES
+            (p_event_id,p_event_type,p_payload,p_payload_hash,p_occurred_at,
+             p_aggregate_type,p_aggregate_id,p_aggregate_version);
+        END;
+        $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public
+    """)
 
     op.execute("""
         DO $$
@@ -676,18 +884,20 @@ def upgrade() -> None:
         "paper_policy_versions, paper_symbol_rule_versions, paper_accounts, paper_asset_balances, "
         "paper_command_receipts, paper_authorization_attempts, paper_broker_inputs, paper_orders, "
         "paper_order_events, paper_fills, paper_inventory_lots, paper_lot_consumptions, "
-        "paper_ledger_transactions, paper_ledger_entries, paper_reconciliation_checkpoints"
+        "paper_ledger_transactions, paper_ledger_entries, paper_reconciliation_checkpoints, "
+        "paper_outbox_links"
     )
     op.execute(f"REVOKE ALL ON {tables} FROM PUBLIC")
     op.execute("REVOKE ALL ON paper_ledger_balance_v1 FROM PUBLIC")
+    op.execute("REVOKE ALL ON paper_outbox_events_v1 FROM PUBLIC")
     op.execute("GRANT USAGE ON SCHEMA public TO woozoo_paper_engine")
     op.execute(f"GRANT SELECT ON {tables} TO woozoo_paper_engine")
     op.execute(
-        "GRANT INSERT ON paper_policy_versions, paper_symbol_rule_versions, paper_accounts, "
+        "GRANT INSERT ON paper_accounts, "
         "paper_command_receipts, paper_authorization_attempts, paper_broker_inputs, paper_orders, "
         "paper_order_events, paper_fills, paper_inventory_lots, paper_lot_consumptions, "
         "paper_ledger_transactions, paper_ledger_entries, paper_reconciliation_checkpoints, "
-        "outbox_events TO woozoo_paper_engine"
+        "paper_asset_balances, paper_outbox_links TO woozoo_paper_engine"
     )
     op.execute(
         "GRANT UPDATE (available, held, version) ON paper_asset_balances TO woozoo_paper_engine"
@@ -697,12 +907,23 @@ def upgrade() -> None:
         "ON paper_orders TO woozoo_paper_engine"
     )
     op.execute("GRANT SELECT ON paper_ledger_balance_v1 TO woozoo_paper_engine")
+    op.execute("GRANT SELECT ON paper_outbox_events_v1 TO woozoo_paper_engine")
+    op.execute(
+        "GRANT EXECUTE ON FUNCTION append_paper_outbox(varchar,varchar,jsonb,varchar,"
+        "timestamptz,varchar,varchar,bigint) TO woozoo_paper_engine"
+    )
     op.execute(
         "GRANT USAGE, SELECT ON SEQUENCE paper_broker_inputs_broker_seq_seq TO woozoo_paper_engine"
     )
 
 
 def downgrade() -> None:
+    op.execute("""
+        CREATE TEMP TABLE phase4_role_cleanup AS
+        SELECT writer_role_created FROM paper_migration_metadata
+        WHERE migration_revision='20260719_0004'
+    """)
+    op.execute("CREATE TEMP TABLE phase4_outbox_cleanup AS SELECT event_id FROM paper_outbox_links")
     op.execute("""
         DO $$ BEGIN
           IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='woozoo_paper_engine') THEN
@@ -712,15 +933,24 @@ def downgrade() -> None:
         END $$
     """)
     op.execute("DROP FUNCTION IF EXISTS assert_paper_relational_consistency CASCADE")
+    op.execute("DROP FUNCTION IF EXISTS reject_paper_history_mutation CASCADE")
     op.execute(
-        "DELETE FROM outbox_events WHERE aggregate_type='paper_order' OR event_type LIKE 'paper.%'"
+        "DROP FUNCTION IF EXISTS append_paper_outbox(varchar,varchar,jsonb,varchar,"
+        "timestamptz,varchar,varchar,bigint) CASCADE"
+    )
+    op.execute(
+        "DELETE FROM paper_outbox_links WHERE event_id IN (SELECT event_id FROM phase4_outbox_cleanup)"
+    )
+    op.execute(
+        "DELETE FROM outbox_events WHERE event_id IN (SELECT event_id FROM phase4_outbox_cleanup)"
     )
     op.execute("DROP FUNCTION IF EXISTS assert_paper_correction_pair CASCADE")
     op.execute("DROP FUNCTION IF EXISTS assert_paper_ledger_balanced CASCADE")
     op.execute("DROP VIEW IF EXISTS paper_ledger_balance_v1")
-    op.execute("DROP FUNCTION IF EXISTS reject_paper_history_mutation CASCADE")
+    op.execute("DROP VIEW IF EXISTS paper_outbox_events_v1")
     for table in (
         "paper_reconciliation_checkpoints",
+        "paper_outbox_links",
         "paper_ledger_entries",
         "paper_ledger_transactions",
         "paper_lot_consumptions",
@@ -742,3 +972,37 @@ def downgrade() -> None:
     op.execute("ALTER TABLE outbox_events DROP COLUMN IF EXISTS aggregate_version")
     op.execute("ALTER TABLE outbox_events DROP COLUMN IF EXISTS aggregate_id")
     op.execute("ALTER TABLE outbox_events DROP COLUMN IF EXISTS aggregate_type")
+    op.drop_constraint(
+        "outbox_delivery_attempts_event_id_fkey",
+        "outbox_delivery_attempts",
+        type_="foreignkey",
+    )
+    op.alter_column(
+        "outbox_delivery_attempts",
+        "event_id",
+        existing_type=sa.String(64),
+        type_=postgresql.UUID(as_uuid=False),
+        postgresql_using="event_id::uuid",
+    )
+    op.alter_column(
+        "outbox_events",
+        "event_id",
+        existing_type=sa.String(64),
+        type_=postgresql.UUID(as_uuid=False),
+        postgresql_using="event_id::uuid",
+    )
+    op.create_foreign_key(
+        "outbox_delivery_attempts_event_id_fkey",
+        "outbox_delivery_attempts",
+        "outbox_events",
+        ["event_id"],
+        ["event_id"],
+        ondelete="RESTRICT",
+    )
+    op.execute("""
+        DO $$ BEGIN
+          IF EXISTS (SELECT 1 FROM phase4_role_cleanup WHERE writer_role_created) THEN
+            DROP ROLE woozoo_paper_engine;
+          END IF;
+        END $$
+    """)

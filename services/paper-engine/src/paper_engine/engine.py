@@ -288,7 +288,6 @@ class PaperEngine:
                 ),
                 None,
             )
-        seq = self._next_seq()
         if order.status in {OrderStatus.FILLED, OrderStatus.CANCELLED}:
             raise ValueError("TERMINAL_ORDER")
         bid = decimal_input(best_bid_text, positive=True)
@@ -297,6 +296,31 @@ class PaperEngine:
         observation_hash = _id(
             "observation", order.symbol, canonical(bid), canonical(ask), canonical(displayed)
         )
+        eligible = (
+            ask <= order.limit_price if order.side == OrderSide.BUY else bid >= order.limit_price
+        )
+        if eligible:
+            eligible_orders = sorted(
+                (
+                    candidate
+                    for candidate in self.orders.values()
+                    if candidate.symbol == order.symbol
+                    and candidate.status not in {OrderStatus.FILLED, OrderStatus.CANCELLED}
+                    and (candidate.order_id, observation_id) not in self.observation_effects
+                    and (
+                        ask <= candidate.limit_price
+                        if candidate.side == OrderSide.BUY
+                        else bid >= candidate.limit_price
+                    )
+                ),
+                key=lambda candidate: (
+                    candidate.accepted_broker_seq,
+                    candidate.client_order_id,
+                    candidate.order_id,
+                ),
+            )
+            if eligible_orders and eligible_orders[0].order_id != order_id:
+                raise ValueError("NON_CANONICAL_OBSERVATION_ORDER")
         budget = self.observation_budgets.get(observation_id)
         if budget is None:
             remaining_budget = floor_step(
@@ -307,9 +331,7 @@ class PaperEngine:
             if budget[0] != observation_hash:
                 raise ValueError("OBSERVATION_ID_CONFLICT")
             remaining_budget = budget[1]
-        eligible = (
-            ask <= order.limit_price if order.side == OrderSide.BUY else bid >= order.limit_price
-        )
+        seq = self._next_seq()
         if not eligible or seq <= order.accepted_broker_seq:
             self.observation_effects.add((order_id, observation_id))
             return None
