@@ -29,6 +29,22 @@ def upgrade() -> None:
         $$ LANGUAGE plpgsql
     """)
     op.create_table(
+        "agent_migration_metadata",
+        sa.Column("migration_revision", sa.String(32), primary_key=True),
+        sa.Column("writer_role_created", sa.Boolean(), nullable=False),
+        sa.Column("schema_usage_preexisting", sa.Boolean(), nullable=False),
+        sa.Column("evidence_reader_select_preexisting", sa.Boolean(), nullable=False),
+        sa.Column("candle_reader_select_preexisting", sa.Boolean(), nullable=False),
+        sa.Column("feature_reader_select_preexisting", sa.Boolean(), nullable=False),
+        sa.Column("outbox_select_preexisting", sa.Boolean(), nullable=False),
+        sa.Column("outbox_insert_preexisting", sa.Boolean(), nullable=False),
+    )
+    op.create_unique_constraint(
+        "uq_phase6_evidence_authority",
+        "evidence_snapshots",
+        ["evidence_id", "evidence_digest", "symbol", "as_of", "knowledge_cutoff"],
+    )
+    op.create_table(
         "agent_prompt_manifests",
         sa.Column("prompt_manifest_id", sa.String(64), primary_key=True),
         sa.Column("version", sa.String(64), nullable=False),
@@ -70,8 +86,18 @@ def upgrade() -> None:
         sa.Column("payload", postgresql.JSONB(), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.ForeignKeyConstraint(
-            ["evidence_id"], ["evidence_snapshots.evidence_id"], ondelete="RESTRICT"
+            ["evidence_id", "evidence_digest", "symbol", "as_of", "knowledge_cutoff"],
+            [
+                "evidence_snapshots.evidence_id",
+                "evidence_snapshots.evidence_digest",
+                "evidence_snapshots.symbol",
+                "evidence_snapshots.as_of",
+                "evidence_snapshots.knowledge_cutoff",
+            ],
+            name="fk_analysis_run_authoritative_evidence",
+            ondelete="RESTRICT",
         ),
+        sa.UniqueConstraint("run_id", "evidence_id", name="uq_analysis_run_evidence"),
         sa.CheckConstraint("namespace='test'", name="ck_analysis_run_namespace"),
         sa.CheckConstraint("symbol IN ('BTCUSDT','ETHUSDT')", name="ck_analysis_run_symbol"),
         sa.CheckConstraint("provider='mock'", name="ck_analysis_run_provider"),
@@ -99,10 +125,13 @@ def upgrade() -> None:
         sa.Column("report_hash", sa.String(64), nullable=False, unique=True),
         sa.Column("payload", postgresql.JSONB(), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
-        sa.ForeignKeyConstraint(["run_id"], ["analysis_runs.run_id"], ondelete="RESTRICT"),
         sa.ForeignKeyConstraint(
-            ["evidence_id"], ["evidence_snapshots.evidence_id"], ondelete="RESTRICT"
+            ["run_id", "evidence_id"],
+            ["analysis_runs.run_id", "analysis_runs.evidence_id"],
+            name="fk_agent_report_run_evidence",
+            ondelete="RESTRICT",
         ),
+        sa.UniqueConstraint("report_id", "evidence_id", name="uq_agent_report_evidence"),
         sa.UniqueConstraint("run_id", "role", "report_version", name="uq_agent_report_role"),
         sa.CheckConstraint(
             "role IN ('MARKET_REGIME','TECHNICAL','TRADE_FLOW','BULL','BEAR',"
@@ -119,7 +148,12 @@ def upgrade() -> None:
         sa.Column("report_id", sa.String(64), primary_key=True),
         sa.Column("evidence_id", sa.String(64), primary_key=True),
         sa.Column("item_id", sa.String(64), primary_key=True),
-        sa.ForeignKeyConstraint(["report_id"], ["agent_reports.report_id"], ondelete="RESTRICT"),
+        sa.ForeignKeyConstraint(
+            ["report_id", "evidence_id"],
+            ["agent_reports.report_id", "agent_reports.evidence_id"],
+            name="fk_agent_report_ref_parent_evidence",
+            ondelete="RESTRICT",
+        ),
     )
     op.create_table(
         "trade_proposals",
@@ -132,10 +166,13 @@ def upgrade() -> None:
         sa.Column("proposal_hash", sa.String(64), nullable=False, unique=True),
         sa.Column("payload", postgresql.JSONB(), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
-        sa.ForeignKeyConstraint(["run_id"], ["analysis_runs.run_id"], ondelete="RESTRICT"),
         sa.ForeignKeyConstraint(
-            ["evidence_id"], ["evidence_snapshots.evidence_id"], ondelete="RESTRICT"
+            ["run_id", "evidence_id"],
+            ["analysis_runs.run_id", "analysis_runs.evidence_id"],
+            name="fk_trade_proposal_run_evidence",
+            ondelete="RESTRICT",
         ),
+        sa.UniqueConstraint("proposal_id", "evidence_id", name="uq_trade_proposal_evidence"),
         sa.UniqueConstraint("run_id", "proposal_version", name="uq_trade_proposal_run_version"),
         sa.CheckConstraint("side IN ('BUY','SELL','HOLD')", name="ck_trade_proposal_side"),
         sa.CheckConstraint(
@@ -154,7 +191,10 @@ def upgrade() -> None:
         sa.Column("evidence_id", sa.String(64), primary_key=True),
         sa.Column("item_id", sa.String(64), primary_key=True),
         sa.ForeignKeyConstraint(
-            ["proposal_id"], ["trade_proposals.proposal_id"], ondelete="RESTRICT"
+            ["proposal_id", "evidence_id"],
+            ["trade_proposals.proposal_id", "trade_proposals.evidence_id"],
+            name="fk_trade_proposal_ref_parent_evidence",
+            ondelete="RESTRICT",
         ),
     )
     op.create_table(
@@ -262,7 +302,7 @@ def upgrade() -> None:
         CREATE FUNCTION enforce_agent_evidence_ref() RETURNS trigger AS $$
         BEGIN
           IF NOT EXISTS (
-            SELECT 1 FROM evidence_items
+            SELECT 1 FROM evidence_reader_v1
             WHERE evidence_id=NEW.evidence_id AND item_id=NEW.item_id
           ) THEN
             RAISE EXCEPTION 'Phase 6 orphan Evidence citation';
@@ -291,10 +331,39 @@ def upgrade() -> None:
     ):
         _append_only(table)
     op.execute("""
-        DO $$ BEGIN
+        DO $$
+        DECLARE
+          role_created boolean := false;
+          role_oid oid;
+          schema_usage boolean := false;
+          evidence_reader_select boolean := false;
+          candle_reader_select boolean := false;
+          feature_reader_select boolean := false;
+          outbox_select boolean := false;
+          outbox_insert boolean := false;
+        BEGIN
           IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='woozoo_agent_orchestrator') THEN
             CREATE ROLE woozoo_agent_orchestrator LOGIN;
+            role_created := true;
+          ELSE
+            SELECT oid INTO role_oid FROM pg_roles WHERE rolname='woozoo_agent_orchestrator';
+            SELECT has_schema_privilege(role_oid,'public','USAGE') INTO schema_usage;
+            SELECT has_table_privilege(role_oid,'evidence_reader_v1','SELECT')
+              INTO evidence_reader_select;
+            SELECT has_table_privilege(role_oid,'evidence_candle_reader_v1','SELECT')
+              INTO candle_reader_select;
+            SELECT has_table_privilege(role_oid,'evidence_feature_reader_v1','SELECT')
+              INTO feature_reader_select;
+            SELECT has_table_privilege(role_oid,'outbox_events','SELECT') INTO outbox_select;
+            SELECT has_table_privilege(role_oid,'outbox_events','INSERT') INTO outbox_insert;
           END IF;
+          INSERT INTO agent_migration_metadata(
+            migration_revision,writer_role_created,schema_usage_preexisting,
+            evidence_reader_select_preexisting,candle_reader_select_preexisting,
+            feature_reader_select_preexisting,outbox_select_preexisting,
+            outbox_insert_preexisting)
+          VALUES ('20260720_0006',role_created,schema_usage,evidence_reader_select,
+                  candle_reader_select,feature_reader_select,outbox_select,outbox_insert);
         END $$
     """)
     op.execute("GRANT USAGE ON SCHEMA public TO woozoo_agent_orchestrator")
@@ -318,7 +387,35 @@ def downgrade() -> None:
           END IF;
         END $$
     """)
-    op.execute("REVOKE ALL ON ALL TABLES IN SCHEMA public FROM woozoo_agent_orchestrator")
+    op.execute("""
+        CREATE TEMP TABLE phase6_role_cleanup AS
+        SELECT writer_role_created,schema_usage_preexisting,
+               evidence_reader_select_preexisting,candle_reader_select_preexisting,
+               feature_reader_select_preexisting,outbox_select_preexisting,
+               outbox_insert_preexisting
+        FROM agent_migration_metadata WHERE migration_revision='20260720_0006'
+    """)
+    op.execute("""
+        DO $$ BEGIN
+          IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='woozoo_agent_orchestrator') THEN
+            IF NOT EXISTS (SELECT 1 FROM phase6_role_cleanup WHERE evidence_reader_select_preexisting) THEN
+              REVOKE SELECT ON evidence_reader_v1 FROM woozoo_agent_orchestrator;
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM phase6_role_cleanup WHERE candle_reader_select_preexisting) THEN
+              REVOKE SELECT ON evidence_candle_reader_v1 FROM woozoo_agent_orchestrator;
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM phase6_role_cleanup WHERE feature_reader_select_preexisting) THEN
+              REVOKE SELECT ON evidence_feature_reader_v1 FROM woozoo_agent_orchestrator;
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM phase6_role_cleanup WHERE outbox_select_preexisting) THEN
+              REVOKE SELECT ON outbox_events FROM woozoo_agent_orchestrator;
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM phase6_role_cleanup WHERE outbox_insert_preexisting) THEN
+              REVOKE INSERT ON outbox_events FROM woozoo_agent_orchestrator;
+            END IF;
+          END IF;
+        END $$
+    """)
     op.execute("DROP TRIGGER risk_decisions_phase6_proposal ON risk_decisions")
     op.execute("DROP FUNCTION enforce_phase6_risk_proposal()")
     op.execute(r"""
@@ -353,7 +450,24 @@ def downgrade() -> None:
         "agent_reports",
         "analysis_runs",
         "agent_prompt_manifests",
+        "agent_migration_metadata",
     ):
         op.drop_table(table)
+    op.drop_constraint(
+        "uq_phase6_evidence_authority", "evidence_snapshots", type_="unique"
+    )
     op.execute("DROP FUNCTION enforce_agent_evidence_ref()")
     op.execute("DROP FUNCTION reject_agent_history_mutation()")
+    op.execute("""
+        DO $$ BEGIN
+          IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='woozoo_agent_orchestrator')
+             AND NOT EXISTS (
+               SELECT 1 FROM phase6_role_cleanup WHERE schema_usage_preexisting
+             ) THEN
+            REVOKE USAGE ON SCHEMA public FROM woozoo_agent_orchestrator;
+          END IF;
+          IF EXISTS (SELECT 1 FROM phase6_role_cleanup WHERE writer_role_created) THEN
+            DROP ROLE woozoo_agent_orchestrator;
+          END IF;
+        END $$
+    """)

@@ -21,7 +21,7 @@
         "tests/contract/test_agent_contract.py::test_ai_001_failure_matrix"
       ],
       "source_sha256": [
-        "4843553885db75da3d76b68f21c3129d8e43f5c16c9b5511ad128eeeb5f69a4a"
+        "c64918afd6e834ed2cc664e5c26c1ac3bc78d19e7b502e8720d1b39e46ed8882"
       ],
       "oracle": "Timeout, provider failure, malformed JSON and schema-invalid output produce a stable run-level HOLD and no TradeProposal."
     },
@@ -34,7 +34,7 @@
         "tests/safety/test_phase6_agent_boundaries.py::test_ai_002_orphan_and_future_claims_hold"
       ],
       "source_sha256": [
-        "f179cd994d97d41ba9df982928f50f16a5b9531c7381cb48554d8904afcefa20"
+        "d7c295bc020be7cf4312e5941ab68b7b27213e05fbd1378f7556c4ebb2d2aca5"
       ],
       "oracle": "Orphan Evidence citations and claims beyond both temporal cutoffs produce HOLD and cannot be promoted into a Proposal."
     },
@@ -47,7 +47,7 @@
         "tests/safety/test_phase6_agent_boundaries.py::test_sec_001_has_no_real_provider_or_secret_configuration"
       ],
       "source_sha256": [
-        "f179cd994d97d41ba9df982928f50f16a5b9531c7381cb48554d8904afcefa20"
+        "d7c295bc020be7cf4312e5941ab68b7b27213e05fbd1378f7556c4ebb2d2aca5"
       ],
       "oracle": "No real-provider secret configuration exists in product configuration or agent source."
     },
@@ -61,7 +61,7 @@
         "tests/safety/test_phase6_agent_boundaries.py::test_sec_002_active_api_has_no_agent_or_proposal_route"
       ],
       "source_sha256": [
-        "f179cd994d97d41ba9df982928f50f16a5b9531c7381cb48554d8904afcefa20"
+        "d7c295bc020be7cf4312e5941ab68b7b27213e05fbd1378f7556c4ebb2d2aca5"
       ],
       "oracle": "The AI tool registry and active route set expose zero account, Risk, approval, order, exchange or network capability."
     },
@@ -74,7 +74,7 @@
         "tests/replay/test_agent_replay.py::test_agent_replay_is_stable_across_provider_json_key_order"
       ],
       "source_sha256": [
-        "78a8536a0e7133788ce7d3d14373c17e93791477b824892da8ae3abc76eb68e6"
+        "594c924348193d9ee66dfe65538f64fe9a22f7aacb289945b0f11db4e151d8c7"
       ],
       "oracle": "The fixed Evidence, mock responses and clock produce byte-identical reports, Proposal, audit and events across JSON key order."
     },
@@ -87,7 +87,7 @@
         "tests/property/test_agent_evidence_properties.py::test_every_orphan_citation_fails_closed"
       ],
       "source_sha256": [
-        "a70ce90a4a5452e0be661ffaa46039ed27667082423d3955e43b80dd8060249a"
+        "7d04f14d2ad76584b27c5a52776a751106ca0225a981feb78838d75789de8129"
       ],
       "oracle": "Every generated non-member Evidence item identifier is rejected with the same orphan reason and Proposal count zero."
     },
@@ -100,7 +100,7 @@
         "tests/failure/test_agent_provider_failures.py::test_provider_failure_at_every_role_has_no_proposal"
       ],
       "source_sha256": [
-        "3168b1b284926055554cf86767cae9121fc579ae938f8917ecc5510d0aa85cb3"
+        "61a57916619763f63fd6b8787537af0e0faca4cf28af98a02a985584422cbceb"
       ],
       "oracle": "A provider failure at each of the eight fixed roles yields HOLD and no Proposal event."
     },
@@ -111,16 +111,19 @@
       "artifact": "artifacts/integration/AGENT-INTEGRATION-001.json",
       "test_nodes": [
         "tests/integration/test_agent_migration_contract.py::test_phase6_migration_is_append_only_least_privilege_and_test_only",
+        "tests/integration/test_agent_migration_contract.py::test_preexisting_agent_role_and_direct_grants_survive_empty_downgrade",
+        "tests/integration/test_agent_migration_contract.py::test_empty_downgrade_removes_migration_created_agent_role",
         "tests/integration/test_agent_postgres_persistence.py::test_agent_persistence_is_atomic_idempotent_and_append_only",
         "tests/integration/test_proposal_risk_fixture_chain.py::test_p6_authoritative_proposal_binds_full_hash_to_test_risk_v2",
-        "tests/integration/test_proposal_risk_fixture_chain.py::test_p6_hold_is_not_risk_eligible"
+        "tests/integration/test_proposal_risk_fixture_chain.py::test_p6_hold_is_not_risk_eligible",
+        "tests/integration/test_proposal_risk_fixture_chain.py::test_p6_risk_rejects_proposal_data_evidence_mismatch"
       ],
       "source_sha256": [
-        "aa5267124cbbd46101a66c7124dbd14ccbcb8ba60a366c18e8e0ddddc4c1a8ab",
-        "285bdefedcca000e5ee16ada516385e78ddbabafe0e926965cea11dae47ee73e",
-        "2e3908e9d542165e561aeca274d12a0121560df44a4dea6aa923b7073e60bf59"
+        "28a5476c1ca12a29135a36316be5a0e4f2fbbcf8f0eb8d192a07ac286640db2d",
+        "22b736fc88ff45fdcbbd4e7b14e3af9ff7aa7a597451e6b85be0852aa7a81fc1",
+        "13795050779f7c56db07b846b603cd36192b29998f590c03566ec8e24920f8a5"
       ],
-      "oracle": "Migration and persistence enforce append-only atomic evidence binding; full Proposal hashes reach only test Risk v2 and HOLD cannot enter Risk."
+      "oracle": "Migration and persistence enforce authoritative snapshot metadata, parent-scoped citations, graph hashes, runtime-role access and ACL-preserving downgrade; full Proposal Evidence reaches only test Risk v2 and HOLD cannot enter Risk."
     }
   ]
 }

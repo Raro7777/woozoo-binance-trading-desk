@@ -20,6 +20,7 @@ def test_provider_failure_at_every_role_has_no_proposal() -> None:
                     knowledge_cutoff=NOW,
                     quality="healthy",
                     item_ids=("item-failure",),
+                    quoted_content=("failure test observation",),
                 )
             )
         )

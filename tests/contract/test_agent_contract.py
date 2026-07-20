@@ -60,6 +60,7 @@ def test_ai_001_failure_matrix() -> None:
         knowledge_cutoff=now,
         quality="healthy",
         item_ids=("item-contract",),
+        quoted_content=("contract observation",),
     )
     cases = (
         (MockLlmProvider(delays={Role.MARKET_REGIME: 0.02}), 0.001, "PROVIDER_TIMEOUT"),

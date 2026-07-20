@@ -156,6 +156,10 @@ class AgentWorkflow:
     def _validate_evidence(self, evidence: EvidenceContext) -> HoldReason | None:
         if not evidence.evidence_id or not evidence.item_ids:
             return HoldReason.EVIDENCE_NOT_FOUND
+        if len(evidence.quoted_content) != len(evidence.item_ids) or any(
+            not content.strip() for content in evidence.quoted_content
+        ):
+            return HoldReason.EVIDENCE_NOT_FOUND
         if len(evidence.evidence_digest) != 64:
             return HoldReason.EVIDENCE_DIGEST_MISMATCH
         if evidence.quality != "healthy":

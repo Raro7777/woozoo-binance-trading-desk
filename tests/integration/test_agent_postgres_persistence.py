@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+from copy import deepcopy
+from dataclasses import replace
 from datetime import UTC, datetime
 import os
 from pathlib import Path
@@ -27,6 +29,7 @@ from test_risk_engine import risk_input
 
 ROOT = Path(__file__).parents[2]
 DATABASE_URL = "postgresql://postgres@127.0.0.1:5433/woozoo"
+AGENT_DATABASE_URL = "postgresql://woozoo_agent_orchestrator@127.0.0.1:5433/woozoo"
 ENVIRONMENT = {"DATABASE_URL": DATABASE_URL, "TRADING_MODE": "paper"}
 NOW = "2026-07-20T00:00:00Z"
 
@@ -130,6 +133,7 @@ def _seed_evidence() -> EvidenceContext:
         knowledge_cutoff=NOW,
         quality="healthy",
         item_ids=(item_id,),
+        quoted_content=('{"item_id":"' + item_id + '","item_type":"normalized_market_event"}',),
     )
 
 
@@ -140,8 +144,26 @@ def test_agent_persistence_is_atomic_idempotent_and_append_only() -> None:
         try:
             run(sys.executable, "-m", "alembic", "upgrade", "head")
             evidence = _seed_evidence()
-            result = asyncio.run(AgentWorkflow(MockLlmProvider(), clock=lambda: NOW).run(evidence))
-            store = PostgresAgentStore(DATABASE_URL)
+            store = PostgresAgentStore(AGENT_DATABASE_URL)
+            loaded = store.load_evidence(evidence.evidence_id)
+            assert loaded is not None
+            assert loaded.item_ids == evidence.item_ids
+            assert len(loaded.quoted_content) == len(loaded.item_ids)
+            assert '"price": "100"' in loaded.quoted_content[0]
+            result = asyncio.run(AgentWorkflow(MockLlmProvider(), clock=lambda: NOW).run(loaded))
+
+            tampered = deepcopy(result)
+            tampered.reports[0]["findings"][0] = "forged after workflow validation"
+            with pytest.raises(ValueError, match="REPORT_HASH_MISMATCH"):
+                store.persist(tampered)
+
+            forged_evidence = replace(loaded, evidence_digest="b" * 64)
+            forged = asyncio.run(
+                AgentWorkflow(MockLlmProvider(), clock=lambda: NOW).run(forged_evidence)
+            )
+            with pytest.raises(ValueError, match="AUTHORITATIVE_EVIDENCE_MISMATCH"):
+                store.persist(forged)
+
             with pytest.raises(RuntimeError, match="INJECTED_AGENT_FAILURE:reports"):
                 store.persist(result, _fail_after=AgentPersistenceStage.REPORTS)
             with psycopg.connect(DATABASE_URL) as connection:
@@ -185,6 +207,61 @@ def test_agent_persistence_is_atomic_idempotent_and_append_only() -> None:
                     connection.execute(
                         "UPDATE trade_proposals SET side='HOLD' WHERE proposal_id=%s",
                         (first.proposal_id,),
+                    )
+
+            with pytest.raises(psycopg.errors.RaiseException, match="orphan Evidence citation"):
+                with psycopg.connect(DATABASE_URL) as role_connection:
+                    role_connection.execute("SET ROLE woozoo_agent_orchestrator")
+                    role_connection.execute(
+                        "INSERT INTO agent_report_evidence_refs(report_id,evidence_id,item_id) "
+                        "VALUES (%s,%s,%s)",
+                        (result.reports[0]["report_id"], evidence.evidence_id, "f" * 64),
+                    )
+
+            with psycopg.connect(DATABASE_URL) as connection:
+                session_id = connection.execute(
+                    "SELECT collector_session_id FROM evidence_snapshots WHERE evidence_id=%s",
+                    (evidence.evidence_id,),
+                ).fetchone()[0]
+                connection.execute(
+                    """
+                    INSERT INTO evidence_snapshots(
+                      evidence_id,evidence_digest,symbol,as_of,knowledge_cutoff,recipe_version,
+                      input_digest,quality_status,quality_reasons,collector_session_id,
+                      watermark_digest,created_at
+                    ) VALUES (%s,%s,'BTCUSDT',%s,%s,
+                      'woozoo.evidence.closed-candles-approved-features/v1',%s,'healthy',%s,%s,%s,%s)
+                    """,
+                    (
+                        "d" * 64,
+                        "b" * 64,
+                        datetime(2026, 7, 20, tzinfo=UTC),
+                        datetime(2026, 7, 20, tzinfo=UTC),
+                        "6" * 64,
+                        Jsonb([]),
+                        session_id,
+                        "7" * 64,
+                        datetime(2026, 7, 20, tzinfo=UTC),
+                    ),
+                )
+                connection.execute(
+                    """
+                    INSERT INTO evidence_items(
+                      evidence_id,ordinal,item_type,item_id,normalized_event_id,
+                      feature_observation_id,raw_event_id,raw_payload_hash
+                    )
+                    SELECT %s,0,'normalized_market_event',item_id,normalized_event_id,
+                           NULL,raw_event_id,raw_payload_hash
+                    FROM evidence_items WHERE evidence_id=%s AND ordinal=0
+                    """,
+                    ("d" * 64, evidence.evidence_id),
+                )
+            with pytest.raises(psycopg.errors.ForeignKeyViolation):
+                with psycopg.connect(DATABASE_URL) as connection:
+                    connection.execute(
+                        "INSERT INTO trade_proposal_evidence_refs(proposal_id,evidence_id,item_id) "
+                        "VALUES (%s,%s,%s)",
+                        (first.proposal_id, "d" * 64, evidence.item_ids[0]),
                     )
         finally:
             run("docker", "compose", "down", "-v")

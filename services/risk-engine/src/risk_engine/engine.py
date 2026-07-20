@@ -589,6 +589,17 @@ def evaluate_risk(risk_input: object) -> RiskDecision:
         proposal_payload["symbol"] != symbol or proposal_payload["side"] != side
     ):
         reasons.add("PROPOSAL_HASH_MISMATCH")
+    if (
+        input_version == INPUT_VERSION_V2
+        and proposal_payload is not None
+        and (
+            proposal_payload.get("evidence_id") != data["evidence_id"]
+            or proposal_payload.get("evidence_digest") != data["evidence_hash"]
+            or proposal_payload.get("as_of") != data["as_of"]
+            or proposal_payload.get("knowledge_cutoff") != data["knowledge_cutoff"]
+        )
+    ):
+        reasons.add("PROPOSAL_HASH_MISMATCH")
     if not isinstance(symbol, str) or symbol not in allowed_symbols:
         reasons.add("SYMBOL_NOT_ALLOWED")
     if preview["order_type"] != "LIMIT" or preview["order_type"] not in allowed_order_types:

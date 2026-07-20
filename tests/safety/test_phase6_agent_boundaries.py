@@ -91,6 +91,7 @@ def test_ai_002_orphan_and_future_claims_hold() -> None:
         knowledge_cutoff=now,
         quality="healthy",
         item_ids=("member",),
+        quoted_content=("public market observation",),
     )
     for changes, expected in (
         ({"evidence_item_ids": ["orphan"]}, "ORPHAN_EVIDENCE_ITEM"),

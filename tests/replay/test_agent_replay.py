@@ -34,6 +34,7 @@ def test_agent_replay_is_stable_across_provider_json_key_order() -> None:
         knowledge_cutoff=NOW,
         quality="healthy",
         item_ids=("item-replay",),
+        quoted_content=("replay observation",),
     )
     compact = json.dumps(payload, separators=(",", ":"), sort_keys=True)
     reversed_keys = json.dumps(dict(reversed(tuple(payload.items()))), indent=2)

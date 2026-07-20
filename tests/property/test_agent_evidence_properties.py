@@ -41,6 +41,7 @@ def test_every_orphan_citation_fails_closed() -> None:
                     knowledge_cutoff=NOW,
                     quality="healthy",
                     item_ids=("member-1", "member-2"),
+                    quoted_content=("observation 1", "observation 2"),
                 )
             )
         )

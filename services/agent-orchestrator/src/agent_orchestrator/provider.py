@@ -7,6 +7,7 @@ import json
 from collections.abc import Mapping
 from typing import Protocol
 
+from .canonical import canonical_hash
 from .models import Role
 
 
@@ -46,8 +47,16 @@ class MockLlmProvider:
             return self._overrides[role]
         evidence_item_ids = request["evidence_item_ids"]
         dependency_report_ids = request["dependency_report_ids"]
-        if not isinstance(evidence_item_ids, list) or not isinstance(dependency_report_ids, list):
+        quoted_evidence = request["quoted_evidence"]
+        if (
+            not isinstance(evidence_item_ids, list)
+            or not isinstance(dependency_report_ids, list)
+            or not isinstance(quoted_evidence, list)
+            or len(quoted_evidence) != len(evidence_item_ids)
+            or not all(isinstance(item, str) and item for item in quoted_evidence)
+        ):
             raise ProviderError("invalid deterministic mock request")
+        evidence_content_digest = canonical_hash(quoted_evidence)
         stance = "BUY" if role in {Role.BULL, Role.TRADER, Role.PORTFOLIO} else "NEUTRAL"
         if role is Role.BEAR:
             stance = "HOLD"
@@ -61,7 +70,10 @@ class MockLlmProvider:
             "evidence_item_ids": evidence_item_ids[:1],
             "dependency_report_ids": dependency_report_ids,
             "claim_times": [request["as_of"]],
-            "findings": [f"{role.value.lower()} finding is bounded to cited Evidence"],
+            "findings": [
+                f"{role.value.lower()} finding is bounded to Evidence content "
+                f"{evidence_content_digest[:16]}"
+            ],
             "uncertainty": ["mock uncertainty"],
             "invalidation_conditions": ["Evidence quality changes"],
             "confidence": "0.5",

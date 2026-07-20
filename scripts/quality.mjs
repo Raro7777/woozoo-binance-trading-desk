@@ -411,9 +411,12 @@ const actions = {
     ]);
     await agentDataScenario("integration", "AGENT-INTEGRATION-001", [
       "tests/integration/test_agent_migration_contract.py::test_phase6_migration_is_append_only_least_privilege_and_test_only",
+      "tests/integration/test_agent_migration_contract.py::test_preexisting_agent_role_and_direct_grants_survive_empty_downgrade",
+      "tests/integration/test_agent_migration_contract.py::test_empty_downgrade_removes_migration_created_agent_role",
       "tests/integration/test_agent_postgres_persistence.py::test_agent_persistence_is_atomic_idempotent_and_append_only",
       "tests/integration/test_proposal_risk_fixture_chain.py::test_p6_authoritative_proposal_binds_full_hash_to_test_risk_v2",
       "tests/integration/test_proposal_risk_fixture_chain.py::test_p6_hold_is_not_risk_eligible",
+      "tests/integration/test_proposal_risk_fixture_chain.py::test_p6_risk_rejects_proposal_data_evidence_mismatch",
     ]);
   },
   "test:replay": async () => {
