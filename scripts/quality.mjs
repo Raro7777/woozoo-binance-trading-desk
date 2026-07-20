@@ -84,7 +84,7 @@ async function runPlaywrightWithResultGate(expectedTestCount) {
   for (const id of ["E2E-001", "E2E-002", "E2E-003", "E2E-004", "E2E-005"]) {
     if (!xml.includes(`[live] ${id}`)) throw new Error(`${id} must be reported as a live non-mock browser scenario`);
   }
-  for (const id of ["UI-001", "UI-002", "UI-003", "UI-004"]) {
+  for (const id of ["UI-001", "UI-002", "UI-003", "UI-004", "UI-005"]) {
     if (!xml.includes(`[ui-only] ${id}`)) throw new Error(`${id} must remain explicitly isolated UI-only coverage`);
   }
   return { command, testCount: counts.tests };
@@ -368,6 +368,17 @@ const actions = {
   },
   "test:unit": async () => {
     await scenarios("unit", ["CORE-001"], [["python", ["-m", "uv", "run", "--locked", "pytest", "tests/unit", "-q"]]]);
+    await dataScenario("unit", "AUTH-001", [
+      "tests/unit/test_trading_room_security.py::test_auth_001_session_rotation_csrf_one_time_and_absolute_expiry",
+      "tests/unit/test_trading_room_security.py::test_auth_002_foreign_or_missing_origin_has_effect_zero",
+      "tests/unit/test_trading_room_security.py::test_logout_revokes_session_and_consumes_csrf",
+      "tests/contract/test_phase7_trading_contract.py::test_phase7_approval_chain_is_closed_hash_bound_and_nonce_distinct",
+      "tests/property/test_trading_room_properties.py::test_phase7_preview_hash_is_mutation_sensitive_and_notional_is_policy_capped",
+      "tests/failure/test_trading_room_authorization_failures.py::test_auth_002_stale_state_before_human_decision_has_zero_order_effect",
+      "tests/integration/test_trading_room_command_ports.py::test_concurrent_same_request_issues_once_without_browser_paper_effect",
+      "tests/integration/test_trading_room_command_ports.py::test_revocation_can_win_after_authorization_issue_before_first_paper_attempt",
+      "tests/integration/test_trading_room_command_ports.py::test_malformed_preconditions_have_zero_effect_and_do_not_consume_csrf",
+    ]);
     await dataScenario("unit", "EVID-001", [
       "tests/unit/test_evidence_features.py::test_derives_approved_decimal_features_with_ordered_provenance",
       "tests/unit/test_evidence_features.py::test_wilder_rsi_has_deterministic_flat_and_all_loss_edges[closes0-50.000000000000000000]",
@@ -405,6 +416,14 @@ const actions = {
     await dataScenario("safety", "EVID-007", [
       "tests/safety/test_phase3_evidence_capabilities.py::test_evidence_worker_has_no_network_or_later_phase_capability",
       "tests/safety/test_phase3_evidence_capabilities.py::test_phase_three_registers_only_the_approved_evidence_command_route",
+    ], { schema_version: "woozoo.evidence.replay-manifest/v1", evidence_recipe_version: evidenceRecipeVersion });
+    await dataScenario("safety", "PTI-003", [
+      "tests/unit/test_evidence_builder.py::test_builder_fails_closed_when_an_interval_has_no_complete_window",
+      "tests/unit/test_evidence_builder.py::test_builder_rejects_a_terminal_window_that_is_stale_at_the_cutoffs",
+      "tests/unit/test_evidence_builder.py::test_builder_rejects_every_non_healthy_quality[degraded]",
+      "tests/unit/test_evidence_builder.py::test_builder_rejects_every_non_healthy_quality[stale]",
+      "tests/unit/test_evidence_builder.py::test_builder_rejects_every_non_healthy_quality[invalid]",
+      "tests/unit/test_evidence_builder.py::test_builder_rejects_every_non_healthy_quality[reconnecting]",
     ], { schema_version: "woozoo.evidence.replay-manifest/v1", evidence_recipe_version: evidenceRecipeVersion });
     await dataScenario("safety", "PAPER-SAFE-001", [
       "tests/safety/test_phase4_paper_boundaries.py::test_phase_four_has_no_active_paper_route_or_network_ingress",
@@ -478,10 +497,11 @@ const actions = {
   },
   "test:e2e": async () => {
     const api = await runPytestWithResultGate("tests/integration/test_trading_room_api.py", 7);
-    const playwright = await runPlaywrightWithResultGate(14);
+    const playwright = await runPlaywrightWithResultGate(17);
+    const ids = ["E2E-001", "E2E-002", "E2E-003", "E2E-004", "E2E-005"];
     await scenarios(
       "e2e",
-      ["E2E-001", "E2E-002", "E2E-003", "E2E-004", "E2E-005"],
+      ids,
       [
         api.command,
         playwright.command,
@@ -489,8 +509,23 @@ const actions = {
       api.testCount + playwright.testCount,
       true,
     );
+    for (const id of ids) {
+      const directory = resolve(root, "artifacts", "e2e", id);
+      await mkdir(directory, { recursive: true });
+      await writeFile(resolve(directory, "result.json"), await readFile(resolve(root, "artifacts", "e2e", `${id}.json`)));
+    }
   },
   "test:replay": async () => {
+    await dataScenario("replay", "PTI-001", [
+      "tests/unit/test_evidence_builder.py::test_builder_uses_only_closed_candles_inside_both_inclusive_time_boundaries",
+    ], { schema_version: "woozoo.evidence.replay-manifest/v1", evidence_recipe_version: evidenceRecipeVersion });
+    await dataScenario("replay", "PTI-002", [
+      "tests/unit/test_evidence_builder.py::test_builder_is_deterministic_and_prior_snapshot_is_immutable_under_late_arrival",
+      "tests/unit/test_evidence_builder.py::test_newer_cutoff_deterministically_replaces_a_same_bucket_late_materialization",
+    ], { schema_version: "woozoo.evidence.replay-manifest/v1", evidence_recipe_version: evidenceRecipeVersion });
+    await dataScenario("replay", "PTI-004", [
+      "tests/unit/test_evidence_builder.py::test_builder_is_deterministic_and_prior_snapshot_is_immutable_under_late_arrival",
+    ], { schema_version: "woozoo.evidence.replay-manifest/v1", evidence_recipe_version: evidenceRecipeVersion });
     await dataScenario("replay", "DATA-001", [
       "tests/replay/test_market_data_replay.py::test_data_001_recorded_replay_is_deterministic_and_deduplicated",
       "tests/unit/test_restart_recovery.py::test_restart_bootstraps_durable_state_and_recovers_pending_raw_once",
@@ -536,6 +571,17 @@ const actions = {
     ]);
   },
   "test:failure": async () => {
+    await dataScenario("failure", "AUTH-002", [
+      "tests/failure/test_trading_room_authorization_failures.py::test_auth_002_stale_state_before_human_decision_has_zero_order_effect",
+      "tests/integration/test_phase7_paper_first_attempt_authority.py::test_kill_first_attempt_stays_blocked_after_recovery_and_retry",
+      "tests/integration/test_phase7_paper_first_attempt_authority.py::test_missing_reconciliation_consumes_authorization_without_financial_effects",
+      "tests/integration/test_phase7_paper_first_attempt_authority.py::test_newer_changed_book_blocks_and_audit_projection_removes_nonce[BTCUSDT-10001-10002]",
+      "tests/integration/test_phase7_paper_first_attempt_authority.py::test_newer_changed_book_blocks_and_audit_projection_removes_nonce[ETHUSDT-2999-3001]",
+      "tests/integration/test_phase7_paper_first_attempt_authority.py::test_six_second_old_books_terminally_block_first_attempt",
+      "tests/integration/test_phase7_paper_first_attempt_authority.py::test_non_target_same_midpoint_book_drift_terminally_blocks_first_attempt",
+      "tests/integration/test_phase7_paper_first_attempt_authority.py::test_revocation_and_first_attempt_serialize_without_revoked_order",
+      "tests/integration/test_trading_room_command_ports.py::test_malformed_preconditions_have_zero_effect_and_do_not_consume_csrf",
+    ]);
     await dataScenario("failure", "DATA-003", [
       "tests/failure/test_market_data_failures.py::test_data_003_shutdown_is_control_only_and_reconnect_is_bounded",
       "tests/failure/test_market_data_supervisor.py::test_live_supervisor_reconnects_immediately_for_shutdown_then_backs_off",
@@ -578,6 +624,10 @@ const actions = {
       "tests/failure/test_paper_postgres_atomicity.py::test_injected_failure_rolls_back_every_authoritative_row[ledger-header]",
       "tests/failure/test_paper_postgres_atomicity.py::test_injected_failure_rolls_back_every_authoritative_row[ledger-entry]",
       "tests/failure/test_paper_postgres_atomicity.py::test_injected_failure_rolls_back_every_authoritative_row[outbox]",
+    ], await paperMetadata());
+    await dataScenario("failure", "ATOM-002", [
+      "tests/replay/test_paper_restart_replay.py::test_atom_002_ack_loss_retry_returns_same_order_without_new_effect",
+      "tests/integration/test_paper_postgres_persistence.py::test_concurrent_command_and_observation_retries_return_one_stored_effect",
     ], await paperMetadata());
     await riskDataScenario("failure", "KILL-001", [
       ...killFaults.map((name) => `tests/failure/test_kill_fault_matrix.py::test_kill_001_fault_matrix[${name}]`),

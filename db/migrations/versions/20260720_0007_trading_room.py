@@ -2390,7 +2390,7 @@ def upgrade() -> None:
               'symbol',run.symbol,'evidence_id',run.evidence_id,'provider','mock',
               'tool_count',0,'run_id',run.run_id,'status','COMPLETED',
               'report',jsonb_build_object(
-                'summary','Persisted Mock-LLM Paper analysis',
+                'summary','저장된 모의 언어 모델의 모의투자 분석',
                 'confidence','0.50','hold_reasons','[]'::jsonb),
               'proposal_id',run.payload->>'proposal_id',
               'risk_decision_id',decision.decision_id) AS payload

@@ -4,38 +4,38 @@ import type { ReactNode } from "react";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: { default: "Woozoo Trading Room", template: "%s · Woozoo Trading Room" },
-  description: "A local, human-approved Paper Trading operations room.",
+  title: { default: "우주 트레이딩룸", template: "%s · 우주 트레이딩룸" },
+  description: "사람의 승인을 거치는 로컬 모의투자 운영실입니다.",
 };
 
 const navigation = [
-  ["Trading room", "/"],
-  ["Paper desk", "/paper"],
-  ["Audit", "/audit"],
-  ["Operations", "/operations"],
+  ["트레이딩룸", "/"],
+  ["모의투자 데스크", "/paper"],
+  ["감사 기록", "/audit"],
+  ["운영", "/operations"],
 ] as const;
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
-    <html lang="en">
+    <html lang="ko">
       <body>
-        <a className="skip-link" href="#trading-room-content">Skip to trading room content</a>
+        <a className="skip-link" href="#trading-room-content">트레이딩룸 본문으로 건너뛰기</a>
         <header className="site-header">
-          <Link className="brand" href="/" aria-label="Woozoo Trading Room home">
-            <span className="brand-mark" aria-hidden="true">WZ</span>
-            <span><strong>Woozoo</strong><small>Trading Room</small></span>
+          <Link className="brand" href="/" aria-label="우주 트레이딩룸 홈">
+            <span className="brand-mark" aria-hidden="true">우주</span>
+            <span><strong>우주</strong><small>트레이딩룸</small></span>
           </Link>
-          <div className="mode-lock" title="External exchange execution is unavailable">
-            <span aria-hidden="true">●</span> Paper only
+          <div className="mode-lock" title="외부 거래소 주문 실행은 사용할 수 없습니다">
+            <span aria-hidden="true">●</span> 모의투자 전용
           </div>
-          <nav aria-label="Primary navigation">
+          <nav aria-label="주요 메뉴">
             {navigation.map(([label, href]) => <Link key={href} href={href}>{label}</Link>)}
           </nav>
-          <Link className="operator-link" href="/login">Operator session</Link>
+          <Link className="operator-link" href="/login">운영자 세션</Link>
         </header>
         <main id="trading-room-content" tabIndex={-1}>{children}</main>
         <footer>
-          <p>Local Paper operations · Human approval required · Financial authority remains server-side</p>
+          <p>로컬 모의투자 운영 · 사람 승인 필수 · 금융 판단 권한은 서버에 유지</p>
         </footer>
       </body>
     </html>

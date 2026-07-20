@@ -25,7 +25,7 @@ export function useResource<T>(path: `/api/v1/${string}`): ResourceState<T> & Re
       })
       .catch((error: unknown) => {
         if (!controller.signal.aborted) {
-          const detail = error instanceof Error ? error.message : "The control API is unavailable.";
+          const detail = error instanceof Error ? error.message : "제어 API를 사용할 수 없습니다.";
           setResource({ state: "hold", message: detail });
         }
       });
@@ -39,7 +39,7 @@ export function ResourceBoundary<T>({
   resource,
   children,
 }: Readonly<{ resource: ResourceState<T>; children: (value: T) => React.ReactNode }>) {
-  if (resource.state === "loading") return <p className="loading" aria-live="polite">Loading authoritative state…</p>;
-  if (resource.state === "hold") return <Hold>{resource.message} No action is available until authoritative state returns.</Hold>;
+  if (resource.state === "loading") return <p className="loading" aria-live="polite">서버 확정 상태를 불러오는 중…</p>;
+  if (resource.state === "hold") return <Hold>{resource.message} 서버 확정 상태가 복구될 때까지 어떤 작업도 수행할 수 없습니다.</Hold>;
   return children(resource.value);
 }

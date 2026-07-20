@@ -1,0 +1,283 @@
+{
+  "schema_version": "woozoo.phase-7-scenario-manifest/v1",
+  "phase": 7,
+  "release": "MVP / Release 1a",
+  "base_manifest": "docs/woozoo-trading-desk/phase-0/verification-strategy.md",
+  "base_manifest_version": 2,
+  "base_manifest_sha256": "bdb7c3d335efa5b2c5b486ae0ab19a1e2b391f01d71cc4a6fcde8ed2c7e344a3",
+  "phase_schedule_amendment": "docs/woozoo-trading-desk/phase-5/phase-0-contract-amendment.md",
+  "phase_schedule_amendment_sha256": "faab0952b4c60d6cc432bd699d549f52d9c9b43f75e4e7050b30e01bb70b6c68",
+  "implementation_contract": "docs/woozoo-trading-desk/phase-7/implementation-contract.md",
+  "implementation_contract_sha256": "7a63af1a08acc6488f0f15823d3b8075f723a25da43cc1b885f2f84e1965d702",
+  "fixed_seed": 0,
+  "timezone": "UTC",
+  "trading_mode": "paper",
+  "runtime_namespace": "paper",
+  "production_activation_phase": 7,
+  "external_network_enabled": false,
+  "phase_scope_and_forbidden_capabilities": "docs/woozoo-trading-desk/phase-state.json",
+  "regression_manifests": [
+    {
+      "path": "docs/woozoo-trading-desk/phase-7/p7-agent-regression-manifest.json",
+      "sha256": "2f2612b50bc03061fd44614fcb14d498ab72d867c5535ad623c2ecdf84346b8d"
+    },
+    {
+      "path": "docs/woozoo-trading-desk/phase-7/p7-risk-regression-manifest.json",
+      "sha256": "30919ef76721906d0799bed56ffe7b0cd1eed1391f20626fc57b3b072983f23f"
+    }
+  ],
+  "browser_matrix": {
+    "desktop_chromium": "1440x900",
+    "mobile_chromium": "360x800",
+    "operations_chromium": "1440x900"
+  },
+  "denominator": {
+    "rule": "Every Phase 0 manifest row whose required phase is at most 7 is mandatory; AUTH-001 and AUTH-002 are assigned to Phase 7 by the approved Phase 5 schedule amendment.",
+    "required_count": 43,
+    "required_ids": [
+      "CORE-001",
+      "PLAT-001",
+      "PLAT-002",
+      "PLAT-003",
+      "CONTRACT-001",
+      "SAFE-001",
+      "SAFE-002",
+      "SAFE-003",
+      "SAFE-004",
+      "DATA-001",
+      "DATA-002",
+      "DATA-003",
+      "DATA-004",
+      "DATA-005",
+      "DATA-006",
+      "DATA-007",
+      "PTI-001",
+      "PTI-002",
+      "PTI-003",
+      "PTI-004",
+      "FIN-001",
+      "FIN-002",
+      "FIN-003",
+      "FIN-004",
+      "ORD-001",
+      "ORD-002",
+      "ATOM-001",
+      "ATOM-002",
+      "RISK-001",
+      "RISK-002",
+      "KILL-001",
+      "KILL-002",
+      "AUTH-001",
+      "AUTH-002",
+      "AI-001",
+      "AI-002",
+      "SEC-001",
+      "SEC-002",
+      "E2E-001",
+      "E2E-002",
+      "E2E-003",
+      "E2E-004",
+      "E2E-005"
+    ],
+    "required_artifacts": {
+      "CORE-001": "artifacts/unit/CORE-001.json",
+      "PLAT-001": "artifacts/integration/PLAT-001.json",
+      "PLAT-002": "artifacts/integration/PLAT-002.json",
+      "PLAT-003": "artifacts/integration/PLAT-003.json",
+      "CONTRACT-001": "artifacts/contracts/CONTRACT-001.json",
+      "SAFE-001": "artifacts/safety/SAFE-001.json",
+      "SAFE-002": "artifacts/safety/SAFE-002.json",
+      "SAFE-003": "artifacts/safety/SAFE-003.json",
+      "SAFE-004": "artifacts/safety/SAFE-004.json",
+      "DATA-001": "artifacts/replay/DATA-001.json",
+      "DATA-002": "artifacts/replay/DATA-002.json",
+      "DATA-003": "artifacts/failure/DATA-003.json",
+      "DATA-004": "artifacts/failure/DATA-004.json",
+      "DATA-005": "artifacts/failure/DATA-005.json",
+      "DATA-006": "artifacts/failure/DATA-006.json",
+      "DATA-007": "artifacts/property/DATA-007.json",
+      "PTI-001": "artifacts/replay/PTI-001.json",
+      "PTI-002": "artifacts/replay/PTI-002.json",
+      "PTI-003": "artifacts/safety/PTI-003.json",
+      "PTI-004": "artifacts/replay/PTI-004.json",
+      "FIN-001": "artifacts/property/FIN-001.json",
+      "FIN-002": "artifacts/property/FIN-002.json",
+      "FIN-003": "artifacts/unit/FIN-003.json",
+      "FIN-004": "artifacts/integration/FIN-004.json",
+      "ORD-001": "artifacts/property/ORD-001.json",
+      "ORD-002": "artifacts/replay/ORD-002.json",
+      "ATOM-001": "artifacts/failure/ATOM-001.json",
+      "ATOM-002": "artifacts/failure/ATOM-002.json",
+      "RISK-001": "artifacts/replay/RISK-001.json",
+      "RISK-002": "artifacts/unit/RISK-002.json",
+      "KILL-001": "artifacts/failure/KILL-001.json",
+      "KILL-002": "artifacts/safety/KILL-002.json",
+      "AUTH-001": "artifacts/unit/AUTH-001.json",
+      "AUTH-002": "artifacts/failure/AUTH-002.json",
+      "AI-001": "artifacts/contracts/AI-001.json",
+      "AI-002": "artifacts/safety/AI-002.json",
+      "SEC-001": "artifacts/safety/SEC-001.json",
+      "SEC-002": "artifacts/safety/SEC-002.json",
+      "E2E-001": "artifacts/e2e/E2E-001/result.json",
+      "E2E-002": "artifacts/e2e/E2E-002/result.json",
+      "E2E-003": "artifacts/e2e/E2E-003/result.json",
+      "E2E-004": "artifacts/e2e/E2E-004/result.json",
+      "E2E-005": "artifacts/e2e/E2E-005/result.json"
+    },
+    "phase_7_required_count": 7,
+    "phase_7_required_ids": [
+      "AUTH-001",
+      "AUTH-002",
+      "E2E-001",
+      "E2E-002",
+      "E2E-003",
+      "E2E-004",
+      "E2E-005"
+    ],
+    "compatibility_evidence": {
+      "point_in_time": "PTI-001 through PTI-004 are executed directly at their original Phase 0 artifact paths in addition to the approved Phase 3 EVID regression set.",
+      "atomic_ack_loss": "ATOM-002 is executed at the original failure artifact path while retaining the approved Phase 4 replay regression artifact.",
+      "browser_bundles": "Each E2E flat result is copied byte-for-byte to artifacts/e2e/E2E-00N/result.json so the original directory evidence contract is satisfied."
+    }
+  },
+  "scenarios": [
+    {
+      "id": "AUTH-001",
+      "owner": "control-api+paper-engine",
+      "command": "corepack pnpm test:unit",
+      "artifact": "artifacts/unit/AUTH-001.json",
+      "test_nodes": [
+        "tests/unit/test_trading_room_security.py::test_auth_001_session_rotation_csrf_one_time_and_absolute_expiry",
+        "tests/unit/test_trading_room_security.py::test_auth_002_foreign_or_missing_origin_has_effect_zero",
+        "tests/unit/test_trading_room_security.py::test_logout_revokes_session_and_consumes_csrf",
+        "tests/contract/test_phase7_trading_contract.py::test_phase7_approval_chain_is_closed_hash_bound_and_nonce_distinct",
+        "tests/property/test_trading_room_properties.py::test_phase7_preview_hash_is_mutation_sensitive_and_notional_is_policy_capped",
+        "tests/failure/test_trading_room_authorization_failures.py::test_auth_002_stale_state_before_human_decision_has_zero_order_effect",
+        "tests/integration/test_trading_room_command_ports.py::test_concurrent_same_request_issues_once_without_browser_paper_effect",
+        "tests/integration/test_trading_room_command_ports.py::test_revocation_can_win_after_authorization_issue_before_first_paper_attempt",
+        "tests/integration/test_trading_room_command_ports.py::test_malformed_preconditions_have_zero_effect_and_do_not_consume_csrf"
+      ],
+      "source_sha256": [
+        "f0f5d8bc3968a79968a043ffb2db907c1fe57c0cdb11259a172bbb83c7893fba",
+        "1e6f45a5fc3c66fc4367eced009f53a2012dd624da0f4a71780e6dac1336a694",
+        "799fbd11362ba754a2a385d84d01f0ac4a37ed283de66553be5876e3524d69c3",
+        "9d5d32d65c8bf17db096b4ecd718969c96b4be5f613db594f8021b7ff2325abc",
+        "9aee089bc0aa944c9a96eec974f6cf583218bfdf99c34e6ca7dfdd04acf74738"
+      ],
+      "oracle": "Session, Origin, one-time CSRF, exact preview hashes, approval version and distinct authorization nonce are all valid; every stale, replayed, foreign or malformed counterexample has zero new financial effect."
+    },
+    {
+      "id": "AUTH-002",
+      "owner": "paper-engine+risk-engine",
+      "command": "corepack pnpm test:failure",
+      "artifact": "artifacts/failure/AUTH-002.json",
+      "test_nodes": [
+        "tests/failure/test_trading_room_authorization_failures.py::test_auth_002_stale_state_before_human_decision_has_zero_order_effect",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_kill_first_attempt_stays_blocked_after_recovery_and_retry",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_missing_reconciliation_consumes_authorization_without_financial_effects",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_newer_changed_book_blocks_and_audit_projection_removes_nonce[BTCUSDT-10001-10002]",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_newer_changed_book_blocks_and_audit_projection_removes_nonce[ETHUSDT-2999-3001]",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_six_second_old_books_terminally_block_first_attempt",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_non_target_same_midpoint_book_drift_terminally_blocks_first_attempt",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_revocation_and_first_attempt_serialize_without_revoked_order",
+        "tests/integration/test_trading_room_command_ports.py::test_malformed_preconditions_have_zero_effect_and_do_not_consume_csrf"
+      ],
+      "source_sha256": [
+        "9d5d32d65c8bf17db096b4ecd718969c96b4be5f613db594f8021b7ff2325abc",
+        "4acd82759605b70a5a3f1bbd9a7b4471b309d7affd715440886a7be8a9e68e97",
+        "9aee089bc0aa944c9a96eec974f6cf583218bfdf99c34e6ca7dfdd04acf74738"
+      ],
+      "oracle": "Kill, reconciliation, revocation, stale books and execution-quality drift are revalidated at the first Paper attempt; any failure consumes or blocks the authorization terminally with no order, hold, fill or ledger effect."
+    },
+    {
+      "id": "E2E-001",
+      "owner": "trading-room-web+control-api",
+      "command": "corepack pnpm test:e2e",
+      "artifact_bundle": "artifacts/e2e/E2E-001/",
+      "result_artifact": "artifacts/e2e/E2E-001/result.json",
+      "test_nodes": [
+        "tests/e2e/trading-room.spec.ts::[live] E2E-001",
+        "tests/integration/test_trading_room_api.py::test_e2e_001_authenticated_proposal_approval_creates_exactly_one_paper_order"
+      ],
+      "source_sha256": [
+        "b08d7493a61f77affed16d5eeaebf776f0669621cb632333154360a8a4c36945",
+        "dd85d3264e1a7374d1e34e8f7fde5a083fd8ae115b927d453941c5a4be9942d3"
+      ],
+      "oracle": "Local HTTPS login, healthy Evidence, deterministic analysis, Risk, exact server preview, human approval and one-time authorization create exactly one Paper order with matching API and ledger authority."
+    },
+    {
+      "id": "E2E-002",
+      "owner": "trading-room-web+control-api",
+      "command": "corepack pnpm test:e2e",
+      "artifact_bundle": "artifacts/e2e/E2E-002/",
+      "result_artifact": "artifacts/e2e/E2E-002/result.json",
+      "test_nodes": [
+        "tests/e2e/trading-room.spec.ts::[live] E2E-002",
+        "tests/integration/test_trading_room_api.py::test_e2e_002_stale_data_consumes_csrf_and_blocks_without_order"
+      ],
+      "source_sha256": [
+        "b08d7493a61f77affed16d5eeaebf776f0669621cb632333154360a8a4c36945",
+        "dd85d3264e1a7374d1e34e8f7fde5a083fd8ae115b927d453941c5a4be9942d3"
+      ],
+      "oracle": "Stale Evidence is displayed in Korean as a fail-closed hold, consumes the command token according to policy and creates no Proposal, authorization or Paper order."
+    },
+    {
+      "id": "E2E-003",
+      "owner": "trading-room-web+control-api+paper-engine",
+      "command": "corepack pnpm test:e2e",
+      "artifact_bundle": "artifacts/e2e/E2E-003/",
+      "result_artifact": "artifacts/e2e/E2E-003/result.json",
+      "test_nodes": [
+        "tests/e2e/trading-room.spec.ts::[live] E2E-003",
+        "tests/property/test_trading_room_properties.py::test_phase7_preview_hash_is_mutation_sensitive_and_notional_is_policy_capped",
+        "tests/property/test_trading_room_properties.py::test_phase7_idempotency_same_hash_replays_and_changed_hash_conflicts",
+        "tests/integration/test_trading_room_command_ports.py::test_ack_loss_restart_replays_durable_receipts_without_second_paper_effect",
+        "tests/integration/test_trading_room_command_ports.py::test_concurrent_same_request_issues_once_without_browser_paper_effect"
+      ],
+      "source_sha256": [
+        "b08d7493a61f77affed16d5eeaebf776f0669621cb632333154360a8a4c36945",
+        "799fbd11362ba754a2a385d84d01f0ac4a37ed283de66553be5876e3524d69c3",
+        "9aee089bc0aa944c9a96eec974f6cf583218bfdf99c34e6ca7dfdd04acf74738"
+      ],
+      "oracle": "Concurrent click, retry, reload and restart replay one durable response and one effect; any preview or request-hash mutation conflicts or blocks without financial effect."
+    },
+    {
+      "id": "E2E-004",
+      "owner": "trading-room-web+risk-engine+paper-engine",
+      "command": "corepack pnpm test:e2e",
+      "artifact_bundle": "artifacts/e2e/E2E-004/",
+      "result_artifact": "artifacts/e2e/E2E-004/result.json",
+      "test_nodes": [
+        "tests/e2e/trading-room.spec.ts::[live] E2E-004",
+        "tests/integration/test_trading_room_api.py::test_e2e_004_kill_cancels_open_order_and_manual_recovery_is_audited"
+      ],
+      "source_sha256": [
+        "b08d7493a61f77affed16d5eeaebf776f0669621cb632333154360a8a4c36945",
+        "dd85d3264e1a7374d1e34e8f7fde5a083fd8ae115b927d453941c5a4be9942d3"
+      ],
+      "oracle": "Kill activation cancels the open Paper order, permits no later fill and remains active until an authenticated operator supplies the bound incident reference after healthy reconciliation."
+    },
+    {
+      "id": "E2E-005",
+      "owner": "trading-room-web+control-api",
+      "command": "corepack pnpm test:e2e",
+      "artifact_bundle": "artifacts/e2e/E2E-005/",
+      "result_artifact": "artifacts/e2e/E2E-005/result.json",
+      "test_nodes": [
+        "tests/e2e/trading-room.spec.ts::[live] E2E-005",
+        "tests/integration/test_trading_room_api.py::test_audit_api_preserves_provenance_and_recursively_redacts_command_secrets"
+      ],
+      "source_sha256": [
+        "b08d7493a61f77affed16d5eeaebf776f0669621cb632333154360a8a4c36945",
+        "dd85d3264e1a7374d1e34e8f7fde5a083fd8ae115b927d453941c5a4be9942d3"
+      ],
+      "configuration_sources": [
+        {
+          "path": "playwright.config.ts",
+          "sha256": "b474092e95677c1fcec15fc54419ffa3e610ff3d8894dfe0bdc26bcc8ac7a99f"
+        }
+      ],
+      "oracle": "The live core journey completes on desktop and mobile with keyboard navigation, no horizontal overflow, zero serious or critical Axe findings, Korean presentation and recursively secret-free audit provenance."
+    }
+  ]
+}

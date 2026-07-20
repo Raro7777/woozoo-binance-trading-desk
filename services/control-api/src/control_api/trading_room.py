@@ -465,7 +465,7 @@ class InMemoryTradingRoom:
                 "run_id": run_id,
                 "status": "COMPLETED",
                 "report": {
-                    "summary": "Mock provider generated a replayable Paper research result.",
+                    "summary": "모의 제공자가 재생 가능한 모의투자 연구 결과를 생성했습니다.",
                     "confidence": "0.50",
                     "hold_reasons": [],
                 },

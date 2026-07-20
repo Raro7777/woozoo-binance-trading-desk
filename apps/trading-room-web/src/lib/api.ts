@@ -39,28 +39,63 @@ function isRecord(value: unknown): value is JsonRecord {
 }
 
 async function responseBody(response: Response): Promise<unknown> {
-  const contentType = response.headers.get("content-type") ?? "";
-  return contentType.includes("application/json") ? response.json() : response.text();
+  try {
+    const contentType = response.headers.get("content-type") ?? "";
+    return contentType.includes("application/json") ? await response.json() : await response.text();
+  } catch {
+    throw new ApiError("서버 응답 형식을 해석할 수 없습니다.", 502);
+  }
 }
+
+async function apiFetch(path: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(path, init);
+  } catch {
+    throw new ApiError("제어 API에 연결할 수 없습니다. 연결 상태를 확인한 뒤 다시 시도하세요.", 503);
+  }
+}
+
+const errorCodeLabels: Readonly<Record<string, string>> = {
+  CALLER_UNAUTHORIZED: "요청 권한이 없습니다.",
+  COMMAND_GUARD_REJECTED: "서버 안전 조건이 명령을 거부했습니다.",
+  CSRF_INVALID: "보안 토큰이 유효하지 않습니다. 세션을 새로 고친 뒤 다시 시도하세요.",
+  DEPENDENCY_UNAVAILABLE: "필수 서비스에 연결할 수 없습니다.",
+  EVIDENCE_NOT_FOUND: "요청한 근거를 찾을 수 없습니다.",
+  EVIDENCE_PROJECTION_UNAVAILABLE: "근거 조회 상태를 사용할 수 없습니다.",
+  EVIDENCE_UNAVAILABLE: "정상적인 근거 데이터를 사용할 수 없습니다.",
+  HTTPS_REQUIRED: "HTTPS 연결에서만 로그인할 수 있습니다.",
+  AUTHENTICATION_FAILED: "비밀번호가 올바르지 않습니다.",
+  IDEMPOTENCY_KEY_REQUIRED: "유효한 중복 방지 요청 키가 필요합니다.",
+  IDEMPOTENCY_CONFLICT: "같은 요청 키에 서로 다른 내용이 제출되었습니다.",
+  MARKET_NOT_FOUND: "요청한 시장을 찾을 수 없습니다.",
+  MARKET_PROJECTION_UNAVAILABLE: "시장 조회 상태를 사용할 수 없습니다.",
+  ORIGIN_INVALID: "허용되지 않은 요청 출처입니다.",
+  PRECONDITION_FAILED: "화면의 버전과 서버 상태가 일치하지 않습니다. 새로 고친 뒤 다시 시도하세요.",
+  REQUEST_VALIDATION_FAILED: "요청 값이 유효하지 않습니다.",
+  SCHEMA_INVALID: "요청 형식이 유효하지 않습니다.",
+  SESSION_REQUIRED: "운영자 로그인이 필요합니다.",
+  VERSION_MISMATCH: "화면의 상태가 최신 버전이 아닙니다. 새로 고친 뒤 다시 시도하세요.",
+};
 
 function errorMessage(body: unknown, fallback: string): string {
   if (isRecord(body)) {
-    for (const key of ["message", "detail", "reason"]) {
-      const value = body[key];
-      if (typeof value === "string" && value.length > 0) return value;
+    const nested = isRecord(body.error) ? body.error : isRecord(body.detail) ? body.detail : body;
+    const code = nested.code;
+    if (typeof code === "string" && code.length > 0) {
+      return `${errorCodeLabels[code] ?? "요청을 처리할 수 없습니다."} (${code})`;
     }
   }
-  return typeof body === "string" && body.length > 0 ? body : fallback;
+  return fallback;
 }
 
 export async function apiGet<T = unknown>(path: `/api/v1/${string}`): Promise<T> {
-  const response = await fetch(path, {
+  const response = await apiFetch(path, {
     cache: "no-store",
     credentials: "same-origin",
     headers: { Accept: "application/json" },
   });
   const body = await responseBody(response);
-  if (!response.ok) throw new ApiError(errorMessage(body, `Request failed (${response.status})`), response.status);
+  if (!response.ok) throw new ApiError(errorMessage(body, `요청에 실패했습니다 (${response.status})`), response.status);
   return body as T;
 }
 
@@ -68,7 +103,7 @@ async function csrfToken(): Promise<string> {
   const session = await apiGet<JsonRecord>("/api/v1/session");
   const token = session.csrf_token;
   if (typeof token !== "string" || token.length === 0) {
-    throw new ApiError("A fresh command token is unavailable. Refresh the session before retrying.", 409);
+    throw new ApiError("새 명령 토큰을 사용할 수 없습니다. 세션을 새로 고친 뒤 다시 시도하세요.", 409);
   }
   return token;
 }
@@ -87,7 +122,7 @@ export async function apiCommand<T = unknown>(
   if (token !== undefined) headers.set("X-CSRF-Token", token);
   if (options.ifMatch !== undefined) headers.set("If-Match", options.ifMatch);
 
-  const response = await fetch(path, {
+  const response = await apiFetch(path, {
     method: "POST",
     cache: "no-store",
     credentials: "same-origin",
@@ -96,7 +131,7 @@ export async function apiCommand<T = unknown>(
   });
   const responseValue = await responseBody(response);
   if (!response.ok) {
-    throw new ApiError(errorMessage(responseValue, `Command was not accepted (${response.status})`), response.status);
+    throw new ApiError(errorMessage(responseValue, `명령이 접수되지 않았습니다 (${response.status})`), response.status);
   }
   return responseValue as T;
 }
@@ -107,7 +142,7 @@ export async function apiVersionedCommand<T = unknown>(
   expectedVersion: number | undefined,
 ): Promise<T> {
   if (expectedVersion === undefined || !Number.isSafeInteger(expectedVersion) || expectedVersion < 0) {
-    throw new ApiError("Authoritative resource version is unavailable. The command is held.", 409);
+    throw new ApiError("서버 확정 리소스 버전을 사용할 수 없어 명령이 보류되었습니다.", 409);
   }
   return apiCommand<T>(path, { ...body, expected_version: expectedVersion }, { ifMatch: String(expectedVersion) });
 }

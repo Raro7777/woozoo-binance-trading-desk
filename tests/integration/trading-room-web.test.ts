@@ -5,8 +5,22 @@ import { resolve } from "node:path";
 import test from "node:test";
 
 import { approvalActionIssues } from "../../apps/trading-room-web/src/lib/approval-preview";
+import { statusLabel, statusTone } from "../../apps/trading-room-web/src/components/ui";
 
 const root = resolve(import.meta.dirname, "../..");
+
+test("PLAT-UI-STATUS translates Phase 7 failure states and fails unknown values closed", () => {
+  const failures = ["ERROR", "UNHEALTHY", "INCOMPLETE", "INVALIDATED"] as const;
+  for (const status of failures) {
+    assert.doesNotMatch(statusLabel(status), new RegExp(`^${status}$`));
+    assert.equal(statusTone(status), "danger");
+  }
+  assert.equal(statusLabel("PENDING_RISK"), "위험 판단 대기 중");
+  assert.equal(statusLabel("PENDING_APPROVAL"), "승인 대기 중");
+  assert.equal(statusLabel("AUTHORIZATION_ISSUED"), "실행 권한 발급됨");
+  assert.equal(statusLabel("UNRECOGNIZED_STATE"), "알 수 없는 상태 (UNRECOGNIZED_STATE)");
+  assert.equal(statusTone("UNRECOGNIZED_STATE"), "danger");
+});
 
 const canonicalApprovalView = {
   status: "READY",
@@ -46,7 +60,7 @@ test("PLAT-UI-APPROVAL renders only a complete closed canonical Paper preview", 
 
   const unknownField = structuredClone(canonicalApprovalView) as Record<string, any>;
   unknownField.paper_order_preview.unrendered_financial_authority = "1";
-  assert.ok(approvalActionIssues(unknownField).some((issue) => issue.includes("unknown")));
+  assert.ok(approvalActionIssues(unknownField).some((issue) => issue.includes("알 수 없는")));
 
   const unknownNestedField = structuredClone(canonicalApprovalView) as Record<string, any>;
   unknownNestedField.paper_order_preview.expected_slippage_inputs.hidden_input = "1";
@@ -54,7 +68,7 @@ test("PLAT-UI-APPROVAL renders only a complete closed canonical Paper preview", 
 
   const mismatchedHash = structuredClone(canonicalApprovalView) as Record<string, any>;
   mismatchedHash.paper_order_preview.paper_order_preview_hash = "0".repeat(64);
-  assert.ok(approvalActionIssues(mismatchedHash).some((issue) => issue.includes("hash")));
+  assert.ok(approvalActionIssues(mismatchedHash).some((issue) => issue.includes("해시")));
 });
 
 function delay(milliseconds: number): Promise<void> {
@@ -178,9 +192,9 @@ test("PLAT-001 serves the Phase 7 Trading Room routes without configuration disc
     assert.ok(response, `web shell did not start: ${output}`);
     assert.equal(response.status, 200);
     const body = await response.text();
-    assert.match(body, /Woozoo Trading Room/);
-    assert.match(body, /Paper only/i);
-    assert.match(body, /Skip to trading room content/i);
+    assert.match(body, /우주 트레이딩룸/);
+    assert.match(body, /모의투자 전용/);
+    assert.match(body, /트레이딩룸 본문으로 건너뛰기/);
     assert.doesNotMatch(body, /postgresql:|redis:|TRADING_MODE|testnet|api[_-]?key/i);
 
     const routes = [
@@ -195,8 +209,8 @@ test("PLAT-001 serves the Phase 7 Trading Room routes without configuration disc
       const routeResponse = await fetch(`http://127.0.0.1:${port}${route}`);
       assert.equal(routeResponse.status, 200, `${route} must be a real App Router route`);
       const routeBody = await routeResponse.text();
-      assert.match(routeBody, /Woozoo Trading Room/);
-      assert.match(routeBody, /HOLD|Sign in|Loading authoritative state/i);
+      assert.match(routeBody, /우주 트레이딩룸/);
+      assert.match(routeBody, /보류|로그인|서버 확정 상태를 불러오는 중/);
       assert.doesNotMatch(routeBody, /postgresql:|redis:|TRADING_MODE|testnet|api[_-]?key/i);
     }
   } finally {

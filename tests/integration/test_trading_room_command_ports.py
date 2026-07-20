@@ -499,7 +499,7 @@ class AnalysisProjectionRoom(PostgresTradingRoom):
             "run_id": run_id,
             "status": "COMPLETED",
             "report": {
-                "summary": "Persisted Mock-LLM Paper analysis",
+                "summary": "저장된 모의 언어 모델의 모의투자 분석",
                 "confidence": "0.50",
                 "hold_reasons": [],
             },

@@ -45,8 +45,8 @@ function refreshEvidence(symbol: "BTCUSDT" | "ETHUSDT") {
 
 async function login(page: Page) {
   await page.goto("/login");
-  await page.getByLabel("Local operator password").fill("paper-only-password");
-  await page.getByRole("button", { name: "Sign in securely" }).click();
+  await page.getByLabel("로컬 운영자 비밀번호").fill("paper-only-password");
+  await page.getByRole("button", { name: "안전하게 로그인" }).click();
   await expect(page).toHaveURL(/\/$/);
 }
 
@@ -131,7 +131,7 @@ async function mockControlApi(page: Page, commandDelay = 0) {
       },
       meta: { resource_version: null, next_cursor: null },
     });
-    if (path === "/api/v1/analysis-runs/run-001") return json(route, { run_id: "run-001", status: "SUCCEEDED", provider: "mock", evidence: { evidence_id: "evidence-1", digest: "sha256:evidence", as_of: "2026-07-20T12:00:00Z", knowledge_cutoff: "2026-07-20T12:00:00Z" }, report: { claims: [{ claim_id: "claim-1", text: "Evidence-bound observation." }] }, proposal: { proposal_id: "proposal-001", proposal_hash: "sha256:proposal-bound", status: "CREATED" } });
+    if (path === "/api/v1/analysis-runs/run-001") return json(route, { run_id: "run-001", status: "SUCCEEDED", provider: "mock", evidence: { evidence_id: "evidence-1", digest: "sha256:evidence", as_of: "2026-07-20T12:00:00Z", knowledge_cutoff: "2026-07-20T12:00:00Z" }, report: { claims: [{ claim_id: "claim-1", text: "근거에 결합된 관찰입니다." }] }, proposal: { proposal_id: "proposal-001", proposal_hash: "sha256:proposal-bound", status: "CREATED" } });
     if (path === "/api/v1/proposals/proposal-001/approval-view") return json(route, approvalView);
     if (path === "/api/v1/paper-portfolio") return json(route, portfolio);
     if (path === "/api/v1/audit-events") return json(route, { events: [{ event_id: "event-1", occurred_at: "2026-07-20T12:00:00Z", event_type: "paper.order.partially-filled.v1", aggregate_id: "paper-order-1", actor_id: "system", outcome: "RECORDED" }], next_cursor: "cursor-2" });
@@ -143,25 +143,25 @@ async function mockControlApi(page: Page, commandDelay = 0) {
 test("[live] E2E-001 HTTPS login, analysis, approval, automatic authorization worker, and one Paper order", async ({ page }, testInfo) => {
   test.setTimeout(60_000);
   const symbol = testInfo.project.name === "mobile-chromium" ? "ETHUSDT" : "BTCUSDT";
-  const analysisButton = symbol === "BTCUSDT" ? "Analyze BTC / USDT" : "Analyze ETH / USDT";
+  const analysisButton = symbol === "BTCUSDT" ? "BTC / USDT 분석" : "ETH / USDT 분석";
   page.on("dialog", (dialog) => dialog.accept());
   await page.goto("/login");
   expect(page.url()).toMatch(/^https:\/\/localhost:/);
-  await page.getByLabel("Local operator password").fill("paper-only-password");
-  await page.getByRole("button", { name: "Sign in securely" }).click();
+  await page.getByLabel("로컬 운영자 비밀번호").fill("paper-only-password");
+  await page.getByRole("button", { name: "안전하게 로그인" }).click();
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByLabel("Local operator password")).toHaveCount(0);
+  await expect(page.getByLabel("로컬 운영자 비밀번호")).toHaveCount(0);
   const initialPortfolioResponse = await page.request.get("/api/v1/paper-portfolio");
   expect(initialPortfolioResponse.ok()).toBe(true);
   const initialPortfolio = await initialPortfolioResponse.json() as { orders?: Array<Record<string, unknown>> };
   const initialOrderCount = initialPortfolio.orders?.length ?? 0;
   refreshEvidence(symbol);
   await page.reload();
-  await expect(page.getByText("healthy", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("정상", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("60000.000000000000000000", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("3000.000000000000000000", { exact: true }).first()).toBeVisible();
-  await expect(page.locator(".field", { hasText: "Watermark" }).first()).toContainText("#");
-  await expect(page.locator(".field", { hasText: "Connection" }).first()).not.toContainText("Not available");
+  await expect(page.locator(".field", { hasText: "워터마크" }).first()).toContainText("#");
+  await expect(page.locator(".field", { hasText: "연결" }).first()).not.toContainText("정보 없음");
   const analysisResponsePromise = page.waitForResponse((response) =>
     response.url().endsWith("/api/v1/analysis-runs") && response.request().method() === "POST"
   );
@@ -169,7 +169,7 @@ test("[live] E2E-001 HTTPS login, analysis, approval, automatic authorization wo
   const analysisResponse = await analysisResponsePromise;
   expect([200, 201]).toContain(analysisResponse.status());
   await expect(page).toHaveURL(/\/analysis\//);
-  await page.getByRole("link", { name: "Open approval view" }).click();
+  await page.getByRole("link", { name: "승인 화면 열기" }).click();
   await expect(page).toHaveURL(/\/proposals\//);
   const approvalResponse = await page.request.get(
     page.url().replace("/proposals/", "/api/v1/proposals/") + "/approval-view",
@@ -193,17 +193,17 @@ test("[live] E2E-001 HTTPS login, analysis, approval, automatic authorization wo
   ];
   expect(Object.keys(approval.paper_order_preview).sort()).toEqual([...expectedPreviewKeys].sort());
   for (const label of [
-    "Symbol", "Side", "Order type", "Time in force", "Quantity", "Limit price",
-    "Worst-case fee", "Worst-case hold", "Worst-case notional", "Best bid", "Best ask",
-    "Expected slippage method", "Embedded preview hash", "Bound preview hash",
+    "종목", "매수·매도", "주문 유형", "주문 유효 방식", "수량", "지정가",
+    "최악 조건 수수료", "최악 조건 보유액", "최악 조건 명목금액", "최우선 매수호가", "최우선 매도호가",
+    "예상 슬리피지 방식", "내장 미리보기 해시", "결합된 미리보기 해시",
   ]) {
     await expect(page.getByText(label, { exact: true })).toBeVisible();
   }
-  await expect(page.getByRole("button", { name: "Approve exact preview" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "정확한 미리보기 승인" })).toBeEnabled();
   const approvalCommandPromise = page.waitForResponse((response) =>
     response.url().endsWith("/api/v1/paper-approvals") && response.request().method() === "POST"
   );
-  await page.getByRole("button", { name: "Approve exact preview" }).click();
+  await page.getByRole("button", { name: "정확한 미리보기 승인" }).click();
   const approvalCommand = await approvalCommandPromise;
   expect(approvalCommand.ok()).toBe(true);
   expect(await approvalCommand.json()).toMatchObject({ result: "AUTHORIZATION_ISSUED" });
@@ -222,7 +222,7 @@ test("[live] E2E-001 HTTPS login, analysis, approval, automatic authorization wo
   await page.goto("/paper");
   await expect(page.getByRole("table").first().locator("tbody tr")).toHaveCount(finalOrders.length);
   await expect(page.getByText(symbol, { exact: true })).toBeVisible();
-  await expect(page.getByText("OPEN", { exact: true })).toHaveCount(
+  await expect(page.getByText("미체결", { exact: true })).toHaveCount(
     finalOrders.filter((order) => order.status === "OPEN").length,
   );
 });
@@ -232,13 +232,14 @@ test("[live] E2E-002 stale Evidence blocks analysis before a Proposal is actiona
   const responsePromise = page.waitForResponse((response) =>
     response.url().endsWith("/api/v1/analysis-runs") && response.request().method() === "POST"
   );
-  await page.getByRole("button", { name: "Analyze ETH / USDT" }).click();
+  await page.getByRole("button", { name: "ETH / USDT 분석" }).click();
   const response = await responsePromise;
   try {
     expect(response.status()).toBe(409);
     const body = await response.json() as { detail?: { code?: string } | string };
     expect(JSON.stringify(body)).toMatch(/EVIDENCE_UNAVAILABLE|healthy Evidence is unavailable/i);
     await expect(page).toHaveURL(/\/$/);
+    await expect(page.getByText(/정상적인 근거 데이터를 사용할 수 없습니다/)).toBeVisible();
   } finally {
     refreshEvidence("ETHUSDT");
   }
@@ -276,12 +277,12 @@ test("[live] E2E-004 Kill activation cancels open orders and guarded recovery co
   const activationResponsePromise = page.waitForResponse((response) =>
     response.url().endsWith("/api/v1/kill-switch/activate") && response.request().method() === "POST"
   );
-  await page.getByRole("button", { name: "Activate Kill Switch" }).click();
+  await page.getByRole("button", { name: "킬 스위치 활성화" }).click();
   const activationResponse = await activationResponsePromise;
   if (!activationResponse.ok()) throw new Error(`KILL_ACTIVATION_${activationResponse.status()}:${await activationResponse.text()}`);
-  await expect(page.getByText("ACTIVE", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("활성", { exact: true }).first()).toBeVisible();
   await page.goto("/paper");
-  await expect(page.getByText("CANCELLED", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("취소됨", { exact: true }).first()).toBeVisible();
   await expect.poll(async () => {
     const response = await page.request.get("/api/v1/paper-portfolio");
     const portfolioState = await response.json() as { ledger_checkpoint_id?: string };
@@ -303,16 +304,50 @@ test("[live] E2E-004 Kill activation cancels open orders and guarded recovery co
     recovery_allowed: true,
   });
   await page.goto("/operations");
-  for (const status of ["COMPLETE", "HEALTHY", "BALANCED"]) {
+  for (const status of ["완료", "정상", "균형"]) {
     await expect(page.getByText(status, { exact: true }).first()).toBeVisible();
   }
-  await expect(page.getByRole("button", { name: "Recover after verified resolution" })).toBeEnabled();
-  await page.getByRole("button", { name: "Recover after verified resolution" }).click();
-  await expect(page.getByText("INACTIVE", { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "해결 검증 후 복구" })).toBeEnabled();
+  await page.getByRole("button", { name: "해결 검증 후 복구" }).click();
+  await expect(page.getByText("비활성", { exact: true }).first()).toBeVisible();
 });
 
-test("[live] E2E-005 browser audit preserves provenance and recursively excludes secret material", async ({ page }) => {
+test("[live] E2E-005 desktop and mobile journey is keyboard accessible, Axe-clean, and audit-safe", async ({ page }, testInfo) => {
+  test.setTimeout(90_000);
   await login(page);
+  const symbol = testInfo.project.name === "mobile-chromium" ? "ETHUSDT" : "BTCUSDT";
+  const analysisButton = symbol === "BTCUSDT" ? "BTC / USDT 분석" : "ETH / USDT 분석";
+  const assertAccessible = async (path: string) => {
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    const results = await new AxeBuilder({ page }).analyze();
+    const material = results.violations.filter((violation) => violation.impact === "serious" || violation.impact === "critical");
+    expect(material, `${testInfo.project.name} ${path} serious/critical accessibility violations`).toEqual([]);
+    expect(await page.locator("body").evaluate((body) => body.scrollWidth <= window.innerWidth)).toBe(true);
+  };
+
+  refreshEvidence(symbol);
+  await page.reload();
+  await assertAccessible("/");
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("link", { name: "트레이딩룸 본문으로 건너뛰기" })).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#trading-room-content")).toBeFocused();
+
+  await page.getByRole("button", { name: analysisButton }).click();
+  await expect(page).toHaveURL(/\/analysis\//);
+  await expect(page.getByText("저장된 모의 언어 모델의 모의투자 분석", { exact: true })).toBeVisible();
+  await expect(page.getByText("생성됨", { exact: true })).toBeVisible();
+  await expect(page.getByText("모의 제공자", { exact: true })).toBeVisible();
+  await assertAccessible(page.url());
+  await page.getByRole("link", { name: "승인 화면 열기" }).click();
+  await expect(page).toHaveURL(/\/proposals\//);
+  await assertAccessible(page.url());
+
+  for (const path of ["/paper", "/audit", "/operations"]) {
+    await page.goto(path);
+    await assertAccessible(path);
+  }
+
   const response = await page.request.get("/api/v1/audit-events");
   expect(response.ok()).toBe(true);
   const body = await response.json() as { events: Array<Record<string, unknown>> };
@@ -333,14 +368,14 @@ test("[live] E2E-005 browser audit preserves provenance and recursively excludes
   });
   expect(forbidden).toEqual([]);
   await page.goto("/audit");
-  await expect(page.getByRole("columnheader", { name: "Producer" })).toBeVisible();
+  await expect(page.getByRole("columnheader", { name: "생성 주체" })).toBeVisible();
 });
 
 test("[ui-only] UI-001 renders an explicit HOLD when authoritative API state is unavailable", async ({ page }) => {
   await page.route("**/api/v1/**", (route) => json(route, { detail: "Authoritative projection unavailable" }, 503));
   await page.goto("/");
-  await expect(page.getByText("HOLD", { exact: true }).first()).toBeVisible();
-  await expect(page.getByText(/No action is available/).first()).toBeVisible();
+  await expect(page.getByText("보류", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText(/어떤 작업도 수행할 수 없습니다/).first()).toBeVisible();
 });
 
 test("[ui-only] UI-002 displays verbatim Decimal bindings and waits for approval receipt", async ({ page }) => {
@@ -357,13 +392,13 @@ test("[ui-only] UI-002 displays verbatim Decimal bindings and waits for approval
   });
   page.on("dialog", (dialog) => dialog.accept());
   await page.goto("/proposals/proposal-001");
-  await expect(page.locator(".field", { hasText: "Worst-case hold" }).getByText("68.191573450000000000", { exact: true })).toBeVisible();
+  await expect(page.locator(".field", { hasText: "최악 조건 보유액" }).getByText("68.191573450000000000", { exact: true })).toBeVisible();
   await expect(page.getByText("b".repeat(64), { exact: true })).toBeVisible();
   await expect(page.getByText("d".repeat(64), { exact: true })).toBeVisible();
   await expect(page.getByText("300", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Approve exact preview" }).click();
-  await expect(page.getByText("Awaiting authoritative command receipt…")).toBeVisible();
-  await expect(page.getByText("Approval recorded.")).toBeVisible();
+  await page.getByRole("button", { name: "정확한 미리보기 승인" }).click();
+  await expect(page.getByText("서버 확정 명령 처리 결과를 기다리는 중…")).toBeVisible();
+  await expect(page.getByText(/결정이 접수되었습니다/)).toBeVisible();
   expect(csrf).toBe("one-time-test-token");
   expect(ifMatch).toBe("17");
   const posted = JSON.parse(approvalBody) as Record<string, unknown>;
@@ -381,13 +416,13 @@ test("[ui-only] UI-003 keeps Paper cancellation and Kill controls receipt-driven
   page.on("dialog", (dialog) => dialog.accept("Operator verified incident"));
   await page.goto("/paper");
   await expect(page.getByText("0.00040000", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Cancel" }).click();
-  await expect(page.getByText("Cancelling…")).toBeVisible();
-  await expect(page.getByText("Authoritative command receipt recorded.")).toBeVisible();
+  await page.getByRole("button", { name: "취소" }).click();
+  await expect(page.getByText("취소 중…")).toBeVisible();
+  await expect(page.getByText(/취소가 접수되었습니다/)).toBeVisible();
   await page.goto("/operations");
-  await page.getByRole("button", { name: "Activate Kill Switch" }).click();
-  await expect(page.getByText("Awaiting authoritative command receipt…")).toBeVisible();
-  await expect(page.getByText("Authoritative command receipt recorded.")).toBeVisible();
+  await page.getByRole("button", { name: "킬 스위치 활성화" }).click();
+  await expect(page.getByText("서버 확정 명령 처리 결과를 기다리는 중…")).toBeVisible();
+  await expect(page.getByText(/명령이 접수되었습니다/)).toBeVisible();
 });
 
 test("[ui-only] UI-004 has keyboard-reachable navigation and zero serious or critical Axe findings", async ({ page }, testInfo) => {
@@ -395,14 +430,37 @@ test("[ui-only] UI-004 has keyboard-reachable navigation and zero serious or cri
   for (const path of ["/", "/analysis/run-001", "/proposals/proposal-001", "/paper", "/audit", "/operations"]) {
     await page.goto(path);
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    if (path === "/analysis/run-001") {
+      await expect(page.getByText("근거에 결합된 관찰입니다.", { exact: true })).toBeVisible();
+      await expect(page.getByText("생성됨", { exact: true })).toBeVisible();
+      await expect(page.getByText("모의 제공자", { exact: true })).toBeVisible();
+    }
+    if (path === "/audit") {
+      await expect(page.getByText("모의주문 부분 체결 (paper.order.partially-filled.v1)", { exact: true })).toBeVisible();
+    }
     const results = await new AxeBuilder({ page }).analyze();
     const material = results.violations.filter((violation) => violation.impact === "serious" || violation.impact === "critical");
     expect(material, `${testInfo.project.name} ${path} serious/critical accessibility violations`).toEqual([]);
   }
   await page.goto("/");
   await page.keyboard.press("Tab");
-  await expect(page.getByRole("link", { name: "Skip to trading room content" })).toBeFocused();
+  await expect(page.getByRole("link", { name: "트레이딩룸 본문으로 건너뛰기" })).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(page.locator("#trading-room-content")).toBeFocused();
   expect(await page.locator("body").evaluate((body) => body.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test("[ui-only] UI-005 localizes transport failures for reads and commands", async ({ page }) => {
+  await page.route("**/api/v1/**", (route) => route.abort("failed"));
+  await page.goto("/");
+  await expect(page.getByText(/제어 API에 연결할 수 없습니다/).first()).toBeVisible();
+  await expect(page.getByText(/Failed to fetch/)).toHaveCount(0);
+
+  await page.unroute("**/api/v1/**");
+  await mockControlApi(page);
+  await page.route("**/api/v1/analysis-runs", (route) => route.abort("failed"));
+  await page.reload();
+  await page.getByRole("button", { name: "BTC / USDT 분석" }).click();
+  await expect(page.getByText(/제어 API에 연결할 수 없습니다/).first()).toBeVisible();
+  await expect(page.getByText(/Failed to fetch/)).toHaveCount(0);
 });

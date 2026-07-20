@@ -20,7 +20,7 @@ export default defineConfig({
   },
   projects: [
     { name: "desktop-chromium", grepInvert: /E2E-004/, use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } } },
-    { name: "mobile-chromium", grep: /(?:E2E-001|UI-)/, use: { ...devices["Desktop Chrome"], viewport: { width: 360, height: 800 }, isMobile: true, hasTouch: true } },
+    { name: "mobile-chromium", grep: /(?:E2E-001|E2E-005|UI-)/, use: { ...devices["Desktop Chrome"], viewport: { width: 360, height: 800 }, isMobile: true, hasTouch: true } },
     { name: "operations-chromium", grep: /E2E-004/, use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } } },
   ],
   webServer: {
