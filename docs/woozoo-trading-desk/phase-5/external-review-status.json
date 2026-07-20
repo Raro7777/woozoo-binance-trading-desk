@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "phase": 5,
+  "reviewer_selector": "agy",
+  "reviewed_commit": "f45fd13c320c54fdc3bbf182c0bf84217bf4b528",
+  "attempts": 1,
+  "status": "external-review-unavailable",
+  "external_gate_satisfied": false,
+  "details": [
+    "The project selector returned agy; Claude remained disabled.",
+    "The read-only sandbox run produced no review because headless command permission was auto-denied.",
+    "A dangerously-skip-permissions retry was not used because it would weaken the required read-only boundary."
+  ],
+  "classification": "No admissible external PASS. Internal Safety QA and same-engine Codex cross-review remain separate and cannot satisfy external independence."
+}
