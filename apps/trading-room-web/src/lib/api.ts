@@ -82,7 +82,7 @@ function errorMessage(body: unknown, fallback: string): string {
     const nested = isRecord(body.error) ? body.error : isRecord(body.detail) ? body.detail : body;
     const code = nested.code;
     if (typeof code === "string" && code.length > 0) {
-      return `${errorCodeLabels[code] ?? "요청을 처리할 수 없습니다."} (${code})`;
+      return errorCodeLabels[code] ?? "알 수 없는 서버 오류로 요청을 처리할 수 없습니다.";
     }
   }
   return fallback;

@@ -121,7 +121,11 @@ try {
 }
 
 const nextCli = resolve(app, "node_modules/next/dist/bin/next");
-const build = spawnSync(process.execPath, [nextCli, "build", app], { cwd: root, stdio: "inherit" });
+const build = spawnSync(process.execPath, [nextCli, "build", app], {
+  cwd: root,
+  stdio: "inherit",
+  env: { ...process.env, WOOZOO_E2E_UI_ERRORS: "enabled" },
+});
 if (build.status !== 0) {
   stopInfrastructure();
   await removeTemporaryCertificate();
@@ -130,6 +134,7 @@ if (build.status !== 0) {
 const next = spawn(process.execPath, [nextCli, "start", app, "--hostname", "127.0.0.1", "--port", "3001"], {
   cwd: root,
   stdio: "inherit",
+  env: { ...process.env, WOOZOO_E2E_UI_ERRORS: "enabled" },
 });
 const api = spawn("python", ["-m", "uv", "run", "--locked", "python", "tests/e2e/live_control_api.py"], {
   cwd: root,
@@ -203,7 +208,7 @@ const proxy = createHttpsServer({
   });
   upstream.once("error", () => {
     if (!response.headersSent) response.writeHead(503, { "content-type": "text/plain" });
-    response.end("Authoritative local service unavailable");
+    response.end("서버 확정 로컬 서비스를 사용할 수 없습니다");
   });
   request.pipe(upstream);
 });

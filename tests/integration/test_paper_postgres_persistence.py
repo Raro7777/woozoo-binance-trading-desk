@@ -878,6 +878,27 @@ def test_atomic_write_is_durable_idempotent_and_restart_stable() -> None:
     write = complete_write(suffix="restart")
     first = PostgresPaperStore(DATABASE_URL).commit(write)
     assert first.created
+    with psycopg.connect(DATABASE_URL) as connection:
+        committed_effect_counts = connection.execute(
+            """
+            SELECT
+              (SELECT count(*) FROM paper_command_receipts WHERE account_id=%s),
+              (SELECT count(*) FROM paper_orders WHERE account_id=%s),
+              (SELECT count(*) FROM paper_fills fill
+                 JOIN paper_orders paper_order USING(order_id)
+                WHERE paper_order.account_id=%s),
+              (SELECT count(*) FROM paper_ledger_transactions WHERE account_id=%s),
+              (SELECT count(*) FROM paper_order_events event
+                 JOIN paper_orders paper_order USING(order_id)
+                WHERE paper_order.account_id=%s),
+              (SELECT count(*) FROM paper_outbox_links WHERE account_id=%s)
+            """,
+            (write.account_id,) * 6,
+        ).fetchone()
+    assert committed_effect_counts == (1, 1, 1, 4, 2, 2)
+
+    # Treat the successful commit response as lost. A newly constructed
+    # repository is the process boundary for the retry and may use only DB state.
     restarted = PostgresPaperStore(DATABASE_URL)
     assert restarted.semantic_digest(write.account_id) == first.semantic_digest
 
@@ -885,6 +906,24 @@ def test_atomic_write_is_durable_idempotent_and_restart_stable() -> None:
     assert not retry.created
     assert retry.response == first.response
     assert retry.semantic_digest == first.semantic_digest
+    with psycopg.connect(DATABASE_URL) as connection:
+        replayed_effect_counts = connection.execute(
+            """
+            SELECT
+              (SELECT count(*) FROM paper_command_receipts WHERE account_id=%s),
+              (SELECT count(*) FROM paper_orders WHERE account_id=%s),
+              (SELECT count(*) FROM paper_fills fill
+                 JOIN paper_orders paper_order USING(order_id)
+                WHERE paper_order.account_id=%s),
+              (SELECT count(*) FROM paper_ledger_transactions WHERE account_id=%s),
+              (SELECT count(*) FROM paper_order_events event
+                 JOIN paper_orders paper_order USING(order_id)
+                WHERE paper_order.account_id=%s),
+              (SELECT count(*) FROM paper_outbox_links WHERE account_id=%s)
+            """,
+            (write.account_id,) * 6,
+        ).fetchone()
+    assert replayed_effect_counts == committed_effect_counts
 
     checkpoint = restarted.reconcile(
         write.account_id, checkpoint_id="checkpoint-restart", created_at=NOW

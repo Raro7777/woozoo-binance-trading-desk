@@ -239,7 +239,7 @@ def test_phase_three_evidence_is_atomic_idempotent_and_append_only(
                         Jsonb(
                             {
                                 "session_id": session_id,
-                                "stream": interval,
+                                "stream": f"btcusdt@kline_{interval}",
                                 "last_sequence": sequence,
                                 "observed_at": close_time.isoformat(),
                             }
@@ -303,7 +303,7 @@ def test_phase_three_evidence_is_atomic_idempotent_and_append_only(
                 Jsonb(
                     {
                         "session_id": session_id,
-                        "stream": "1m",
+                        "stream": "btcusdt@kline_1m",
                         "last_sequence": sequence,
                         "observed_at": as_of.isoformat(),
                     }

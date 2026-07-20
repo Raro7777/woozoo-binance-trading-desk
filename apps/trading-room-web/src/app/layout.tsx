@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { headers } from "next/headers";
 import type { ReactNode } from "react";
 import "./globals.css";
 
@@ -15,7 +16,13 @@ const navigation = [
   ["운영", "/operations"],
 ] as const;
 
-export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
+export default async function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
+  if (process.env.WOOZOO_E2E_UI_ERRORS === "enabled") {
+    const requestHeaders = await headers();
+    if (requestHeaders.get("x-woozoo-e2e-global-error") === "enabled") {
+      throw new Error("E2E_GLOBAL_RENDER_ERROR");
+    }
+  }
   return (
     <html lang="ko">
       <body>

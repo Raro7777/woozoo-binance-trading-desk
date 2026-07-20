@@ -12,7 +12,8 @@ import { Field, Panel, Status } from "./ui";
 
 function MarketCard({ symbol, value }: Readonly<{ symbol: string; value: MarketStatusEnvelopeV1 }>) {
   const { data } = value;
-  const watermarkText = `${data.watermark.stream} · #${data.watermark.last_sequence}`;
+  const streamLabel = data.watermark.stream === "bookTicker" ? "최우선 호가" : "알 수 없는 시장 자료";
+  const watermarkText = `${streamLabel} · #${data.watermark.last_sequence}`;
   return (
     <Panel title={symbol}>
       <div className="hero-status"><Status value={data.quality} /></div>
@@ -37,7 +38,7 @@ export function MarketStatus() {
         <h2 id="operator-state">운영자 경계</h2>
         <ResourceBoundary resource={session}>{(value) => {
           const record = asRecord(value);
-          const state = textValue(record, "state", "status") ?? "AUTHENTICATED";
+          const state = textValue(record, "state", "status") ?? "UNKNOWN";
           return <><Status value={state} /><p>세션에 결합된 명령에는 새로운 일회용 토큰이 필요합니다.</p></>;
         }}</ResourceBoundary>
         <div className="actions"><Link className="button secondary" href="/login">세션 관리</Link></div>

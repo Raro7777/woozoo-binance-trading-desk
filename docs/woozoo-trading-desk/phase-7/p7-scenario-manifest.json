@@ -8,7 +8,7 @@
   "phase_schedule_amendment": "docs/woozoo-trading-desk/phase-5/phase-0-contract-amendment.md",
   "phase_schedule_amendment_sha256": "faab0952b4c60d6cc432bd699d549f52d9c9b43f75e4e7050b30e01bb70b6c68",
   "implementation_contract": "docs/woozoo-trading-desk/phase-7/implementation-contract.md",
-  "implementation_contract_sha256": "80c99c0a48404fb787288bcceae8e671a1d24d80579d5efbd7ef87c821266eaf",
+  "implementation_contract_sha256": "ade18ce3fa6bd5befa76d727a6e89ccdfd4bb38583c1672fcd06086c3eb97d0a",
   "fixed_seed": 0,
   "timezone": "UTC",
   "trading_mode": "paper",
@@ -164,7 +164,7 @@
         "tests/unit/test_evidence_builder.py::test_builder_is_deterministic_and_prior_snapshot_is_immutable_under_late_arrival",
         "tests/unit/test_evidence_builder.py::test_newer_cutoff_deterministically_replaces_a_same_bucket_late_materialization"
       ],
-      "source_sha256": ["581a32958fb3abd4e32dcfe8d3451a406829e59f2574cd8319ed9a2c1856c20f"],
+      "source_sha256": ["6279a0acfd63435bc657b146c8db2d30a0bf299ad288811fe8ddb5f698bff581"],
       "oracle": "A late arrival cannot mutate an earlier cutoff, while a newer explicit cutoff produces a deterministic replacement snapshot."
     },
     {
@@ -173,6 +173,15 @@
       "command": "corepack pnpm test:safety",
       "artifact": "artifacts/safety/PTI-003.json",
       "test_nodes": [
+        "tests/unit/test_evidence_builder.py::test_pti_003_missing_raw_id_cannot_enter_evidence",
+        "tests/unit/test_evidence_builder.py::test_pti_003_stale_collector_fails_closed",
+        "tests/unit/test_evidence_builder.py::test_pti_003_watermark_binds_each_approved_kline_stream[1m]",
+        "tests/unit/test_evidence_builder.py::test_pti_003_watermark_binds_each_approved_kline_stream[5m]",
+        "tests/unit/test_evidence_builder.py::test_pti_003_watermark_binds_each_approved_kline_stream[1h]",
+        "tests/unit/test_evidence_builder.py::test_pti_003_watermark_binds_each_approved_kline_stream[4h]",
+        "tests/unit/test_evidence_builder.py::test_pti_003_raw_stream_mismatch_fails_closed",
+        "tests/unit/test_evidence_builder.py::test_pti_003_incomplete_watermark_fails_closed",
+        "tests/unit/test_phase7_agent_risk_services.py::test_unhealthy_or_future_evidence_persists_audited_hold_without_proposal",
         "tests/unit/test_evidence_builder.py::test_builder_fails_closed_when_an_interval_has_no_complete_window",
         "tests/unit/test_evidence_builder.py::test_builder_rejects_a_terminal_window_that_is_stale_at_the_cutoffs",
         "tests/unit/test_evidence_builder.py::test_builder_rejects_every_non_healthy_quality[degraded]",
@@ -180,8 +189,11 @@
         "tests/unit/test_evidence_builder.py::test_builder_rejects_every_non_healthy_quality[invalid]",
         "tests/unit/test_evidence_builder.py::test_builder_rejects_every_non_healthy_quality[reconnecting]"
       ],
-      "source_sha256": ["581a32958fb3abd4e32dcfe8d3451a406829e59f2574cd8319ed9a2c1856c20f"],
-      "oracle": "Missing, stale or non-healthy point-in-time inputs fail closed without producing actionable Evidence."
+      "source_sha256": [
+        "6279a0acfd63435bc657b146c8db2d30a0bf299ad288811fe8ddb5f698bff581",
+        "542cf03d41eaf9e7b01dbb924f3a8d977a49ddb5be59a996076264de55b27d47"
+      ],
+      "oracle": "Every approved kline interval binds the exact raw stream; a missing raw ID, stale collector session, incomplete or mismatched watermark, missing terminal window, stale cutoff or non-healthy quality fails closed without producing actionable Evidence."
     },
     {
       "id": "PTI-004",
@@ -191,7 +203,7 @@
       "test_nodes": [
         "tests/unit/test_evidence_builder.py::test_pti_004_uses_only_explicit_clocks_and_never_reads_wall_clock"
       ],
-      "source_sha256": ["581a32958fb3abd4e32dcfe8d3451a406829e59f2574cd8319ed9a2c1856c20f"],
+      "source_sha256": ["6279a0acfd63435bc657b146c8db2d30a0bf299ad288811fe8ddb5f698bff581"],
       "oracle": "Changing the simulated wall clock leaves the Evidence digest identical and the wall-clock read canary remains untouched."
     },
     {
@@ -202,12 +214,13 @@
       "test_nodes": [
         "tests/replay/test_paper_restart_replay.py::test_atom_002_ack_loss_retry_returns_same_order_without_new_effect",
         "tests/integration/test_trading_room_command_ports.py::test_ack_loss_restart_replays_durable_receipts_without_second_paper_effect",
+        "tests/integration/test_paper_postgres_persistence.py::test_atomic_write_is_durable_idempotent_and_restart_stable",
         "tests/integration/test_paper_postgres_persistence.py::test_concurrent_command_and_observation_retries_return_one_stored_effect"
       ],
       "source_sha256": [
         "c69138d0379deaa38656b20c1ef50fe08d586d2da3348f0b9b1a8d9117bf0026",
         "9aee089bc0aa944c9a96eec974f6cf583218bfdf99c34e6ca7dfdd04acf74738",
-        "0afbcb43e6cfe47bc8c1911ba99e29fe038a35f82e6cb0c92772b2d27ed89cc9"
+        "048b8b1b6df60f933347e53875a053435a93540b943d7aa79533f7dea439b05e"
       ],
       "oracle": "A committed response lost before acknowledgement is replayed after restart with zero additional order, fill, posting or event effect."
     }
@@ -256,7 +269,7 @@
       ],
       "source_sha256": [
         "9d5d32d65c8bf17db096b4ecd718969c96b4be5f613db594f8021b7ff2325abc",
-        "d42e3685539e36b3fb78bd14a6ac2d75c735c0c357d2c3bb4b835cc3515484b3",
+        "724b8ac22e0617ce5f7f93b83e94569e16e2b756a245286e88aec8f0360d574f",
         "9aee089bc0aa944c9a96eec974f6cf583218bfdf99c34e6ca7dfdd04acf74738"
       ],
       "oracle": "Kill, reconciliation, revocation, stale books and execution-quality drift are revalidated at the first Paper attempt; any failure consumes or blocks the authorization terminally with no order, hold, fill or ledger effect."
@@ -271,6 +284,9 @@
         "tests/e2e/trading-room.spec.ts::[live] E2E-001",
         "tests/integration/test_trading_room_api.py::test_e2e_001_authenticated_proposal_approval_creates_exactly_one_paper_order",
         "tests/integration/test_phase7_paper_first_attempt_authority.py::test_authorized_order_recorded_book_partial_fill_then_cancel_is_atomic_and_idempotent",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_recorded_book_rejects_malformed_or_unbound_raw_provenance_without_effects",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_no_fill_replay_returns_immutable_first_response_after_later_fill",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_same_side_orders_compete_in_accepted_at_order_id_order_for_one_book_budget",
         "tests/integration/test_phase7_paper_first_attempt_authority.py::test_recorded_book_revalidates_current_stream_health_and_defers_stale_event",
         "tests/integration/test_phase7_paper_first_attempt_authority.py::test_recorded_book_kill_barrier_holds_without_any_paper_effect",
         "tests/unit/test_paper_engine.py::test_side_partitioned_book_observations_keep_canonical_order_and_budgets_independent",
@@ -284,28 +300,28 @@
         "tests/integration/test_trading_room_migration_contract.py::test_phase7_migration_upgrades_with_digest_only_storage_and_least_privilege"
       ],
       "source_sha256": [
-        "587c8f26ee5cf02ee81a7f49413c2b6dcafe5d71d5a784616b17e5d8bc766af4",
+        "a7eb1bb0ebff17f5461c10500a0f09e0e2d11b637980c1af71dfbf19159cbaa4",
         "dd85d3264e1a7374d1e34e8f7fde5a083fd8ae115b927d453941c5a4be9942d3",
-        "d42e3685539e36b3fb78bd14a6ac2d75c735c0c357d2c3bb4b835cc3515484b3",
+        "724b8ac22e0617ce5f7f93b83e94569e16e2b756a245286e88aec8f0360d574f",
         "07cb535db57cca0e4f13b44a2ad75a2716461abe283517bb6cfe67d0409757c6",
         "cf2f8ed902b1e7bebd7b362843c67c2c947c35d56b6304693d5cb19fc2ae6632",
-        "1acfe2f8bf80577b641ad4ab92766dff60cdb6332ea35b81256dca9eb9535152"
+        "e54f7490fe897a8507abb6823b886058880ad9a6d0831c50530c988b90a4b2f2"
       ],
       "configuration_sources": [
         {
           "path": "tests/e2e/live_control_api.py",
-          "sha256": "e0d4268894dd8e29d0bacb311e6d5b99f212aa5a2699ffa168c570426cc68391"
+          "sha256": "e4e8cfb2ac99c0602942088226e762d9ccb4ec1d9a3de4eae9a84ce8a2f5465a"
         },
         {
           "path": "tests/e2e/https-web-server.mjs",
-          "sha256": "221bb2116476ae9a80dcff1a8cf87d298cef4652334e78370d1e55091115ed5d"
+          "sha256": "56320448610d1af28ed5db2d36a5477f4445a62282e177eceb8f43f6e2c42223"
         },
         {
           "path": "playwright.config.ts",
           "sha256": "b474092e95677c1fcec15fc54419ffa3e610ff3d8894dfe0bdc26bcc8ac7a99f"
         }
       ],
-      "oracle": "Local HTTPS login, healthy Evidence, deterministic analysis, Risk, exact server preview, human approval and one-time authorization create exactly one Paper order. A post-acceptance public recorded book produces an authoritative partial fill with received-time provenance; same-side canonical ordering, current session/watermark/market health, transient HOLD handling, unexpected-failure behavior and least-privilege DB access are exact-node checked. The desktop operator cancellation preserves matching API, event and ledger authority, and the mobile outstanding order remains an exact Kill-cancellation precondition for E2E-004."
+      "oracle": "Local HTTPS login, healthy Evidence, deterministic analysis, Risk, exact server preview, human approval and one-time authorization create exactly one Paper order. A post-acceptance public recorded book produces an authoritative partial fill only when raw bytes, raw hash and normalized bid/ask are exactly bound; same-side competing orders share one canonical liquidity budget, NO_FILL replay remains immutable after later state changes, and received-time provenance, current session/watermark/market health, transient HOLD handling, unexpected-failure behavior and least-privilege DB access are exact-node checked. The desktop operator cancellation preserves matching API, event and ledger authority, and the mobile outstanding order remains an exact Kill-cancellation precondition for E2E-004."
     },
     {
       "id": "E2E-002",
@@ -318,7 +334,7 @@
         "tests/integration/test_trading_room_api.py::test_e2e_002_stale_data_consumes_csrf_and_blocks_without_order"
       ],
       "source_sha256": [
-        "587c8f26ee5cf02ee81a7f49413c2b6dcafe5d71d5a784616b17e5d8bc766af4",
+        "a7eb1bb0ebff17f5461c10500a0f09e0e2d11b637980c1af71dfbf19159cbaa4",
         "dd85d3264e1a7374d1e34e8f7fde5a083fd8ae115b927d453941c5a4be9942d3"
       ],
       "oracle": "Stale Evidence is displayed in Korean as a fail-closed hold, consumes the command token according to policy and creates no Proposal, authorization or Paper order."
@@ -337,7 +353,7 @@
         "tests/integration/test_trading_room_command_ports.py::test_concurrent_same_request_issues_once_without_browser_paper_effect"
       ],
       "source_sha256": [
-        "587c8f26ee5cf02ee81a7f49413c2b6dcafe5d71d5a784616b17e5d8bc766af4",
+        "a7eb1bb0ebff17f5461c10500a0f09e0e2d11b637980c1af71dfbf19159cbaa4",
         "799fbd11362ba754a2a385d84d01f0ac4a37ed283de66553be5876e3524d69c3",
         "9aee089bc0aa944c9a96eec974f6cf583218bfdf99c34e6ca7dfdd04acf74738"
       ],
@@ -354,7 +370,7 @@
         "tests/integration/test_trading_room_api.py::test_e2e_004_kill_cancels_open_order_and_manual_recovery_is_audited"
       ],
       "source_sha256": [
-        "587c8f26ee5cf02ee81a7f49413c2b6dcafe5d71d5a784616b17e5d8bc766af4",
+        "a7eb1bb0ebff17f5461c10500a0f09e0e2d11b637980c1af71dfbf19159cbaa4",
         "dd85d3264e1a7374d1e34e8f7fde5a083fd8ae115b927d453941c5a4be9942d3"
       ],
       "oracle": "Kill activation cancels the open Paper order, permits no later fill and remains active until an authenticated operator supplies the bound incident reference after healthy reconciliation."
@@ -370,7 +386,7 @@
         "tests/integration/test_trading_room_api.py::test_audit_api_preserves_provenance_and_recursively_redacts_command_secrets"
       ],
       "source_sha256": [
-        "587c8f26ee5cf02ee81a7f49413c2b6dcafe5d71d5a784616b17e5d8bc766af4",
+        "a7eb1bb0ebff17f5461c10500a0f09e0e2d11b637980c1af71dfbf19159cbaa4",
         "dd85d3264e1a7374d1e34e8f7fde5a083fd8ae115b927d453941c5a4be9942d3"
       ],
       "configuration_sources": [

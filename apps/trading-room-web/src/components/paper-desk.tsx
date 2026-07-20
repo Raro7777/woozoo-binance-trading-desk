@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { apiVersionedCommand, asRecord, asRecords, textValue, versionValue, type JsonRecord } from "../lib/api";
 import { ResourceBoundary, useResource } from "./resource";
+import { CommandDialog } from "./command-dialog";
 import { diagnosticLabel, Field, Hold, Panel, Status, statusLabel } from "./ui";
 
 export function PaperDesk() {
@@ -10,10 +11,11 @@ export function PaperDesk() {
   const [message, setMessage] = useState("주문 변경에는 새로운 명령 토큰과 서버 확정 처리 결과가 필요합니다.");
   const [pendingOrder, setPendingOrder] = useState<string>();
   const [error, setError] = useState(false);
+  const [confirmOrder, setConfirmOrder] = useState<JsonRecord>();
 
   async function cancel(order: JsonRecord) {
     const orderId = textValue(order, "order_id", "id");
-    if (orderId === undefined || !window.confirm(`모의주문 ${orderId}을(를) 취소하시겠습니까?`)) return;
+    if (orderId === undefined) return;
     setPendingOrder(orderId);
     setError(false);
     setMessage("취소를 제출하는 중입니다. 확인될 때까지 기존 주문 상태가 표시됩니다…");
@@ -61,7 +63,7 @@ export function PaperDesk() {
             <section className="panel" aria-label="사용 가능 기준자산 잔고">
               <p className="eyebrow">사용 가능 USDT</p>
               <p className="metric">{textValue(portfolio, "available_quote")}</p>
-              <p className="muted">서버가 제공한 정확한 Decimal 문자열</p>
+              <p className="muted">서버가 제공한 정확한 고정 소수점 문자열</p>
             </section>
           )}
           {balances.map((balance) => (
@@ -95,7 +97,7 @@ export function PaperDesk() {
                     <td className="mono">{orderId}</td><td>{textValue(order, "symbol")}</td><td>{textValue(order, "side") === "BUY" ? "매수" : textValue(order, "side") === "SELL" ? "매도" : "알 수 없음"}</td>
                     <td className="mono">{textValue(order, "quantity")}</td><td className="mono">{textValue(order, "limit_price")}</td>
                     <td className="mono">{textValue(order, "filled_quantity")}</td><td><Status value={status} /></td>
-                    <td><button className="secondary" disabled={!cancellable || pendingOrder !== undefined} onClick={() => void cancel(order)}>{pendingOrder === orderId ? "취소 중…" : "취소"}</button></td>
+                    <td><button className="secondary" disabled={!cancellable || pendingOrder !== undefined} onClick={() => setConfirmOrder(order)}>{pendingOrder === orderId ? "취소 중…" : "취소"}</button></td>
                   </tr>;
                 })}</tbody>
               </table>
@@ -109,6 +111,19 @@ export function PaperDesk() {
               return <Field key={textValue(receipt, "command_id", "receipt_id") ?? index} label={textValue(receipt, "command_id", "receipt_id") ?? "처리 결과"} value={`${statusLabel(textValue(receipt, "status") ?? "UNKNOWN")} · ${reason === undefined ? "사유 없음" : diagnosticLabel(reason)}`} mono />;
             })}</dl>}
           </section>
+          <CommandDialog
+            open={confirmOrder !== undefined}
+            title="모의주문 취소"
+            description={`모의주문 ${textValue(confirmOrder, "order_id", "id") ?? "정보 없음"}의 남은 수량을 취소합니다. 서버 처리 결과가 확정될 때까지 현재 상태를 유지합니다.`}
+            confirmLabel="취소 제출"
+            danger
+            onCancel={() => setConfirmOrder(undefined)}
+            onConfirm={() => {
+              const order = confirmOrder;
+              setConfirmOrder(undefined);
+              if (order !== undefined) void cancel(order);
+            }}
+          />
         </div>
       );
     }}</ResourceBoundary>

@@ -94,10 +94,20 @@ async function runPlaywrightWithResultGate(expectedTestCount) {
       throw new Error(`${id} must execute in every declared live browser project`);
     }
   }
-  for (const id of ["UI-001", "UI-002", "UI-003", "UI-004", "UI-005"]) {
+  for (const id of ["UI-001", "UI-002", "UI-003", "UI-004", "UI-005", "UI-006"]) {
     if (!xml.includes(`[ui-only] ${id}`)) throw new Error(`${id} must remain explicitly isolated UI-only coverage`);
   }
-  return { command, testCount: counts.tests };
+  return {
+    command,
+    testCount: counts.tests,
+    gate: {
+      framework: "playwright-junit",
+      tests: counts.tests,
+      errors: counts.errors,
+      failures: counts.failures,
+      skipped: counts.skipped,
+    },
+  };
 }
 
 async function runPytestWithResultGate(testPath, expectedTestCount) {
@@ -122,7 +132,17 @@ async function runPytestWithResultGate(testPath, expectedTestCount) {
   ) {
     throw new Error(`pytest ${testPath} must execute exactly ${expectedTestCount} tests with zero failure, error, or skip`);
   }
-  return { command, testCount: counts.tests };
+  return {
+    command,
+    testCount: counts.tests,
+    gate: {
+      framework: "pytest-junit",
+      tests: counts.tests,
+      errors: counts.errors,
+      failures: counts.failures,
+      skipped: counts.skipped,
+    },
+  };
 }
 
 async function runPytestNodesWithResultGate(resultLabel, nodeIds) {
@@ -150,7 +170,109 @@ async function runPytestNodesWithResultGate(resultLabel, nodeIds) {
   ) {
     throw new Error(`${resultLabel} must execute every declared pytest node with zero failure, error, or skip`);
   }
-  return { command, testCount: counts.tests };
+  return {
+    command,
+    testCount: counts.tests,
+    gate: {
+      framework: "pytest-junit",
+      tests: counts.tests,
+      errors: counts.errors,
+      failures: counts.failures,
+      skipped: counts.skipped,
+    },
+  };
+}
+
+async function runPytestSuiteWithResultGate(resultLabel, testPaths) {
+  const resultPath = resolve(root, "artifacts", ".pytest-results", `${resultLabel}.xml`);
+  await mkdir(resolve(resultPath, ".."), { recursive: true });
+  const command = [
+    "python",
+    [
+      "-m", "uv", "run", "--locked", "pytest", ...testPaths, "-q",
+      `--junitxml=${resultPath}`,
+    ],
+  ];
+  run(command[0], command[1]);
+  const xml = await readFile(resultPath, "utf8");
+  const suite = xml.match(/<testsuite\b([^>]*)>/);
+  const counts = suite === null
+    ? {}
+    : Object.fromEntries([...suite[1].matchAll(/\b(tests|errors|failures|skipped)="(\d+)"/g)].map((match) => [match[1], Number(match[2])]));
+  if (
+    suite === null
+    || !Number.isInteger(counts.tests)
+    || counts.tests <= 0
+    || counts.errors !== 0
+    || counts.failures !== 0
+    || counts.skipped !== 0
+  ) {
+    throw new Error(`${resultLabel} must execute a non-empty pytest suite with zero failure, error, or skip`);
+  }
+  return {
+    command,
+    testCount: counts.tests,
+    gate: {
+      framework: "pytest-junit",
+      tests: counts.tests,
+      errors: counts.errors,
+      failures: counts.failures,
+      skipped: counts.skipped,
+    },
+  };
+}
+
+async function runNodeTestsWithResultGate(resultLabel, testPaths) {
+  const resultPath = resolve(root, "artifacts", ".node-results", `${resultLabel}.xml`);
+  await mkdir(resolve(resultPath, ".."), { recursive: true });
+  const command = [
+    "corepack",
+    [
+      pnpm, "exec", "tsx", "--test", "--test-reporter=junit",
+      `--test-reporter-destination=${resultPath}`,
+      ...testPaths,
+    ],
+  ];
+  run(command[0], command[1]);
+  const xml = await readFile(resultPath, "utf8");
+  const testCount = (xml.match(/<testcase\b/g) ?? []).length;
+  const commentCount = (name) => {
+    const match = xml.match(new RegExp(`<!--\\s*${name}\\s+(\\d+)\\s*-->`));
+    return match === null ? 0 : Number(match[1]);
+  };
+  const gate = {
+    framework: "node-junit",
+    tests: testCount,
+    errors: (xml.match(/<error\b/g) ?? []).length,
+    failures: commentCount("fail") + (xml.match(/<failure\b/g) ?? []).length,
+    skipped: commentCount("skipped") + (xml.match(/<skipped\b/g) ?? []).length,
+    cancelled: commentCount("cancelled"),
+    todo: commentCount("todo"),
+  };
+  if (
+    gate.tests <= 0
+    || gate.errors !== 0
+    || gate.failures !== 0
+    || gate.skipped !== 0
+    || gate.cancelled !== 0
+    || gate.todo !== 0
+  ) {
+    throw new Error(`${resultLabel} must execute a non-empty Node suite with zero failure, error, skip, cancellation, or todo`);
+  }
+  return { command, testCount, gate };
+}
+
+function combineExecutionGates(gates) {
+  return {
+    framework: "combined-junit",
+    tests: gates.reduce((total, gate) => total + gate.tests, 0),
+    errors: gates.reduce((total, gate) => total + (gate.errors ?? 0), 0),
+    failures: gates.reduce((total, gate) => total + (gate.failures ?? 0), 0),
+    skipped: gates.reduce((total, gate) => total + (gate.skipped ?? 0), 0),
+    cancelled: gates.reduce((total, gate) => total + (gate.cancelled ?? 0), 0),
+    todo: gates.reduce((total, gate) => total + (gate.todo ?? 0), 0),
+    components: gates,
+  };
 }
 
 async function fixtureManifestDigest() {
@@ -413,12 +535,19 @@ async function revisionEvidence() {
     encoding: "utf8",
     env: deterministicEnvironment,
   });
+  const tree = spawnSync("git", ["rev-parse", "HEAD^{tree}"], {
+    cwd: root,
+    encoding: "utf8",
+    env: deterministicEnvironment,
+  });
   const files = spawnSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "-z"], {
     cwd: root,
     encoding: "utf8",
     env: deterministicEnvironment,
   });
-  if (commit.status !== 0 || files.status !== 0) throw new Error("cannot capture revision evidence");
+  if (commit.status !== 0 || tree.status !== 0 || files.status !== 0) {
+    throw new Error("cannot capture revision evidence");
+  }
   const excludedPrefixes = [".codex-remote-attachments/", "artifacts/", "_workspace/"];
   const paths = files.stdout
     .split("\0")
@@ -435,6 +564,7 @@ async function revisionEvidence() {
   }
   return {
     git_commit: commit.stdout.trim(),
+    git_tree: tree.stdout.trim(),
     working_tree_digest: manifest.digest("hex"),
     frozen_file_count: paths.length,
   };
@@ -485,7 +615,156 @@ async function scenarios(
 
 async function dataScenario(area, id, nodeIds, metadata = {}) {
   const exact = await runPytestNodesWithResultGate(id, nodeIds);
-  await scenarios(area, [id], [exact.command], exact.testCount, true, metadata);
+  await scenarios(area, [id], [exact.command], exact.testCount, true, {
+    ...metadata,
+    execution_gate: exact.gate,
+  });
+}
+
+function assertExecutionGate(gate, label) {
+  if (
+    gate === null
+    || typeof gate !== "object"
+    || !Number.isInteger(gate.tests)
+    || gate.tests <= 0
+  ) {
+    throw new Error(`${label} has no non-empty executable result gate`);
+  }
+  for (const field of ["errors", "failures", "skipped", "cancelled", "todo"]) {
+    if (gate[field] !== undefined && gate[field] !== 0) {
+      throw new Error(`${label} result gate contains ${field}`);
+    }
+  }
+  if (Array.isArray(gate.components)) {
+    for (const [index, component] of gate.components.entries()) {
+      assertExecutionGate(component, `${label} component ${index}`);
+    }
+    const componentTests = gate.components.reduce((total, component) => total + component.tests, 0);
+    if (componentTests !== gate.tests) {
+      throw new Error(`${label} combined result gate count is inconsistent`);
+    }
+  }
+}
+
+async function validatePhase7AcceptanceArtifacts() {
+  const manifestPath = resolve(
+    root,
+    "docs",
+    "woozoo-trading-desk",
+    "phase-7",
+    "p7-scenario-manifest.json",
+  );
+  const manifestBytes = await readFile(manifestPath);
+  const manifest = JSON.parse(manifestBytes.toString("utf8"));
+  const requiredIds = manifest.denominator?.required_ids ?? [];
+  const requiredArtifacts = manifest.denominator?.required_artifacts ?? {};
+  const artifactPaths = Object.values(requiredArtifacts);
+  if (
+    manifest.denominator?.required_count !== 43
+    || requiredIds.length !== 43
+    || new Set(requiredIds).size !== 43
+    || artifactPaths.length !== 43
+    || new Set(artifactPaths).size !== 43
+    || JSON.stringify(Object.keys(requiredArtifacts)) !== JSON.stringify(requiredIds)
+  ) {
+    throw new Error("Phase 7 acceptance denominator is not the exact frozen 43-row set");
+  }
+
+  const revision = await revisionEvidence();
+  const manifestDigest = createHash("sha256").update(manifestBytes).digest("hex");
+  const scenarioById = new Map([
+    ...(manifest.compatibility_scenarios ?? []),
+    ...(manifest.scenarios ?? []),
+  ].map((scenario) => [scenario.id, scenario]));
+  const verifiedArtifacts = [];
+  for (const id of requiredIds) {
+    const relativePath = requiredArtifacts[id];
+    const bytes = await readFile(resolve(root, relativePath));
+    const artifact = JSON.parse(bytes.toString("utf8"));
+    const {
+      output_digest: outputDigest,
+      recorded_at: recordedAt,
+      ...digestInput
+    } = artifact;
+    const actualOutputDigest = createHash("sha256")
+      .update(JSON.stringify(digestInput))
+      .digest("hex");
+    assertExecutionGate(artifact.execution_gate, id);
+    if (
+      artifact.id !== id
+      || artifact.status !== "PASS"
+      || !Array.isArray(artifact.commands)
+      || artifact.commands.length === 0
+      || artifact.test_count !== artifact.execution_gate.tests
+      || artifact.git_commit !== revision.git_commit
+      || artifact.git_tree !== revision.git_tree
+      || artifact.working_tree_digest !== revision.working_tree_digest
+      || artifact.frozen_file_count !== revision.frozen_file_count
+      || outputDigest !== actualOutputDigest
+      || typeof recordedAt !== "string"
+      || Number.isNaN(Date.parse(recordedAt))
+    ) {
+      throw new Error(`${id} artifact is stale, incomplete, or not bound to the current revision`);
+    }
+    const scenario = scenarioById.get(id);
+    if (scenario !== undefined && artifact.phase7_scenario_manifest_sha256 !== manifestDigest) {
+      throw new Error(`${id} artifact is not bound to the current Phase 7 manifest`);
+    }
+    if (id.startsWith("E2E-")) {
+      const flatBytes = await readFile(resolve(root, "artifacts", "e2e", `${id}.json`));
+      if (!bytes.equals(flatBytes)) {
+        throw new Error(`${id} flat and directory evidence must be byte-identical`);
+      }
+    }
+    verifiedArtifacts.push({
+      id,
+      path: relativePath,
+      sha256: createHash("sha256").update(bytes).digest("hex"),
+      test_count: artifact.test_count,
+    });
+  }
+
+  for (const scenario of scenarioById.values()) {
+    const sourcePaths = [...new Set(
+      scenario.test_nodes.map((node) => node.split("::", 1)[0]),
+    )];
+    const sourceDigests = [];
+    for (const sourcePath of sourcePaths) {
+      sourceDigests.push(
+        createHash("sha256").update(await readFile(resolve(root, sourcePath))).digest("hex"),
+      );
+    }
+    if (JSON.stringify(scenario.source_sha256) !== JSON.stringify(sourceDigests)) {
+      throw new Error(`${scenario.id} final source digest contract is stale`);
+    }
+    for (const reference of scenario.configuration_sources ?? []) {
+      const actual = createHash("sha256")
+        .update(await readFile(resolve(root, reference.path)))
+        .digest("hex");
+      if (actual !== reference.sha256) {
+        throw new Error(`${scenario.id} final configuration digest is stale: ${reference.path}`);
+      }
+    }
+  }
+
+  const result = {
+    schema_version: "woozoo.phase-7-acceptance-denominator/v1",
+    phase: 7,
+    status: "PASS",
+    required_count: 43,
+    passed_count: verifiedArtifacts.length,
+    scenario_manifest_sha256: manifestDigest,
+    artifacts: verifiedArtifacts,
+    ...revision,
+  };
+  const outputDigest = createHash("sha256").update(JSON.stringify(result)).digest("hex");
+  const outputPath = resolve(root, "artifacts", "acceptance", "P7-43.json");
+  await mkdir(resolve(outputPath, ".."), { recursive: true });
+  await writeFile(
+    outputPath,
+    `${JSON.stringify({ ...result, output_digest: outputDigest, recorded_at: new Date().toISOString() }, null, 2)}\n`,
+    "utf8",
+  );
 }
 
 const actions = {
@@ -499,7 +778,15 @@ const actions = {
     runPnpm(["-r", "--if-present", "run", "typecheck"]);
   },
   "test:unit": async () => {
-    await scenarios("unit", ["CORE-001"], [["python", ["-m", "uv", "run", "--locked", "pytest", "tests/unit", "-q"]]]);
+    const unitSuite = await runPytestSuiteWithResultGate("bulk-unit", ["tests/unit"]);
+    await scenarios(
+      "unit",
+      ["CORE-001"],
+      [unitSuite.command],
+      unitSuite.testCount,
+      true,
+      { execution_gate: unitSuite.gate },
+    );
     await phase7DataScenario("unit", "AUTH-001", [
       "tests/unit/test_trading_room_security.py::test_auth_001_session_rotation_csrf_one_time_and_absolute_expiry",
       "tests/unit/test_trading_room_security.py::test_auth_002_foreign_or_missing_origin_has_effect_zero",
@@ -533,9 +820,40 @@ const actions = {
     ]);
   },
   "test:contracts": async () => {
-    await scenarios("contracts", ["CONTRACT-001", "DATA-CONTRACT-001"], [["node", ["scripts/generate-contracts.mjs", "--check"]], ["corepack", [pnpm, "exec", "tsc", "-p", "tests/contract/tsconfig.json"]], ["corepack", [pnpm, "exec", "tsx", "--test", "tests/contract/contracts.test.ts", "tests/contract/market-data-contracts.test.ts", "tests/contract/evidence-contracts.test.ts", "tests/contract/paper-contracts.test.ts", "tests/contract/risk-contracts.test.ts"]], ["python", ["-m", "uv", "run", "--locked", "pytest", "tests/contract", "-q"]]]);
+    const contractStaticCommands = [
+      ["node", ["scripts/generate-contracts.mjs", "--check"]],
+      ["corepack", [pnpm, "exec", "tsc", "-p", "tests/contract/tsconfig.json"]],
+    ];
+    for (const [command, args] of contractStaticCommands) run(command, args);
+    const contractNode = await runNodeTestsWithResultGate("bulk-contract-node", [
+      "tests/contract/contracts.test.ts",
+      "tests/contract/market-data-contracts.test.ts",
+      "tests/contract/evidence-contracts.test.ts",
+      "tests/contract/paper-contracts.test.ts",
+      "tests/contract/risk-contracts.test.ts",
+    ]);
+    const contractPytest = await runPytestSuiteWithResultGate("bulk-contract-pytest", ["tests/contract"]);
+    const contractGate = combineExecutionGates([contractNode.gate, contractPytest.gate]);
+    await scenarios(
+      "contracts",
+      ["CONTRACT-001", "DATA-CONTRACT-001"],
+      [...contractStaticCommands, contractNode.command, contractPytest.command],
+      contractGate.tests,
+      true,
+      { execution_gate: contractGate },
+    );
     await dataScenario("contracts", "EVID-002", ["tests/contract/test_evidence_contract.py::test_evid_002_snapshot_contract_is_closed_and_consumer_complete"], { schema_version: "woozoo.evidence.replay-manifest/v1", evidence_recipe_version: evidenceRecipeVersion });
-    await scenarios("contracts", ["PAPER-CONTRACT-001"], [["corepack", [pnpm, "exec", "tsx", "--test", "tests/contract/paper-contracts.test.ts"]]], 1, false, await paperMetadata());
+    const paperContract = await runNodeTestsWithResultGate("paper-contract", [
+      "tests/contract/paper-contracts.test.ts",
+    ]);
+    await scenarios(
+      "contracts",
+      ["PAPER-CONTRACT-001"],
+      [paperContract.command],
+      paperContract.testCount,
+      true,
+      { ...(await paperMetadata()), execution_gate: paperContract.gate },
+    );
     await riskDataScenario("contracts", "RISK-CONTRACT-001", [
       "tests/contract/test_risk_contract.py::test_risk_contract_001_is_closed_typed_and_dormant",
     ]);
@@ -544,12 +862,35 @@ const actions = {
     ]);
   },
   "test:safety": async () => {
-    await scenarios("safety", ["SAFE-001", "SAFE-002", "SAFE-003", "SAFE-004", "SAFE-005"], [["python", ["-m", "uv", "run", "--locked", "pytest", "tests/safety", "-q"]], ["node", ["scripts/capability-zero.mjs"]], ["corepack", [pnpm, "exec", "tsx", "--test", "tests/safety/capability-zero.test.ts"]]]);
+    const safetyPytest = await runPytestSuiteWithResultGate("bulk-safety-pytest", ["tests/safety"]);
+    const capabilityCommand = ["node", ["scripts/capability-zero.mjs"]];
+    run(capabilityCommand[0], capabilityCommand[1]);
+    const safetyNode = await runNodeTestsWithResultGate("bulk-safety-node", [
+      "tests/safety/capability-zero.test.ts",
+    ]);
+    const safetyGate = combineExecutionGates([safetyPytest.gate, safetyNode.gate]);
+    await scenarios(
+      "safety",
+      ["SAFE-001", "SAFE-002", "SAFE-003", "SAFE-004", "SAFE-005"],
+      [safetyPytest.command, capabilityCommand, safetyNode.command],
+      safetyGate.tests,
+      true,
+      { execution_gate: safetyGate },
+    );
     await dataScenario("safety", "EVID-007", [
       "tests/safety/test_phase3_evidence_capabilities.py::test_evidence_worker_has_no_network_or_later_phase_capability",
       "tests/safety/test_phase3_evidence_capabilities.py::test_phase_three_registers_only_the_approved_evidence_command_route",
     ], { schema_version: "woozoo.evidence.replay-manifest/v1", evidence_recipe_version: evidenceRecipeVersion });
     await phase7DataScenario("safety", "PTI-003", [
+      "tests/unit/test_evidence_builder.py::test_pti_003_missing_raw_id_cannot_enter_evidence",
+      "tests/unit/test_evidence_builder.py::test_pti_003_stale_collector_fails_closed",
+      "tests/unit/test_evidence_builder.py::test_pti_003_watermark_binds_each_approved_kline_stream[1m]",
+      "tests/unit/test_evidence_builder.py::test_pti_003_watermark_binds_each_approved_kline_stream[5m]",
+      "tests/unit/test_evidence_builder.py::test_pti_003_watermark_binds_each_approved_kline_stream[1h]",
+      "tests/unit/test_evidence_builder.py::test_pti_003_watermark_binds_each_approved_kline_stream[4h]",
+      "tests/unit/test_evidence_builder.py::test_pti_003_raw_stream_mismatch_fails_closed",
+      "tests/unit/test_evidence_builder.py::test_pti_003_incomplete_watermark_fails_closed",
+      "tests/unit/test_phase7_agent_risk_services.py::test_unhealthy_or_future_evidence_persists_audited_hold_without_proposal",
       "tests/unit/test_evidence_builder.py::test_builder_fails_closed_when_an_interval_has_no_complete_window",
       "tests/unit/test_evidence_builder.py::test_builder_rejects_a_terminal_window_that_is_stale_at_the_cutoffs",
       "tests/unit/test_evidence_builder.py::test_builder_rejects_every_non_healthy_quality[degraded]",
@@ -583,7 +924,24 @@ const actions = {
     ]);
   },
   "test:integration": async () => {
-    await scenarios("integration", ["PLAT-001", "PLAT-002", "PLAT-003"], [["corepack", [pnpm, "--filter", "@woozoo/trading-room-web", "run", "build"]], ["python", ["-m", "uv", "run", "--locked", "pytest", "tests/integration", "-q"]], ["corepack", [pnpm, "exec", "tsx", "--test", "tests/integration/trading-room-web.test.ts"]]]);
+    const platformBuildCommand = ["corepack", [pnpm, "--filter", "@woozoo/trading-room-web", "run", "build"]];
+    run(platformBuildCommand[0], platformBuildCommand[1]);
+    const integrationPytest = await runPytestSuiteWithResultGate(
+      "bulk-integration-pytest",
+      ["tests/integration"],
+    );
+    const integrationNode = await runNodeTestsWithResultGate("bulk-integration-node", [
+      "tests/integration/trading-room-web.test.ts",
+    ]);
+    const integrationGate = combineExecutionGates([integrationPytest.gate, integrationNode.gate]);
+    await scenarios(
+      "integration",
+      ["PLAT-001", "PLAT-002", "PLAT-003"],
+      [platformBuildCommand, integrationPytest.command, integrationNode.command],
+      integrationGate.tests,
+      true,
+      { execution_gate: integrationGate },
+    );
     await dataScenario("integration", "EVID-005", ["tests/integration/test_platform_infrastructure.py::test_phase_three_evidence_is_atomic_idempotent_and_append_only"], { schema_version: "woozoo.evidence.replay-manifest/v1", evidence_recipe_version: evidenceRecipeVersion });
     await dataScenario("integration", "FIN-004", [
       "tests/integration/test_paper_ledger_immutability.py::test_fin_004_posted_journal_is_immutable_and_correction_is_reversal_replacement",
@@ -629,12 +987,15 @@ const actions = {
   },
   "test:e2e": async () => {
     const api = await runPytestWithResultGate("tests/integration/test_trading_room_api.py", 7);
-    const playwright = await runPlaywrightWithResultGate(17);
+    const playwright = await runPlaywrightWithResultGate(19);
     const scenarioNodes = {
       "E2E-001": [
         "tests/e2e/trading-room.spec.ts::[live] E2E-001",
         "tests/integration/test_trading_room_api.py::test_e2e_001_authenticated_proposal_approval_creates_exactly_one_paper_order",
         "tests/integration/test_phase7_paper_first_attempt_authority.py::test_authorized_order_recorded_book_partial_fill_then_cancel_is_atomic_and_idempotent",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_recorded_book_rejects_malformed_or_unbound_raw_provenance_without_effects",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_no_fill_replay_returns_immutable_first_response_after_later_fill",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_same_side_orders_compete_in_accepted_at_order_id_order_for_one_book_budget",
         "tests/integration/test_phase7_paper_first_attempt_authority.py::test_recorded_book_revalidates_current_stream_health_and_defers_stale_event",
         "tests/integration/test_phase7_paper_first_attempt_authority.py::test_recorded_book_kill_barrier_holds_without_any_paper_effect",
         "tests/unit/test_paper_engine.py::test_side_partitioned_book_observations_keep_canonical_order_and_budgets_independent",
@@ -670,16 +1031,22 @@ const actions = {
     for (const [id, nodeIds] of Object.entries(scenarioNodes)) {
       const metadata = await phase7ScenarioContract("e2e", id, nodeIds);
       const supplemental = await runPytestNodesWithResultGate(`e2e-${id}`, nodeIds.slice(1));
+      const executionGate = combineExecutionGates([
+        api.gate,
+        playwright.gate,
+        supplemental.gate,
+      ]);
       await scenarios(
         "e2e",
         [id],
         [api.command, playwright.command, supplemental.command],
-        api.testCount + playwright.testCount + supplemental.testCount,
+        executionGate.tests,
         true,
         {
           ...metadata,
           declared_browser_scenario: nodeIds[0],
           declared_pytest_count: supplemental.testCount,
+          execution_gate: executionGate,
         },
       );
       const directory = resolve(root, "artifacts", "e2e", id);
@@ -804,6 +1171,7 @@ const actions = {
     await phase7DataScenario("failure", "ATOM-002", [
       "tests/replay/test_paper_restart_replay.py::test_atom_002_ack_loss_retry_returns_same_order_without_new_effect",
       "tests/integration/test_trading_room_command_ports.py::test_ack_loss_restart_replays_durable_receipts_without_second_paper_effect",
+      "tests/integration/test_paper_postgres_persistence.py::test_atomic_write_is_durable_idempotent_and_restart_stable",
       "tests/integration/test_paper_postgres_persistence.py::test_concurrent_command_and_observation_retries_return_one_stored_effect",
     ], await paperMetadata());
     await riskDataScenario("failure", "KILL-001", [
@@ -848,17 +1216,15 @@ const actions = {
     run("python", ["-m", "compileall", "-q", "packages", "services"]);
   },
   ci: async () => {
-    // Avoid an extra pnpm lifecycle nesting level on Windows. The bootstrap
-    // script itself runs the frozen pnpm install; invoking it through another
-    // `pnpm run` can terminate the outer CI lifecycle before later gates run.
-    // `pnpm ci` already starts with the lockfile-installed Node runtime. Avoid
-    // replacing its node_modules from a nested pnpm install on Windows, while
-    // still executing the Python sync and generated-contract bootstrap gates.
-    run("node", ["scripts/bootstrap.mjs", "--skip-pnpm-install"]);
+    // The repository intentionally pins pnpm 7 so `pnpm ci` resolves this
+    // package script instead of pnpm's later clean-install alias. Bootstrap is
+    // part of the canonical denominator and must verify the frozen lockfile.
+    run("node", ["scripts/bootstrap.mjs"]);
     run("node", ["scripts/env-init.mjs", "--check"]);
     for (const action of ["lint", "typecheck", "test:unit", "test:contracts", "test:safety", "test:integration", "test:property", "test:replay", "test:failure", "test:e2e", "build"]) {
       await actions[action]();
     }
+    await validatePhase7AcceptanceArtifacts();
   },
 };
 

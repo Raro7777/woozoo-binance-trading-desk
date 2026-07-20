@@ -18,9 +18,51 @@ from uuid import NAMESPACE_URL, uuid5
 import psycopg
 from psycopg.types.json import Jsonb
 
-from .builder import build_evidence_snapshot
+from .builder import EvidenceBuildError, build_evidence_snapshot
 from .canonical import CanonicalValue, canonical_digest, decimal_text, iso_utc
 from .types import Candle, EvidenceSnapshot
+
+
+_WATERMARK_FIELDS = {"session_id", "stream", "last_sequence", "observed_at"}
+
+
+def _validate_source_authority(
+    watermark: object,
+    *,
+    collector_session_id: str,
+    collector_status: str,
+    raw_stream: str,
+    normalized_stream: str,
+    normalized_sequence: int,
+    received_at: datetime,
+) -> None:
+    """Fail closed when durable collector or watermark authority is incomplete."""
+    if collector_status != "healthy":
+        raise EvidenceBuildError("collector session is not healthy")
+    if not isinstance(watermark, dict) or set(watermark) != _WATERMARK_FIELDS:
+        raise EvidenceBuildError("stream watermark is incomplete")
+    if watermark.get("session_id") != collector_session_id:
+        raise EvidenceBuildError("stream watermark session does not match raw provenance")
+    if raw_stream != normalized_stream:
+        raise EvidenceBuildError("raw stream does not match normalized Evidence input")
+    stream = watermark.get("stream")
+    last_sequence = watermark.get("last_sequence")
+    observed_at_text = watermark.get("observed_at")
+    if (
+        not isinstance(stream, str)
+        or stream != normalized_stream
+        or isinstance(last_sequence, bool)
+        or not isinstance(last_sequence, int)
+        or last_sequence != normalized_sequence
+        or not isinstance(observed_at_text, str)
+    ):
+        raise EvidenceBuildError("stream watermark is incomplete")
+    try:
+        observed_at = datetime.fromisoformat(observed_at_text.replace("Z", "+00:00"))
+    except ValueError as error:
+        raise EvidenceBuildError("stream watermark observed_at is invalid") from error
+    if observed_at.tzinfo is None or observed_at.utcoffset() is None or observed_at != received_at:
+        raise EvidenceBuildError("stream watermark does not bind received_at")
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,7 +168,8 @@ class PostgresEvidenceStore:
         query = """
             SELECT normalized.id, normalized.raw_event_id, normalized.raw_payload_hash,
                    normalized.symbol, normalized.event_time, normalized.received_at,
-                   normalized.payload
+                   normalized.payload, normalized.sequence, normalized.stream_watermark,
+                   raw.collector_session_id, raw.stream, session.status
             FROM normalized_market_events AS normalized
             JOIN raw_market_events AS raw ON raw.id=normalized.raw_event_id
             JOIN collector_sessions AS session ON session.id=raw.collector_session_id
@@ -146,30 +189,58 @@ class PostgresEvidenceStore:
         """
         rows = _connection.execute(query, (symbol, as_of, knowledge_cutoff, as_of)).fetchall()
         candles: list[Candle] = []
-        for event_id, raw_event_id, raw_hash, row_symbol, event_time, received_at, payload in rows:
-            candles.append(
-                Candle(
-                    normalized_event_id=str(event_id),
-                    raw_event_id=str(raw_event_id),
-                    raw_payload_hash=str(raw_hash),
-                    symbol=str(row_symbol),
-                    interval=str(payload["interval"]),
-                    event_time=event_time,
-                    received_at=received_at,
-                    open_time=datetime.fromisoformat(
-                        str(payload["open_time"]).replace("Z", "+00:00")
-                    ),
-                    close_time=datetime.fromisoformat(
-                        str(payload["close_time"]).replace("Z", "+00:00")
-                    ),
-                    open=Decimal(str(payload["open"])),
-                    high=Decimal(str(payload["high"])),
-                    low=Decimal(str(payload["low"])),
-                    close=Decimal(str(payload["close"])),
-                    base_volume=Decimal(str(payload["base_volume"])),
-                    closed=True,
-                )
+        for (
+            event_id,
+            raw_event_id,
+            raw_hash,
+            row_symbol,
+            event_time,
+            received_at,
+            payload,
+            sequence,
+            watermark,
+            collector_session_id,
+            raw_stream,
+            collector_status,
+        ) in rows:
+            interval = payload.get("interval") if isinstance(payload, dict) else None
+            if interval not in {"1m", "5m", "1h", "4h"}:
+                raise EvidenceBuildError("selected Evidence interval is invalid")
+            _validate_source_authority(
+                watermark,
+                collector_session_id=str(collector_session_id),
+                collector_status=str(collector_status),
+                raw_stream=str(raw_stream),
+                normalized_stream=f"{str(row_symbol).lower()}@kline_{interval}",
+                normalized_sequence=int(sequence),
+                received_at=received_at,
             )
+            try:
+                candles.append(
+                    Candle(
+                        normalized_event_id=str(event_id),
+                        raw_event_id=str(raw_event_id),
+                        raw_payload_hash=str(raw_hash),
+                        symbol=str(row_symbol),
+                        interval=str(payload["interval"]),
+                        event_time=event_time,
+                        received_at=received_at,
+                        open_time=datetime.fromisoformat(
+                            str(payload["open_time"]).replace("Z", "+00:00")
+                        ),
+                        close_time=datetime.fromisoformat(
+                            str(payload["close_time"]).replace("Z", "+00:00")
+                        ),
+                        open=Decimal(str(payload["open"])),
+                        high=Decimal(str(payload["high"])),
+                        low=Decimal(str(payload["low"])),
+                        close=Decimal(str(payload["close"])),
+                        base_volume=Decimal(str(payload["base_volume"])),
+                        closed=True,
+                    )
+                )
+            except (KeyError, TypeError, ValueError) as error:
+                raise EvidenceBuildError("selected Evidence raw provenance is invalid") from error
         return tuple(candles)
 
     def build_snapshot(

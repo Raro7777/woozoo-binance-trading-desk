@@ -13,7 +13,11 @@ export function LoginForm() {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const password = form.get("password");
-    if (typeof password !== "string" || password.length === 0) return;
+    if (typeof password !== "string" || password.length === 0) {
+      setError(true);
+      setMessage("비밀번호를 입력하세요.");
+      return;
+    }
     setPending(true);
     setError(false);
     setMessage("로컬 운영자를 확인하는 중…");
@@ -30,7 +34,7 @@ export function LoginForm() {
   }
 
   return (
-    <form className="form-grid" onSubmit={submit}>
+    <form className="form-grid" noValidate onSubmit={submit}>
       <label htmlFor="operator-password">로컬 운영자 비밀번호
         <input id="operator-password" name="password" type="password" autoComplete="current-password" required disabled={!hydrated || pending} />
       </label>

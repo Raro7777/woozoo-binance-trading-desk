@@ -1,11 +1,14 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { resolve } from "node:path";
 import test from "node:test";
 
-import { approvalActionIssues } from "../../apps/trading-room-web/src/lib/approval-preview";
-import { statusLabel, statusTone } from "../../apps/trading-room-web/src/components/ui";
+import { approvalActionIssues, renderedPreviewFields } from "../../apps/trading-room-web/src/lib/approval-preview";
+import { localizedNarrative } from "../../apps/trading-room-web/src/components/analysis-view";
+import { killSwitchPresentation } from "../../apps/trading-room-web/src/components/operations-console";
+import { diagnosticLabel, statusLabel, statusTone } from "../../apps/trading-room-web/src/components/ui";
 
 const root = resolve(import.meta.dirname, "../..");
 
@@ -18,8 +21,15 @@ test("PLAT-UI-STATUS translates Phase 7 failure states and fails unknown values 
   assert.equal(statusLabel("PENDING_RISK"), "위험 판단 대기 중");
   assert.equal(statusLabel("PENDING_APPROVAL"), "승인 대기 중");
   assert.equal(statusLabel("AUTHORIZATION_ISSUED"), "실행 권한 발급됨");
-  assert.equal(statusLabel("UNRECOGNIZED_STATE"), "알 수 없는 상태 (UNRECOGNIZED_STATE)");
+  assert.equal(statusLabel("UNRECOGNIZED_STATE"), "알 수 없는 상태");
   assert.equal(statusTone("UNRECOGNIZED_STATE"), "danger");
+  assert.equal(diagnosticLabel("UNRECOGNIZED_REASON"), "알 수 없는 진단 정보");
+  assert.equal(killSwitchPresentation({}), "UNKNOWN");
+  assert.equal(killSwitchPresentation({ active: true, status: "INACTIVE" }), "UNKNOWN");
+  assert.equal(killSwitchPresentation({ active: false, status: "INACTIVE" }), "INACTIVE");
+  assert.equal(killSwitchPresentation({ active: true, status: "ACTIVE" }), "ACTIVE");
+  assert.equal(localizedNarrative("Untrusted English narrative"), "분석 서술을 한국어로 표시할 수 없습니다.");
+  assert.equal(localizedNarrative("BTC 근거에 결합된 관찰입니다."), "BTC 근거에 결합된 관찰입니다.");
 });
 
 const canonicalApprovalView = {
@@ -54,9 +64,17 @@ const canonicalApprovalView = {
 test("PLAT-UI-APPROVAL renders only a complete closed canonical Paper preview", () => {
   assert.deepEqual(approvalActionIssues(canonicalApprovalView), []);
 
+  const rendered = Object.fromEntries(
+    renderedPreviewFields.map(([label, read]) => [label, read(canonicalApprovalView.paper_order_preview)]),
+  );
+  assert.equal(rendered["매수·매도"], "매수");
+  assert.equal(rendered["주문 유형"], "지정가 주문");
+  assert.equal(rendered["주문 유효 방식"], "취소할 때까지 유효");
+  assert.equal(rendered["예상 슬리피지 방식"], "지정가와 최우선 호가 비교");
+
   const missingBid = structuredClone(canonicalApprovalView) as Record<string, any>;
   delete missingBid.paper_order_preview.best_bid;
-  assert.ok(approvalActionIssues(missingBid).some((issue) => issue.includes("best_bid")));
+  assert.ok(approvalActionIssues(missingBid).some((issue) => issue.includes("최우선 매수호가")));
 
   const unknownField = structuredClone(canonicalApprovalView) as Record<string, any>;
   unknownField.paper_order_preview.unrendered_financial_authority = "1";
@@ -64,11 +82,26 @@ test("PLAT-UI-APPROVAL renders only a complete closed canonical Paper preview", 
 
   const unknownNestedField = structuredClone(canonicalApprovalView) as Record<string, any>;
   unknownNestedField.paper_order_preview.expected_slippage_inputs.hidden_input = "1";
-  assert.ok(approvalActionIssues(unknownNestedField).some((issue) => issue.includes("expected_slippage_inputs")));
+  assert.ok(approvalActionIssues(unknownNestedField).some((issue) => issue.includes("예상 슬리피지 입력")));
 
   const mismatchedHash = structuredClone(canonicalApprovalView) as Record<string, any>;
   mismatchedHash.paper_order_preview.paper_order_preview_hash = "0".repeat(64);
   assert.ok(approvalActionIssues(mismatchedHash).some((issue) => issue.includes("해시")));
+});
+
+test("PLAT-UI-DIALOGS use localized in-app forms and ship both App Router error boundaries", () => {
+  const componentFiles = ["approval-view.tsx", "paper-desk.tsx", "operations-console.tsx"];
+  for (const file of componentFiles) {
+    const source = readFileSync(resolve(root, "apps/trading-room-web/src/components", file), "utf8");
+    assert.doesNotMatch(source, /window\.(?:confirm|prompt)\s*\(/);
+  }
+  for (const file of ["error.tsx", "global-error.tsx"]) {
+    const source = readFileSync(resolve(root, "apps/trading-room-web/src/app", file), "utf8");
+    assert.match(source, /오류/);
+    assert.match(source, /다시 시도/);
+    assert.match(source, /뒤로/);
+    assert.doesNotMatch(source, /Something went wrong|Try again|Go back/);
+  }
 });
 
 function delay(milliseconds: number): Promise<void> {

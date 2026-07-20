@@ -1110,7 +1110,7 @@ class PostgresPaperStore:
                 "AND paper_recorded_book_market_is_current_v1(event.id) "
                 "AND effect.order_id IS NULL "
                 "ORDER BY event.received_at,event.event_time,event.id,"
-                "orders.accepted_broker_seq,orders.client_order_id,orders.order_id LIMIT 1"
+                "accepted.occurred_at,orders.order_id LIMIT 1"
             ).fetchone()
         if candidate is None:
             return None
@@ -1175,29 +1175,16 @@ class PostgresPaperStore:
                 )
 
             prior_effect = connection.execute(
-                "SELECT effect.effect_kind,effect.fill_id,CASE "
-                "WHEN event.event_type='paper.order.filled.v1' THEN 'FILLED' "
-                "WHEN event.event_type='paper.order.partially-filled.v1' "
-                "THEN 'PARTIALLY_FILLED' ELSE orders.status END FROM "
-                "paper_observation_effects effect JOIN paper_orders orders "
-                "ON orders.order_id=effect.order_id LEFT JOIN paper_order_events event "
-                "ON event.order_id=effect.order_id AND event.source_key=effect.source_key "
-                "AND event.event_type IN "
-                "('paper.order.filled.v1','paper.order.partially-filled.v1') "
+                "SELECT effect.phase7_response FROM paper_observation_effects effect "
                 "WHERE effect.order_id=%s AND effect.source_key=%s",
                 (order_id, source_key),
             ).fetchone()
             if prior_effect is not None:
-                response: dict[str, object] = {
-                    "result": "OBSERVATION_APPLIED",
-                    "market_event_id": market_event_id,
-                    "order_id": order_id,
-                    "status": prior_effect[2],
-                    "fill_id": prior_effect[1],
-                }
+                if not isinstance(prior_effect[0], dict):
+                    raise RuntimeError("PHASE7_OBSERVATION_RESPONSE_MISSING")
                 return CommitResult(
                     False,
-                    response,
+                    cast(dict[str, object], prior_effect[0]),
                     self.semantic_digest(account_id, connection=connection),
                 )
 
@@ -1379,6 +1366,13 @@ class PostgresPaperStore:
                 )
 
             updated_order = engine.orders[order_id]
+            response: dict[str, object] = {
+                "result": "OBSERVATION_APPLIED",
+                "market_event_id": market_event_id,
+                "order_id": order_id,
+                "status": updated_order.status.value,
+                "fill_id": fill.fill_id if fill is not None else None,
+            }
             if updated_order != before_order:
                 updated = connection.execute(
                     "UPDATE paper_orders SET filled_quantity=%s,held_amount=%s,status=%s,"
@@ -1469,8 +1463,8 @@ class PostgresPaperStore:
                 )
             connection.execute(
                 "INSERT INTO paper_observation_effects"
-                "(account_id,source_key,order_id,effect_kind,fill_id,applied_at) "
-                "VALUES (%s,%s,%s,%s,%s,%s)",
+                "(account_id,source_key,order_id,effect_kind,fill_id,applied_at,phase7_response) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s)",
                 (
                     account_id,
                     source_key,
@@ -1478,6 +1472,7 @@ class PostgresPaperStore:
                     "FILL" if fill is not None else "NO_FILL",
                     fill.fill_id if fill is not None else None,
                     received_at,
+                    Jsonb(response),
                 ),
             )
             if fill is not None:
@@ -1575,13 +1570,6 @@ class PostgresPaperStore:
             if fill is not None:
                 self._append_outbox(connection, account_id, outbox)
             self._fail(PersistenceStage.OUTBOX, _fail_after)
-            response = {
-                "result": "OBSERVATION_APPLIED",
-                "market_event_id": market_event_id,
-                "order_id": order_id,
-                "status": updated_order.status.value,
-                "fill_id": fill.fill_id if fill is not None else None,
-            }
             return CommitResult(
                 True,
                 response,

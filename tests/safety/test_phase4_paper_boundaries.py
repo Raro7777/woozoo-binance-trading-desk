@@ -19,8 +19,19 @@ def test_phase_four_has_no_active_paper_route_or_network_ingress() -> None:
     ).lower()
     assert "/paper/" not in app
     assert "/paper/" not in openapi
-    for forbidden in ("fastapi", "httpx", "websocket", "requests", "binance"):
+    for forbidden in (
+        "fastapi",
+        "httpx",
+        "websocket",
+        "requests",
+        "api.binance.com",
+        "stream.binance.com",
+        "/api/v3/order",
+    ):
         assert forbidden not in paper_sources
+    # Phase 7 may consume the normalized provenance token from PostgreSQL, but
+    # the Paper process still cannot contain a Binance client or endpoint.
+    assert "binance" not in paper_sources.replace("binance_spot_public", "")
 
 
 @pytest.mark.parametrize("mode", [None, "", "live", "testnet", "PAPER"])

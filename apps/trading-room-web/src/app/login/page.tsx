@@ -17,7 +17,7 @@ export default function LoginPage() {
         </section>
         <section className="panel" aria-labelledby="session-policy">
           <h2 id="session-policy">세션 정책</h2>
-          <p>Secure, HttpOnly, SameSite=Strict 쿠키를 사용합니다. 모든 변경 요청은 새로운 일회용 CSRF 토큰과 정확한 Origin 검증을 거칩니다.</p>
+          <p>보안 연결 전용, 브라우저 스크립트 접근 차단, 동일 사이트 요청만 허용하는 쿠키를 사용합니다. 모든 변경 요청은 새로운 일회용 사이트 간 요청 위조 방지 토큰과 정확한 요청 출처 검증을 거칩니다.</p>
         </section>
       </div>
     </>

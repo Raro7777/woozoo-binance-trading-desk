@@ -84,6 +84,26 @@ def test_phase7_migration_closes_auth_approval_authorization_and_recovery_bounda
     assert recorded_book_guard.index("LOCK TABLE collector_sessions IN SHARE MODE") < (
         recorded_book_guard.index("SELECT latest.id FROM collector_sessions latest")
     )
+    assert "digest(source_identity.payload_bytes,'sha256')" in recorded_book_guard
+    assert "source_identity.payload_hash<>source_identity.raw_payload_hash" in recorded_book_guard
+    assert "book_payload->>'s'<>source_identity.symbol" in recorded_book_guard
+    assert "(book_payload->>'u')::bigint<>source_identity.sequence" in recorded_book_guard
+    assert "source_identity.normalized_event_id<>encode(digest" in recorded_book_guard
+    for normalized_field, raw_field in (
+        ("bid_price", "b"),
+        ("bid_quantity", "B"),
+        ("ask_price", "a"),
+        ("ask_quantity", "A"),
+    ):
+        assert f"(source_identity.payload->>'{normalized_field}')::numeric<>" in recorded_book_guard
+        assert f"(book_payload->>'{raw_field}')::numeric" in recorded_book_guard
+    assert "WHEN OTHERS" not in recorded_book_guard
+    assert "OR lock_not_available THEN" in recorded_book_guard
+    assert 'sa.Column("phase7_response", postgresql.JSONB(), nullable=True)' in source
+    assert "ck_phase7_observation_response" in source
+    assert "enforce_phase7_observation_response_v1" in source
+    assert "REVOKE ALL ON FUNCTION enforce_phase7_observation_response_v1() FROM PUBLIC" in source
+    assert "NEW.phase7_response->>'status'<>current_order_status" in source
     assert "trading_room_market_reader_v1" in source
     assert "SELECT projection.sequence" in source
     assert "trading_room_audit_projection" in source
@@ -228,6 +248,14 @@ def test_phase7_migration_upgrades_with_digest_only_storage_and_least_privilege(
                     "has_table_privilege('woozoo_paper_engine',"
                     "'market_status_projections','SELECT')"
                 ).fetchone() == (True, False, False, False, False)
+                assert connection.execute(
+                    "SELECT has_table_privilege('woozoo_evidence_writer',"
+                    "'raw_market_events','SELECT'),"
+                    "has_column_privilege('woozoo_evidence_writer',"
+                    "'raw_market_events','stream','SELECT'),"
+                    "has_column_privilege('woozoo_evidence_writer',"
+                    "'raw_market_events','payload_bytes','SELECT')"
+                ).fetchone() == (False, True, False)
                 relational_definition = connection.execute(
                     "SELECT pg_get_functiondef("
                     "'assert_paper_relational_consistency()'::regprocedure)"

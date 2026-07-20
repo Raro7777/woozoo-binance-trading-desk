@@ -736,6 +736,52 @@ def upgrade() -> None:
         "AND available_quantity>0 AND symbol IN ('BTCUSDT','ETHUSDT') "
         "AND best_bid>0 AND best_ask>0 AND best_bid<=best_ask)",
     )
+    op.add_column(
+        "paper_observation_effects",
+        sa.Column("phase7_response", postgresql.JSONB(), nullable=True),
+    )
+    op.create_check_constraint(
+        "ck_phase7_observation_response",
+        "paper_observation_effects",
+        "phase7_response IS NULL OR ("
+        "jsonb_typeof(phase7_response)='object' "
+        "AND phase7_response ?& array['result','market_event_id','order_id','status','fill_id'] "
+        "AND phase7_response-array['result','market_event_id','order_id','status','fill_id']="
+        "'{}'::jsonb "
+        "AND phase7_response->>'result'='OBSERVATION_APPLIED' "
+        "AND phase7_response->>'market_event_id'=split_part(source_key,':',1) "
+        "AND phase7_response->>'order_id'=order_id "
+        "AND phase7_response->>'status' IN ('OPEN','PARTIALLY_FILLED','FILLED') "
+        "AND ((effect_kind='FILL' AND phase7_response->>'fill_id'=fill_id) OR "
+        "(effect_kind='NO_FILL' AND phase7_response->'fill_id'='null'::jsonb)))",
+    )
+    op.execute("""
+        CREATE FUNCTION enforce_phase7_observation_response_v1() RETURNS trigger AS $$
+        DECLARE
+          account_namespace varchar;
+          current_order_status varchar;
+        BEGIN
+          SELECT account.namespace,orders.status
+            INTO account_namespace,current_order_status
+          FROM paper_accounts account
+          JOIN paper_orders orders ON orders.account_id=account.account_id
+          WHERE account.account_id=NEW.account_id AND orders.order_id=NEW.order_id;
+          IF FOUND AND account_namespace='paper'
+             AND (NEW.phase7_response IS NULL
+                  OR NEW.phase7_response->>'status'<>current_order_status)
+          THEN
+            RAISE EXCEPTION 'Phase 7 observation response must bind the applied order state';
+          END IF;
+          RETURN NEW;
+        END;
+        $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public
+    """)
+    op.execute("REVOKE ALL ON FUNCTION enforce_phase7_observation_response_v1() FROM PUBLIC")
+    op.execute("""
+        CREATE TRIGGER paper_observation_effect_phase7_response
+        BEFORE INSERT ON paper_observation_effects
+        FOR EACH ROW EXECUTE FUNCTION enforce_phase7_observation_response_v1()
+    """)
     op.execute("ALTER TABLE analysis_runs DROP CONSTRAINT ck_analysis_run_namespace")
     op.create_check_constraint(
         "ck_phase7_analysis_run_namespace", "analysis_runs", "namespace IN ('test','paper')"
@@ -1280,8 +1326,14 @@ def upgrade() -> None:
           source_identity record;
           current_state record;
           observed_now timestamptz;
+          raw_payload jsonb;
+          book_payload jsonb;
         BEGIN
-          SELECT raw.collector_session_id,raw.stream,normalized.symbol
+          SELECT raw.collector_session_id,raw.stream,raw.source_dedupe_key,
+                 raw.payload_bytes,raw.payload_hash,raw.id AS raw_event_id,
+                 normalized.raw_payload_hash,normalized.schema_version,
+                 normalized.event_type,normalized.symbol,normalized.sequence,
+                 normalized.id AS normalized_event_id,normalized.payload
           INTO source_identity
           FROM normalized_market_events normalized
           JOIN raw_market_events raw ON raw.id=normalized.raw_event_id
@@ -1306,6 +1358,72 @@ def upgrade() -> None:
           LOCK TABLE collector_sessions IN SHARE MODE NOWAIT;
           observed_now := clock_timestamp();
 
+          raw_payload:=convert_from(source_identity.payload_bytes,'UTF8')::jsonb;
+          IF jsonb_typeof(raw_payload)<>'object' THEN RETURN false; END IF;
+          IF raw_payload ?& array['stream','data'] THEN
+            IF raw_payload-array['stream','data']<>'{}'::jsonb
+               OR jsonb_typeof(raw_payload->'stream')<>'string'
+               OR raw_payload->>'stream'<>source_identity.stream
+               OR jsonb_typeof(raw_payload->'data')<>'object'
+            THEN RETURN false; END IF;
+            book_payload:=raw_payload->'data';
+          ELSE
+            book_payload:=raw_payload;
+          END IF;
+          IF jsonb_typeof(book_payload)<>'object'
+             OR NOT book_payload ?& array['u','s','b','B','a','A']
+             OR book_payload-array['u','s','b','B','a','A']<>'{}'::jsonb
+             OR jsonb_typeof(book_payload->'u')<>'number'
+             OR jsonb_typeof(book_payload->'s')<>'string'
+             OR jsonb_typeof(book_payload->'b')<>'string'
+             OR jsonb_typeof(book_payload->'B')<>'string'
+             OR jsonb_typeof(book_payload->'a')<>'string'
+             OR jsonb_typeof(book_payload->'A')<>'string'
+             OR book_payload->>'u' !~ '^[0-9]+$'
+             OR book_payload->>'b' !~ '^(0|[1-9][0-9]*)([.][0-9]+)?$'
+             OR book_payload->>'B' !~ '^(0|[1-9][0-9]*)([.][0-9]+)?$'
+             OR book_payload->>'a' !~ '^(0|[1-9][0-9]*)([.][0-9]+)?$'
+             OR book_payload->>'A' !~ '^(0|[1-9][0-9]*)([.][0-9]+)?$'
+             OR jsonb_typeof(source_identity.payload)<>'object'
+             OR NOT source_identity.payload ?&
+                  array['kind','bid_price','bid_quantity','ask_price','ask_quantity',
+                        'event_time_source']
+             OR source_identity.payload-
+                  array['kind','bid_price','bid_quantity','ask_price','ask_quantity',
+                        'event_time_source']<>'{}'::jsonb
+             OR source_identity.payload->>'kind'<>'book_ticker'
+             OR source_identity.payload->>'event_time_source'<>'received_at'
+             OR jsonb_typeof(source_identity.payload->'bid_price')<>'string'
+             OR jsonb_typeof(source_identity.payload->'bid_quantity')<>'string'
+             OR jsonb_typeof(source_identity.payload->'ask_price')<>'string'
+             OR jsonb_typeof(source_identity.payload->'ask_quantity')<>'string'
+             OR encode(digest(source_identity.payload_bytes,'sha256'),'hex')<>
+                  source_identity.payload_hash
+             OR source_identity.payload_hash<>source_identity.raw_payload_hash
+             OR book_payload->>'s'<>source_identity.symbol
+             OR source_identity.stream<>lower(source_identity.symbol)||'@bookTicker'
+             OR source_identity.source_dedupe_key<>
+                  'book_ticker:'||source_identity.symbol||':'||source_identity.sequence::text
+             OR (book_payload->>'u')::bigint<>source_identity.sequence
+             OR source_identity.normalized_event_id<>encode(digest(convert_to(
+                  source_identity.schema_version||'|'||source_identity.raw_event_id||'|'||
+                  source_identity.event_type||'|'||source_identity.sequence::text,
+                  'UTF8'),'sha256'),'hex')
+             OR (source_identity.payload->>'bid_price')::numeric<>
+                  (book_payload->>'b')::numeric
+             OR (source_identity.payload->>'bid_quantity')::numeric<>
+                  (book_payload->>'B')::numeric
+             OR (source_identity.payload->>'ask_price')::numeric<>
+                  (book_payload->>'a')::numeric
+             OR (source_identity.payload->>'ask_quantity')::numeric<>
+                  (book_payload->>'A')::numeric
+             OR (book_payload->>'b')::numeric<=0
+             OR (book_payload->>'a')::numeric<=0
+             OR (book_payload->>'B')::numeric<0
+             OR (book_payload->>'A')::numeric<0
+             OR (book_payload->>'b')::numeric>(book_payload->>'a')::numeric
+          THEN RETURN false; END IF;
+
           SELECT (
             normalized.source='binance_spot_public'
             AND normalized.event_type='book_ticker'
@@ -1314,12 +1432,14 @@ def upgrade() -> None:
             AND raw.source=normalized.source
             AND raw.symbol=normalized.symbol
             AND raw.record_kind='stream_message'
+            AND raw.source_event_time IS NULL
             AND raw.payload_hash=normalized.raw_payload_hash
             AND raw.collector_session_id::text=normalized.correlation_id
             AND raw.collector_session_id::text=normalized.stream_watermark->>'session_id'
             AND raw.stream=normalized.stream_watermark->>'stream'
             AND raw.sequence=normalized.sequence
             AND raw.received_at=normalized.received_at
+            AND normalized.event_time=normalized.received_at
             AND normalized.stream_watermark->>'last_sequence'=normalized.sequence::text
             AND collector.source='binance_spot_public'
             AND collector.allowlist_version=
@@ -1359,7 +1479,10 @@ def upgrade() -> None:
           JOIN market_status_projections market ON market.symbol=normalized.symbol
           WHERE normalized.id=p_market_event_id;
           RETURN COALESCE(current_state.is_healthy,false);
-        EXCEPTION WHEN OTHERS THEN
+        EXCEPTION
+          WHEN character_not_in_repertoire OR invalid_text_representation
+            OR numeric_value_out_of_range OR datetime_field_overflow
+            OR lock_not_available THEN
           RETURN false;
         END;
         $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public
@@ -2923,9 +3046,11 @@ def upgrade() -> None:
     op.execute(
         "GRANT SELECT, INSERT ON agent_analysis_command_receipts TO woozoo_agent_orchestrator"
     )
+    op.execute("GRANT SELECT (stream) ON raw_market_events TO woozoo_evidence_writer")
 
 
 def downgrade() -> None:
+    op.execute("REVOKE SELECT (stream) ON raw_market_events FROM woozoo_evidence_writer")
     op.execute("DROP TRIGGER outbox_events_trading_room_audit_projection_v1 ON outbox_events")
     op.execute("DROP FUNCTION project_trading_room_audit_event_v1()")
     op.execute("DROP TRIGGER paper_cancel_receipt_binding ON paper_cancel_command_receipts")
@@ -3171,6 +3296,10 @@ def downgrade() -> None:
     op.execute("ALTER TABLE paper_asset_balances ENABLE TRIGGER USER")
     op.execute("ALTER TABLE paper_ledger_transactions ENABLE TRIGGER USER")
     op.execute("ALTER TABLE paper_ledger_entries ENABLE TRIGGER USER")
+    op.execute("DROP TRIGGER paper_observation_effect_phase7_response ON paper_observation_effects")
+    op.execute("DROP FUNCTION enforce_phase7_observation_response_v1()")
+    op.drop_constraint("ck_phase7_observation_response", "paper_observation_effects", type_="check")
+    op.drop_column("paper_observation_effects", "phase7_response")
     op.drop_constraint("ck_phase7_broker_input_liquidity", "paper_broker_inputs", type_="check")
     op.drop_constraint("ck_phase7_broker_input_kind", "paper_broker_inputs", type_="check")
     op.drop_constraint(

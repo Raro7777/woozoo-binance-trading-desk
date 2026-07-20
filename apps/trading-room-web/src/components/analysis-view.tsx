@@ -5,6 +5,14 @@ import { asRecord, asRecords, textValue, type JsonRecord } from "../lib/api";
 import { ResourceBoundary, useResource } from "./resource";
 import { Field, Panel, Status } from "./ui";
 
+export function localizedNarrative(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  const withoutTechnicalSymbols = value.replace(/\b(?:BTCUSDT|ETHUSDT|BTC|ETH|USDT)\b/g, "");
+  return /[A-Za-z]/.test(withoutTechnicalSymbols)
+    ? "분석 서술을 한국어로 표시할 수 없습니다."
+    : value;
+}
+
 export function AnalysisView({ runId }: Readonly<{ runId: string }>) {
   const resource = useResource<JsonRecord>(`/api/v1/analysis-runs/${encodeURIComponent(runId)}`);
   return (
@@ -17,7 +25,7 @@ export function AnalysisView({ runId }: Readonly<{ runId: string }>) {
       const proposalId = textValue(proposal, "proposal_id", "id") ?? textValue(run, "proposal_id");
       const proposalStatus = textValue(proposal, "status") ?? (proposalId === undefined ? "UNKNOWN" : "CREATED");
       const provider = textValue(run, "provider");
-      const providerLabel = provider === "mock" ? "모의 제공자" : provider === undefined ? undefined : `알 수 없는 제공자 (${provider})`;
+      const providerLabel = provider === "mock" ? "모의 제공자" : provider === undefined ? undefined : "알 수 없는 제공자";
       return (
         <div className="grid">
           <Panel title="분석 상태">
@@ -40,9 +48,9 @@ export function AnalysisView({ runId }: Readonly<{ runId: string }>) {
           </section>
           <section className="panel full" aria-labelledby="structured-report">
             <h2 id="structured-report">구조화 보고서</h2>
-            {textValue(report, "summary") !== undefined && <p>{textValue(report, "summary")}</p>}
+            {textValue(report, "summary") !== undefined && <p>{localizedNarrative(textValue(report, "summary"))}</p>}
             {claims.length === 0 ? <p className="muted">확인할 주장 목록이 없습니다.</p> : (
-              <ol>{claims.map((claim, index) => <li key={textValue(claim, "claim_id") ?? index}>{textValue(claim, "text", "claim") ?? "주장 정보 없음"}</li>)}</ol>
+              <ol>{claims.map((claim, index) => <li key={textValue(claim, "claim_id") ?? index}>{localizedNarrative(textValue(claim, "text", "claim")) ?? "주장 정보 없음"}</li>)}</ol>
             )}
           </section>
           <section className="panel full" aria-labelledby="proposal-binding">

@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta, tzinfo
 from decimal import Decimal
 import hashlib
@@ -6,6 +7,7 @@ import pytest
 
 import evidence_worker.builder as builder_module
 from evidence_worker.builder import EvidenceBuildError, build_evidence_snapshot
+from evidence_worker.persistence import _validate_source_authority
 from evidence_worker.types import Candle
 
 
@@ -165,6 +167,95 @@ def test_builder_rejects_a_terminal_window_that_is_stale_at_the_cutoffs() -> Non
             as_of=BASE + timedelta(days=3),
             cutoff=BASE + timedelta(days=3),
         )
+
+
+def test_pti_003_missing_raw_id_cannot_enter_evidence() -> None:
+    with pytest.raises(ValueError, match="raw_event_id"):
+        replace(candle(0), raw_event_id="")
+
+
+def test_pti_003_stale_collector_fails_closed() -> None:
+    with pytest.raises(EvidenceBuildError, match="collector session"):
+        _validate_source_authority(
+            {
+                "session_id": SESSION_ID,
+                "stream": "btcusdt@kline_1m",
+                "last_sequence": 7,
+                "observed_at": BASE.isoformat(),
+            },
+            collector_session_id=SESSION_ID,
+            collector_status="stale",
+            raw_stream="btcusdt@kline_1m",
+            normalized_stream="btcusdt@kline_1m",
+            normalized_sequence=7,
+            received_at=BASE,
+        )
+
+
+@pytest.mark.parametrize("interval", ["1m", "5m", "1h", "4h"])
+def test_pti_003_watermark_binds_each_approved_kline_stream(interval: str) -> None:
+    _validate_source_authority(
+        {
+            "session_id": SESSION_ID,
+            "stream": f"btcusdt@kline_{interval}",
+            "last_sequence": 7,
+            "observed_at": BASE.isoformat(),
+        },
+        collector_session_id=SESSION_ID,
+        collector_status="healthy",
+        raw_stream=f"btcusdt@kline_{interval}",
+        normalized_stream=f"btcusdt@kline_{interval}",
+        normalized_sequence=7,
+        received_at=BASE,
+    )
+
+
+def test_pti_003_raw_stream_mismatch_fails_closed() -> None:
+    with pytest.raises(EvidenceBuildError, match="raw stream"):
+        _validate_source_authority(
+            {
+                "session_id": SESSION_ID,
+                "stream": "btcusdt@kline_1m",
+                "last_sequence": 7,
+                "observed_at": BASE.isoformat(),
+            },
+            collector_session_id=SESSION_ID,
+            collector_status="healthy",
+            raw_stream="ethusdt@kline_1m",
+            normalized_stream="btcusdt@kline_1m",
+            normalized_sequence=7,
+            received_at=BASE,
+        )
+
+
+def test_pti_003_incomplete_watermark_fails_closed() -> None:
+    complete = {
+        "session_id": SESSION_ID,
+        "stream": "btcusdt@kline_1m",
+        "last_sequence": 7,
+        "observed_at": BASE.isoformat(),
+    }
+    invalid_watermarks = (
+        {key: value for key, value in complete.items() if key != "session_id"},
+        {**complete, "session_id": "018f7000-0000-7000-8000-000000000999"},
+        {**complete, "stream": ""},
+        {**complete, "stream": "ethusdt@kline_1m"},
+        {**complete, "last_sequence": 6},
+        {**complete, "observed_at": "not-a-time"},
+        {**complete, "observed_at": (BASE + timedelta(seconds=1)).isoformat()},
+        {**complete, "unexpected": "field"},
+    )
+    for watermark in invalid_watermarks:
+        with pytest.raises(EvidenceBuildError, match="watermark"):
+            _validate_source_authority(
+                watermark,
+                collector_session_id=SESSION_ID,
+                collector_status="healthy",
+                raw_stream="btcusdt@kline_1m",
+                normalized_stream="btcusdt@kline_1m",
+                normalized_sequence=7,
+                received_at=BASE,
+            )
 
 
 @pytest.mark.parametrize("quality", ["degraded", "stale", "invalid", "reconnecting"])

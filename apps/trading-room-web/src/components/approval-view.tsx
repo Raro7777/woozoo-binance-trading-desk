@@ -4,7 +4,13 @@ import { useState } from "react";
 import { apiVersionedCommand, asRecord, textValue, versionValue, type JsonRecord } from "../lib/api";
 import { approvalActionIssues, renderedPreviewFields } from "../lib/approval-preview";
 import { ResourceBoundary, useResource } from "./resource";
+import { CommandDialog } from "./command-dialog";
 import { diagnosticLabel, Field, Hold, Panel, Status } from "./ui";
+
+type ApprovalDialog = Readonly<{
+  action: "APPROVE" | "REJECT" | "REVOKE";
+  view: JsonRecord;
+}>;
 
 function stringReasons(record: JsonRecord | undefined): readonly string[] {
   const value = record?.reason_codes;
@@ -25,16 +31,14 @@ export function ApprovalView({ proposalId }: Readonly<{ proposalId: string }>) {
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState("결정하기 전에 서버에 결합된 모든 값을 검토하세요.");
   const [error, setError] = useState(false);
+  const [dialog, setDialog] = useState<ApprovalDialog>();
 
-  async function decide(view: JsonRecord, decision: "APPROVE" | "REJECT") {
-    if (decision === "APPROVE" && !window.confirm("이 모의주문 미리보기를 정확히 승인하시겠습니까? 실행 권한은 한 번만 시도할 수 있습니다.")) return;
-    const reason = decision === "REJECT" ? window.prompt("거절 사유를 기록하세요:") : undefined;
-    if (decision === "REJECT" && (typeof reason !== "string" || reason.trim().length === 0)) return;
+  async function decide(view: JsonRecord, decision: "APPROVE" | "REJECT", reason: string) {
     setPending(true);
     setError(false);
     setMessage("결합된 결정을 제출하는 중입니다. 성공으로 미리 간주하지 않습니다…");
     try {
-      const commandReason = decision === "APPROVE" ? "OPERATOR_APPROVED_EXACT_PREVIEW" : reason!.trim();
+      const commandReason = decision === "APPROVE" ? "OPERATOR_APPROVED_EXACT_PREVIEW" : reason;
       await apiVersionedCommand<JsonRecord>("/api/v1/paper-approvals", approvalBody(view, decision, commandReason), versionValue(view, "view_version"));
       setMessage("결정이 접수되었습니다. 서버 확정 상태를 새로 고치는 중…");
       resource.reload();
@@ -48,7 +52,7 @@ export function ApprovalView({ proposalId }: Readonly<{ proposalId: string }>) {
 
   async function revoke(view: JsonRecord) {
     const approvalId = textValue(view, "approval_id");
-    if (approvalId === undefined || !window.confirm("이 승인을 철회하시겠습니까? 기존 감사 이력은 유지됩니다.")) return;
+    if (approvalId === undefined) return;
     setPending(true);
     setError(false);
     setMessage("철회를 제출하는 중입니다. 성공으로 미리 간주하지 않습니다…");
@@ -64,6 +68,14 @@ export function ApprovalView({ proposalId }: Readonly<{ proposalId: string }>) {
     } finally {
       setPending(false);
     }
+  }
+
+  function confirmDialog(reason: string) {
+    const current = dialog;
+    setDialog(undefined);
+    if (current === undefined) return;
+    if (current.action === "REVOKE") void revoke(current.view);
+    else void decide(current.view, current.action, reason);
   }
 
   return (
@@ -112,7 +124,11 @@ export function ApprovalView({ proposalId }: Readonly<{ proposalId: string }>) {
                 <Field label="응답 시각" value={textValue(view, "served_at")} />
               </dl>
             </section>
-            <section className="panel wide" aria-labelledby="exact-order-preview">
+            <section
+              className="panel wide"
+              aria-labelledby="exact-order-preview"
+              data-canonical-preview={preview === undefined ? undefined : JSON.stringify(preview)}
+            >
               <h2 id="exact-order-preview">정확한 모의주문 미리보기</h2>
               <p className="muted">아래 값은 서버 원문 그대로 표시됩니다. 브라우저는 금융 계산을 수행하지 않습니다.</p>
               <dl className="field-list">
@@ -127,13 +143,28 @@ export function ApprovalView({ proposalId }: Readonly<{ proposalId: string }>) {
             <section className="panel full" aria-labelledby="operator-decision">
               <h2 id="operator-decision">운영자 결정</h2>
               <div className="actions">
-                <button disabled={pending || !actionEnabled} onClick={() => void decide(view, "APPROVE")}>정확한 미리보기 승인</button>
-                <button className="secondary" disabled={pending || !actionEnabled} onClick={() => void decide(view, "REJECT")}>거절</button>
-                <button className="danger" disabled={pending || approvalStatus !== "APPROVED" || resourceVersion === undefined} onClick={() => void revoke(view)}>승인 철회</button>
+                <button disabled={pending || !actionEnabled} onClick={() => setDialog({ action: "APPROVE", view })}>정확한 미리보기 승인</button>
+                <button className="secondary" disabled={pending || !actionEnabled} onClick={() => setDialog({ action: "REJECT", view })}>거절</button>
+                <button className="danger" disabled={pending || approvalStatus !== "APPROVED" || resourceVersion === undefined} onClick={() => setDialog({ action: "REVOKE", view })}>승인 철회</button>
               </div>
               <p className={`command-result${error ? " error" : ""}`} role="status" aria-live="polite">{pending ? "서버 확정 명령 처리 결과를 기다리는 중…" : message}</p>
             </section>
           </div>
+          <CommandDialog
+            open={dialog !== undefined}
+            title={dialog?.action === "APPROVE" ? "정확한 모의주문 승인" : dialog?.action === "REJECT" ? "모의주문 거절" : "승인 철회"}
+            description={dialog?.action === "APPROVE"
+              ? "표시된 모의주문 미리보기에 정확히 결합된 일회성 실행 권한을 발급합니다. 실행 권한은 한 번만 시도할 수 있습니다."
+              : dialog?.action === "REJECT"
+                ? "거절 사유는 변경할 수 없는 감사 기록에 남습니다."
+                : "완료된 승인 감사 이력은 유지되며, 발급된 실행 권한만 철회됩니다."}
+            confirmLabel={dialog?.action === "APPROVE" ? "승인 제출" : dialog?.action === "REJECT" ? "거절 제출" : "철회 제출"}
+            reasonLabel={dialog?.action === "REJECT" ? "거절 사유" : undefined}
+            reasonRequired={dialog?.action === "REJECT"}
+            danger={dialog?.action !== "APPROVE"}
+            onCancel={() => setDialog(undefined)}
+            onConfirm={confirmDialog}
+          />
         </>
       );
     }}</ResourceBoundary>

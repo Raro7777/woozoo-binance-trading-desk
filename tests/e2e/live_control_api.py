@@ -63,6 +63,7 @@ def bootstrap_public_data() -> int:
     from evidence_worker.runner import materialize_evidence_command
     from market_data_worker.persistence import PostgresMarketStore
     from market_data_worker.pipeline import CollectorPipeline
+    from market_data_worker.types import QualityEvent, QualityStatus
 
     market_url = _required_environment("MARKET_DATABASE_URL")
     evidence_url = _required_environment("EVIDENCE_DATABASE_URL")
@@ -228,6 +229,18 @@ def bootstrap_public_data() -> int:
                 "A": "10.00000000",
             },
         )
+
+    # Record the supervisor-equivalent generation transition through the
+    # durable quality-event authority after every allowlisted stream is primed.
+    market_store.append_quality(
+        QualityEvent(
+            QualityStatus.HEALTHY,
+            "e2e_bootstrap_complete",
+            "market_data",
+            observed_at,
+            None,
+        )
+    )
 
     for symbol in ("BTCUSDT", "ETHUSDT"):
         evidence_as_of = observed_at if symbol == "BTCUSDT" else observed_at - timedelta(minutes=10)
@@ -413,14 +426,60 @@ def record_partial_book(symbol: str) -> int:
             "u": sequence,
             "s": symbol,
             "b": price,
-            "B": "0.00100000",
+            "B": "0.02000000" if symbol == "ETHUSDT" else "0.00100000",
             "a": "60000.01" if symbol == "BTCUSDT" else "3000.01",
-            "A": "0.00100000",
+            "A": "0.02000000" if symbol == "ETHUSDT" else "0.00100000",
         },
         observed_at,
     )
     if not result.accepted:
         raise RuntimeError(f"E2E_PARTIAL_BOOK_REJECTED:{symbol}:{result.reason}")
+    return 0
+
+
+def create_sell_analysis(symbol: str) -> int:
+    """Persist a real E2E-only SELL analysis after E2E-001 acquires base asset."""
+    import asyncio
+    import json
+    from collections.abc import Mapping
+
+    from agent_orchestrator.models import Role
+    from agent_orchestrator.persistence import PostgresAgentStore
+    from agent_orchestrator.provider import MockLlmProvider
+    from agent_orchestrator.workflow import AgentWorkflow
+    from control_api.command_ports import PostgresRiskEvaluationPort
+
+    class SellMockProvider(MockLlmProvider):
+        async def invoke(self, role: Role, request: Mapping[str, object]) -> str:
+            response = json.loads(await super().invoke(role, request))
+            if role in {Role.TRADER, Role.PORTFOLIO}:
+                response["stance"] = "SELL"
+            return json.dumps(response, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+
+    now = datetime.now(UTC)
+    store = PostgresAgentStore(_required_environment("AGENT_DATABASE_URL"))
+    evidence_id = store.latest_healthy_evidence_id(symbol, now)
+    if evidence_id is None:
+        raise RuntimeError("E2E_SELL_EVIDENCE_UNAVAILABLE")
+    evidence = store.load_evidence(evidence_id)
+    if evidence is None:
+        raise RuntimeError("E2E_SELL_EVIDENCE_MISSING")
+    workflow = asyncio.run(
+        AgentWorkflow(
+            SellMockProvider(),
+            clock=lambda: now.isoformat().replace("+00:00", "Z"),
+            namespace="paper",
+        ).run(evidence)
+    )
+    persisted = store.persist(workflow)
+    if persisted.proposal_id is None or persisted.outcome != "COMPLETED":
+        raise RuntimeError("E2E_SELL_ANALYSIS_HELD")
+    PostgresRiskEvaluationPort(_required_environment("RISK_DATABASE_URL")).evaluate_proposal(
+        persisted.proposal_id,
+        PAPER_ACCOUNT_ID,
+        now,
+    )
+    print(f"E2E_SELL_RUN_ID:{persisted.run_id}")
     return 0
 
 
@@ -451,6 +510,7 @@ def main() -> int:
     parser.add_argument("--refresh-evidence", choices=("BTCUSDT", "ETHUSDT"))
     parser.add_argument("--non-crossing-buy-book", choices=("BTCUSDT", "ETHUSDT"))
     parser.add_argument("--record-partial-book", choices=("BTCUSDT", "ETHUSDT"))
+    parser.add_argument("--create-sell-analysis", choices=("BTCUSDT", "ETHUSDT"))
     args = parser.parse_args()
     if args.worker_once:
         return run_worker_once()
@@ -462,6 +522,8 @@ def main() -> int:
         return refresh_evidence(args.refresh_evidence, args.non_crossing_buy_book)
     if args.record_partial_book:
         return record_partial_book(args.record_partial_book)
+    if args.create_sell_analysis:
+        return create_sell_analysis(args.create_sell_analysis)
     uvicorn.run(
         create_live_app(),
         host="127.0.0.1",

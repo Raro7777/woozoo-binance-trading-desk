@@ -21,7 +21,7 @@ export function AuditTimeline() {
                 <td>{textValue(event, "occurred_at")}</td><td>{diagnosticLabel(textValue(event, "event_type", "type") ?? "UNKNOWN_EVENT")}</td>
                 <td className="mono">{textValue(event, "producer") ?? "알 수 없음"}</td>
                 <td className="mono">{textValue(event, "aggregate_id", "subject_id")}</td><td>{textValue(event, "actor_id") ?? "시스템"}</td>
-                <td><Status value={textValue(event, "outcome", "status") ?? "RECORDED"} /></td>
+                <td><Status value={textValue(event, "outcome", "status") ?? "UNKNOWN"} /></td>
               </tr>)}</tbody>
             </table>
           </div>

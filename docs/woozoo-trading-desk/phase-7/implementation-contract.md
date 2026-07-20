@@ -84,21 +84,35 @@ Spot public `book_ticker` rows received after an order was accepted. It selects
 the canonical order and recorded book in a deterministic sequence, revalidates
 Kill and reconciliation under the Paper account lock, then calls a DB-owned,
 least-privilege verifier that binds the row to the newest active collector
-session, exact allowlist, raw hash, healthy stream watermark and healthy current
-market projection. Concurrent session changes, stale timestamps, quality reasons,
-Kill, cancellation and reconciliation drift return a no-effect HOLD; unknown
-conditions remain fatal. BUY/SELL book sides have independent canonical order and
-liquidity budgets. A successful transaction atomically records the observation,
-partial/full fill, recorded `received_at` provenance, balance versions, lots,
-journals, order event and outbox. The Paper role can execute the verifier but
-cannot read its source market tables directly. The browser and AI cannot supply
-price, liquidity, fill or ledger values.
+session, exact allowlist, a freshly recomputed SHA-256 of the raw bytes, strict
+Binance `bookTicker` symbol/bid/ask fields, the normalized Decimal values, healthy
+stream watermark and healthy current market projection. Concurrent session
+changes, a watermark stream that differs from the exact 1m/5m/1h/4h raw kline
+stream, malformed or mismatched provenance, stale timestamps, quality reasons,
+Kill, cancellation and reconciliation drift return a no-effect HOLD; unexpected
+DB/runtime conditions remain fatal. BUY/SELL book sides have independent canonical
+order and liquidity budgets, and same-side orders compete by accepted time then ID.
+An immutable observation effect preserves the first `NO_FILL` response even after
+the order later fills or is cancelled. A successful transaction atomically records
+the observation, partial/full fill, recorded `received_at` provenance, balance
+versions, lots, journals, order event and outbox. The Paper role can execute the
+verifier but cannot read its source market tables directly. The browser and AI
+cannot supply price, liquidity, fill or ledger values.
 
 ## Acceptance
 
-All canonical quality commands, including real HTTPS browser E2E, must pass.
-E2E covers golden flow, stale-data block, idempotent retry/reload, Kill
-cancellation/recovery, a post-acceptance public recorded-book partial fill followed
-by an operator cancellation, desktop/mobile keyboard flow, and zero
-serious/critical accessibility findings. Missing commands or unverified evidence
-are not PASS.
+The repository pins pnpm 7.33.7 so the canonical `pnpm ci` command executes the
+project quality aggregator rather than a package-manager clean-install alias. It
+performs its own frozen-lockfile bootstrap and every approved quality command.
+The final gate independently validates the exact 43-row Phase 0 denominator:
+every artifact must exist, be PASS, contain a non-empty zero-skip JUnit result,
+bind the same commit/tree/worktree digest/file count, and retain its declared
+source/configuration hashes; E2E flat and directory results are byte-identical.
+
+Real HTTPS E2E covers golden flow, stale-data block, mismatched-preview no-effect,
+idempotent retry/reload, Kill cancellation/recovery, a post-acceptance public
+recorded-book partial fill followed by an operator cancellation, and a fresh
+keyboard approval in both desktop and mobile viewports. All user-visible labels,
+errors and command dialogs are Korean, while canonical values remain internal
+hash-bound data. Serious/critical accessibility findings, missing commands,
+skipped scenarios or unverified evidence are not PASS.

@@ -66,7 +66,7 @@ const statusPresentations: Readonly<Record<string, Readonly<{ label: string; ton
 };
 
 export function statusLabel(value: string): string {
-  return statusPresentations[value.toUpperCase()]?.label ?? `알 수 없는 상태 (${value})`;
+  return statusPresentations[value.toUpperCase()]?.label ?? "알 수 없는 상태";
 }
 
 export function statusTone(value: string): StatusTone {
@@ -125,7 +125,7 @@ const diagnosticLabels: Readonly<Record<string, string>> = {
 };
 
 export function diagnosticLabel(value: string): string {
-  return `${diagnosticLabels[value] ?? "진단 정보"} (${value})`;
+  return diagnosticLabels[value] ?? "알 수 없는 진단 정보";
 }
 
 export function Status({ value }: Readonly<{ value: string }>) {
