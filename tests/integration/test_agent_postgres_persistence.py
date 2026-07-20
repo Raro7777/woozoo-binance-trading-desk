@@ -18,8 +18,10 @@ from agent_orchestrator import (
     AgentWorkflow,
     EvidenceContext,
     MockLlmProvider,
+    Role,
     bind_test_risk_input,
 )
+from agent_orchestrator.canonical import canonical_hash
 from agent_orchestrator.persistence import AgentPersistenceStage, PostgresAgentStore
 from docker_infrastructure_lock import docker_infrastructure_lock
 from risk_engine import evaluate_risk
@@ -275,3 +277,73 @@ def test_agent_role_has_no_risk_paper_or_approval_table_privileges() -> None:
     assert "GRANT SELECT ON paper_orders" not in migration
     assert "paper_approvals" not in migration
     assert "evidence_reader_v1" in migration
+
+
+def test_agent_persistence_rejects_hold_with_proposal() -> None:
+    evidence = EvidenceContext(
+        evidence_id="e" * 64,
+        evidence_digest="a" * 64,
+        symbol="BTCUSDT",
+        as_of=NOW,
+        knowledge_cutoff=NOW,
+        quality="healthy",
+        item_ids=("1" * 64,),
+        quoted_content=("public market observation",),
+    )
+    contradictory = deepcopy(
+        asyncio.run(AgentWorkflow(MockLlmProvider(), clock=lambda: NOW).run(evidence))
+    )
+    assert contradictory.proposal is not None
+    contradictory.run["outcome"] = "HOLD"
+    contradictory.run["hold_reason"] = "AUDIT_REJECTED"
+    completed_event = contradictory.events[0]
+    completed_event["data"] = deepcopy(contradictory.run)
+    completed_event["payload_hash"] = canonical_hash(completed_event["data"])
+    completed_event["event_id"] = canonical_hash(
+        {key: value for key, value in completed_event.items() if key != "event_id"}
+    )
+    with pytest.raises(Exception):
+        PostgresAgentStore._validate_graph(contradictory)
+
+
+def test_agent_database_rejects_hold_proposal_child() -> None:
+    with docker_infrastructure_lock():
+        run("docker", "compose", "down", "-v")
+        run("docker", "compose", "up", "-d", "--wait", "postgres")
+        try:
+            run(sys.executable, "-m", "alembic", "upgrade", "head")
+            evidence = _seed_evidence()
+            store = PostgresAgentStore(AGENT_DATABASE_URL)
+            loaded = store.load_evidence(evidence.evidence_id)
+            assert loaded is not None
+            held = asyncio.run(
+                AgentWorkflow(
+                    MockLlmProvider(failures=frozenset({Role.MARKET_REGIME})),
+                    clock=lambda: NOW,
+                ).run(loaded)
+            )
+            assert held.run["outcome"] == "HOLD"
+            store.persist(held)
+            with pytest.raises(
+                psycopg.errors.RaiseException,
+                match="Proposal requires a matching completed run",
+            ):
+                with psycopg.connect(DATABASE_URL) as connection:
+                    connection.execute(
+                        """
+                        INSERT INTO trade_proposals(
+                          proposal_id,run_id,evidence_id,proposal_version,side,risk_eligible,
+                          proposal_hash,payload,created_at
+                        ) VALUES (%s,%s,%s,'v1','BUY',true,%s,%s,%s)
+                        """,
+                        (
+                            "8" * 64,
+                            held.run["run_id"],
+                            evidence.evidence_id,
+                            "9" * 64,
+                            Jsonb({"proposal_id": "8" * 64}),
+                            datetime(2026, 7, 20, tzinfo=UTC),
+                        ),
+                    )
+        finally:
+            run("docker", "compose", "down", "-v")

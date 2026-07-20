@@ -318,6 +318,28 @@ def upgrade() -> None:
             DEFERRABLE INITIALLY DEFERRED
             FOR EACH ROW EXECUTE FUNCTION enforce_agent_evidence_ref()
         """)
+    op.execute("""
+        CREATE FUNCTION enforce_completed_run_proposal() RETURNS trigger AS $$
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM analysis_runs run
+            WHERE run.run_id=NEW.run_id
+              AND run.outcome='COMPLETED'
+              AND run.hold_reason IS NULL
+              AND run.payload->>'proposal_id'=NEW.proposal_id
+          ) THEN
+            RAISE EXCEPTION 'Phase 6 Proposal requires a matching completed run';
+          END IF;
+          RETURN NEW;
+        END;
+        $$ LANGUAGE plpgsql
+    """)
+    op.execute("""
+        CREATE CONSTRAINT TRIGGER trade_proposal_completed_run
+        AFTER INSERT ON trade_proposals
+        DEFERRABLE INITIALLY DEFERRED
+        FOR EACH ROW EXECUTE FUNCTION enforce_completed_run_proposal()
+    """)
     for table in (
         "agent_prompt_manifests",
         "analysis_runs",
@@ -457,6 +479,7 @@ def downgrade() -> None:
         "uq_phase6_evidence_authority", "evidence_snapshots", type_="unique"
     )
     op.execute("DROP FUNCTION enforce_agent_evidence_ref()")
+    op.execute("DROP FUNCTION enforce_completed_run_proposal()")
     op.execute("DROP FUNCTION reject_agent_history_mutation()")
     op.execute("""
         DO $$ BEGIN

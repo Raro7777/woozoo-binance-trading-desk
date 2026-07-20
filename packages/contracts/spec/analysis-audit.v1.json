@@ -20,5 +20,26 @@
     "prompt_manifest_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
     "audited_at": {"type": "string", "format": "date-time"},
     "audit_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
-  }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"verdict": {"const": "ACCEPTED"}}, "required": ["verdict"]},
+      "then": {
+        "properties": {
+          "reason_codes": {"maxItems": 0},
+          "proposal_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "report_hashes": {"minItems": 8, "maxItems": 8}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"verdict": {"const": "HOLD"}}, "required": ["verdict"]},
+      "then": {
+        "properties": {
+          "reason_codes": {"minItems": 1},
+          "proposal_hash": {"type": "null"}
+        }
+      }
+    }
+  ]
 }

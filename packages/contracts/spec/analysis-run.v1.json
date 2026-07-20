@@ -26,5 +26,21 @@
     "report_ids": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-f0-9]{64}$"}},
     "proposal_id": {"oneOf": [{"type": "null"}, {"type": "string", "pattern": "^[a-f0-9]{64}$"}]},
     "audit_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
-  }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"outcome": {"const": "COMPLETED"}}, "required": ["outcome"]},
+      "then": {
+        "properties": {
+          "hold_reason": {"type": "null"},
+          "proposal_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "report_ids": {"minItems": 8, "maxItems": 8}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"outcome": {"const": "HOLD"}}, "required": ["outcome"]},
+      "then": {"properties": {"proposal_id": {"type": "null"}}}
+    }
+  ]
 }

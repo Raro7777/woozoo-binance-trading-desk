@@ -28,8 +28,8 @@ export const CONTRACT_SOURCE_DIGESTS = {
   "prompt-manifest.v1.json": "d6ec20a8099119810f4d2c6099972fa00e232c17695168deaf34281df397c109",
   "agent-report.v1.json": "6b2521dee4976843e14c629911d6bda85f80577f2973b3ee7f05020083820950",
   "trade-proposal.v1.json": "8ecb4426d9199e102ead687513d6fc0e2c4a3e9ad40b3e2d996ffd085c81d4cf",
-  "analysis-run.v1.json": "15281db11f3f89b9a7e1d98fb4f29ab09cf160e94c2cd7a4892e9abe6da750a9",
-  "analysis-audit.v1.json": "8cb5887a9f047b8f3fcc4c2011a3b271afb1de5af094da2595d095716bf6e831",
+  "analysis-run.v1.json": "b5e9ae5bca1495a94b4f7d7d05e78319d527f7217057547319524ddf12660122",
+  "analysis-audit.v1.json": "67d6e8ffcd97ebb065d0b9b1653f1d57dffa8f87fbe763bbcbc11921f0874661",
   "agent-domain-events.v1.json": "0bb08a32ef4f78d3a5b86635887fd4a1ad9dcf64d8b23ab2ee0165feaee89489",
   "risk-input.v2.json": "4fca44bdbb1a8b2e1bdaabfec5cf34f9a34263768c4ca4a803e038b3841e487a"
 } as const;

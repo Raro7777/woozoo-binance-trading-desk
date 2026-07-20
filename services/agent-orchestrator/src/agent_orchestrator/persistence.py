@@ -19,7 +19,7 @@ from platform_core.generated_contracts import (
 )
 
 from .canonical import canonical_hash
-from .models import EvidenceContext, WorkflowResult
+from .models import ROLE_ORDER, EvidenceContext, WorkflowResult
 
 
 _REPORT_VALIDATOR = Draft202012Validator(AGENT_REPORT_SCHEMA, format_checker=FormatChecker())
@@ -160,6 +160,9 @@ class PostgresAgentStore:
                 raise ValueError("REPORT_DEPENDENCY_MISMATCH")
             expected_report_ids.append(cast(str, report["report_id"]))
             expected_report_hashes.append(cast(str, report["report_hash"]))
+        expected_roles = [role.value for role in ROLE_ORDER[: len(result.reports)]]
+        if [report["role"] for report in result.reports] != expected_roles:
+            raise ValueError("REPORT_ROLE_SEQUENCE_MISMATCH")
         if run["report_ids"] != expected_report_ids:
             raise ValueError("RUN_REPORT_MISMATCH")
         proposal = result.proposal
@@ -200,6 +203,23 @@ class PostgresAgentStore:
             or run["audit_hash"] != audit["audit_hash"]
         ):
             raise ValueError("AUDIT_GRAPH_MISMATCH")
+        if proposal is None:
+            if (
+                run["outcome"] != "HOLD"
+                or not isinstance(run["hold_reason"], str)
+                or audit["verdict"] != "HOLD"
+                or audit["reason_codes"] != [run["hold_reason"]]
+                or audit["proposal_hash"] is not None
+            ):
+                raise ValueError("HOLD_STATE_MISMATCH")
+        elif (
+            run["outcome"] != "COMPLETED"
+            or run["hold_reason"] is not None
+            or audit["verdict"] != "ACCEPTED"
+            or audit["reason_codes"] != []
+            or len(result.reports) != len(ROLE_ORDER)
+        ):
+            raise ValueError("COMPLETED_STATE_MISMATCH")
         expected_event_types = (
             ("analysis.run.held.v1",)
             if proposal is None
