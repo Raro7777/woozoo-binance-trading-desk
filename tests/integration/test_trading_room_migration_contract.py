@@ -113,6 +113,9 @@ def test_phase7_migration_closes_auth_approval_authorization_and_recovery_bounda
     assert "decision.risk_input->'market_books'" in source
     assert "KILL_RECOVERY_WORKER_NOT_READY" in source
     assert "CURRENT_TIMESTAMP-interval '5 seconds'" in source
+    completion_guard = source.split("CREATE FUNCTION enforce_paper_kill_cancel_completion_v1", 1)[
+        1
+    ].split("CREATE FUNCTION enforce_risk_approval_receipt", 1)[0]
     approval_guard = source.split("CREATE FUNCTION issue_paper_approval_v1", 1)[1].split(
         "CREATE FUNCTION revoke_paper_approval_v1", 1
     )[0]
@@ -122,6 +125,11 @@ def test_phase7_migration_closes_auth_approval_authorization_and_recovery_bounda
     recovery_reader = source.split("CREATE VIEW kill_switch_recovery_reader_v1", 1)[1].split(
         "CREATE FUNCTION trading_room_public_audit_data_v1", 1
     )[0]
+    assert "FROM paper_execution_authorizations authz" in completion_guard
+    assert "authz.paper_account_id=NEW.paper_account_id" in completion_guard
+    assert "FROM paper_authorization_attempts attempt" in completion_guard
+    assert "attempt.namespace='paper'" in completion_guard
+    assert "attempt.paper_execution_authorization_id=authz.authorization_id" in completion_guard
     assert "paper_recorded_book_market_is_current_v1(latest.id)" in recovery_guard
     assert "paper_recorded_book_market_is_current_v1(latest.id)" in recovery_reader
     for writer_guard in (approval_guard, recovery_guard):
@@ -133,6 +141,8 @@ def test_phase7_migration_closes_auth_approval_authorization_and_recovery_bounda
         assert "JOIN outbox_events event USING(event_id)" in writer_guard
         assert "WHERE link.account_id='{PAPER_DEFAULT_ACCOUNT_ID}'),0)" in writer_guard
     assert "AND health.reconciliation_status='HEALTHY'" in recovery_reader
+    assert "checkpoint_row.input_digest<>completion_row.state_digest" in recovery_guard
+    assert "checkpoint.input_digest=completion.state_digest" in recovery_reader
     assert "checkpoint.authority_sequence<>authority.current_sequence" in source
     assert "SECURITY DEFINER SET search_path = pg_catalog, public" in source
     assert "kill_switch_state_phase7_transition" in source

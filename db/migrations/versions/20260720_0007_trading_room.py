@@ -604,6 +604,14 @@ def upgrade() -> None:
                                   WHERE activation_event_id=NEW.activation_event_id)
              OR EXISTS (SELECT 1 FROM paper_orders
                         WHERE status IN ('OPEN','PARTIALLY_FILLED'))
+             OR EXISTS (
+               SELECT 1 FROM paper_execution_authorizations authz
+               WHERE authz.namespace='paper'
+                 AND authz.paper_account_id=NEW.paper_account_id
+                 AND NOT EXISTS (
+                   SELECT 1 FROM paper_authorization_attempts attempt
+                   WHERE attempt.namespace='paper'
+                     AND attempt.paper_execution_authorization_id=authz.authorization_id))
              OR EXISTS (SELECT 1 FROM paper_kill_cancel_batches
                         WHERE activation_event_id=NEW.activation_event_id
                           AND completed_at>NEW.completed_at)
@@ -2591,7 +2599,8 @@ def upgrade() -> None:
         WHERE authz.namespace='paper'
           AND NOT EXISTS (
             SELECT 1 FROM paper_authorization_attempts attempt
-            WHERE attempt.authorization_id=authz.authorization_id)
+            WHERE attempt.namespace='paper'
+              AND attempt.paper_execution_authorization_id=authz.authorization_id)
     """)
     op.execute("""
         CREATE VIEW paper_order_reader_v1 AS

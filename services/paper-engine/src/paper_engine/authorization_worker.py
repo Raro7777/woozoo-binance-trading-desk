@@ -107,7 +107,7 @@ class DurableKillActivationWorker:
             )
             cancelled_count += consumed.cancelled_count
             completion_created = completion_created or consumed.completion_created
-            if not consumed.has_more:
+            if completion_created or not consumed.has_more or consumed.cancelled_count == 0:
                 return KillActivationProgress(pending[0], cancelled_count, completion_created)
 
 
@@ -148,9 +148,19 @@ class ReconcilingAuthorizationRunner:
 
     def run_once(self) -> object | None:
         result: object | None = self._kill_worker.run_once()
-        if result is None:
+        kill_waits_for_authorization_drain = (
+            isinstance(result, KillActivationProgress) and not result.completion_created
+        )
+        if kill_waits_for_authorization_drain:
+            drained = self._worker.run_once()
+            if drained is not None:
+                result = drained
+                completion = self._kill_worker.run_once()
+                if isinstance(completion, KillActivationProgress) and completion.completion_created:
+                    result = completion
+        elif result is None:
             result = self._worker.run_once()
-        if result is None:
+        if result is None and not kill_waits_for_authorization_drain:
             result = self._recorded_book_worker.run_once()
         recorded_book_hold = False
         if (

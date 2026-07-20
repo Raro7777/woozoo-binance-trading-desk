@@ -44,6 +44,14 @@ immutable Evidence
   requires a new reconciliation before either writer can proceed; a healthy
   but stale checkpoint is never accepted merely because its digest still
   matches an earlier Risk decision or cancellation completion.
+- Kill cancellation completion is written only after every open Paper order is
+  terminally cancelled and every already-issued Paper authorization has made
+  its one terminal attempt under the active Kill barrier. The worker drains
+  those authorizations before completion, and the deferred database binding
+  rejects a completion while any authorization remains pending. Completion's
+  immutable full semantic digest can therefore remain the exact input digest
+  required of the later healthy recovery checkpoint without creating a
+  permanent recovery hold.
 - Manual Kill recovery requires the active activation event, expected version,
   an incident reference, authenticated actor, and healthy data, ledger, and
   reconciliation. Its reader and writer select the same latest BTCUSDT and

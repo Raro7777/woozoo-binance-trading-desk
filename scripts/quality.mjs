@@ -1023,7 +1023,10 @@ const actions = {
         "tests/e2e/trading-room.spec.ts::[live] E2E-004",
         "tests/integration/test_trading_room_api.py::test_e2e_004_kill_cancels_open_order_and_manual_recovery_is_audited",
         "tests/integration/test_phase7_paper_first_attempt_authority.py::test_recovery_races_consumer_but_requires_completion_and_later_checkpoint",
-        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_recovery_rejects_checkpoint_that_predates_a_pending_authorization_effect",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_kill_completion_waits_for_pending_authorization_and_recovery_resumes",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_test_namespace_attempt_cannot_satisfy_pending_paper_authorization",
+        "tests/unit/test_paper_authorization_worker_runtime.py::test_kill_worker_yields_when_completion_waits_for_authorization_drain",
+        "tests/unit/test_paper_authorization_worker_runtime.py::test_runner_drains_pending_authorization_before_kill_completion",
       ],
       "E2E-005": [
         "tests/e2e/trading-room.spec.ts::[live] E2E-005",

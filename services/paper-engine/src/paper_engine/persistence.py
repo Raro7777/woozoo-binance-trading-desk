@@ -759,6 +759,12 @@ class PostgresPaperStore:
                     occurred_at,
                 )
                 self._append_phase7_outbox(connection, account_id, blocked)
+                if block_reason == "KILL_SWITCH_ACTIVE":
+                    self._complete_active_kill_after_authorization_drain(
+                        connection,
+                        account_id=account_id,
+                        completed_at=occurred_at,
+                    )
                 semantic_digest = self.semantic_digest(account_id, connection=connection)
                 return CommitResult(True, response, semantic_digest)
 
@@ -2343,13 +2349,16 @@ class PostgresPaperStore:
                 "ORDER BY account_id,accepted_broker_seq,client_order_id,order_id LIMIT 1"
             ).fetchone()
             if account is None:
-                completion_created = self._complete_kill_activation(
-                    connection,
-                    activation_event_id=activation_event_id,
-                    payload_hash=payload_hash,
-                    account_id=account_id,
-                    completed_at=received_at,
-                )
+                has_more = self._has_pending_phase7_authorizations(connection, account_id)
+                completion_created = False
+                if not has_more:
+                    completion_created = self._complete_kill_activation(
+                        connection,
+                        activation_event_id=activation_event_id,
+                        payload_hash=payload_hash,
+                        account_id=account_id,
+                        completed_at=received_at,
+                    )
                 return KillCancelResult(
                     inbox_created,
                     False,
@@ -2357,7 +2366,7 @@ class PostgresPaperStore:
                     None,
                     account_id,
                     0,
-                    False,
+                    has_more,
                     completion_created,
                 )
             if account[0] != account_id:
@@ -2380,7 +2389,9 @@ class PostgresPaperStore:
                     "WHERE status IN ('OPEN','PARTIALLY_FILLED'))"
                 ).fetchone()
                 assert has_more_row is not None
-                has_more = has_more_row[0]
+                has_more = has_more_row[0] or self._has_pending_phase7_authorizations(
+                    connection, account_id
+                )
                 completion_created = False
                 if not has_more:
                     completion_created = self._complete_kill_activation(
@@ -2534,7 +2545,9 @@ class PostgresPaperStore:
                 "WHERE status IN ('OPEN','PARTIALLY_FILLED'))"
             ).fetchone()
             assert has_more_row is not None
-            has_more = has_more_row[0]
+            has_more = has_more_row[0] or self._has_pending_phase7_authorizations(
+                connection, account_id
+            )
             completion_created = False
             if not has_more:
                 completion_created = self._complete_kill_activation(
@@ -2555,6 +2568,61 @@ class PostgresPaperStore:
             completion_created,
         )
 
+    @staticmethod
+    def _has_pending_phase7_authorizations(
+        connection: psycopg.Connection[object], account_id: str
+    ) -> bool:
+        pending = cast(
+            tuple[bool] | None,
+            connection.execute(
+                "SELECT EXISTS(SELECT 1 FROM paper_execution_authorizations authz "
+                "WHERE authz.namespace='paper' AND authz.paper_account_id=%s "
+                "AND NOT EXISTS (SELECT 1 FROM paper_authorization_attempts attempt "
+                "WHERE attempt.namespace='paper' "
+                "AND attempt.paper_execution_authorization_id=authz.authorization_id))",
+                (account_id,),
+            ).fetchone(),
+        )
+        assert pending is not None
+        return bool(pending[0])
+
+    def _complete_active_kill_after_authorization_drain(
+        self,
+        connection: psycopg.Connection[object],
+        *,
+        account_id: str,
+        completed_at: datetime,
+    ) -> bool:
+        activation = cast(
+            tuple[str, str] | None,
+            connection.execute(
+                "SELECT state.last_activation_event_id,inbox.payload_hash "
+                "FROM kill_switch_state state JOIN paper_kill_inbox inbox "
+                "ON inbox.activation_event_id=state.last_activation_event_id "
+                "LEFT JOIN paper_kill_cancel_completions completion "
+                "ON completion.activation_event_id=state.last_activation_event_id "
+                "WHERE state.scope='paper-global' AND state.active "
+                "AND completion.activation_event_id IS NULL"
+            ).fetchone(),
+        )
+        if activation is None:
+            return False
+        if connection.execute(
+            "SELECT EXISTS(SELECT 1 FROM paper_orders "
+            "WHERE account_id=%s AND status IN ('OPEN','PARTIALLY_FILLED'))",
+            (account_id,),
+        ).fetchone() != (False,):
+            return False
+        if self._has_pending_phase7_authorizations(connection, account_id):
+            return False
+        return self._complete_kill_activation(
+            connection,
+            activation_event_id=activation[0],
+            payload_hash=activation[1],
+            account_id=account_id,
+            completed_at=completed_at,
+        )
+
     def _complete_kill_activation(
         self,
         connection: psycopg.Connection[object],
@@ -2568,6 +2636,8 @@ class PostgresPaperStore:
             "SELECT EXISTS(SELECT 1 FROM paper_orders WHERE status IN ('OPEN','PARTIALLY_FILLED'))"
         ).fetchone() != (False,):
             raise RuntimeError("KILL_CANCELLATION_STILL_HAS_OPEN_ORDERS")
+        if self._has_pending_phase7_authorizations(connection, account_id):
+            raise RuntimeError("KILL_CANCELLATION_STILL_HAS_PENDING_AUTHORIZATIONS")
         counts = cast(
             tuple[int, int] | None,
             connection.execute(

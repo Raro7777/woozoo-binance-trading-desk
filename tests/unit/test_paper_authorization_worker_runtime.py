@@ -276,6 +276,129 @@ def test_pending_kill_activation_is_completed_before_authorization_and_replay_is
     assert worker.run_once() is None
 
 
+def test_kill_worker_yields_when_completion_waits_for_authorization_drain(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Cursor:
+        def fetchone(self) -> tuple[str, str]:
+            return ("a" * 64, "b" * 64)
+
+    class Connection:
+        def __enter__(self) -> object:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def execute(self, query: str) -> Cursor:
+            assert "paper_pending_kill_activations_v1" in query
+            return Cursor()
+
+    monkeypatch.setattr(
+        "paper_engine.authorization_worker.psycopg.connect",
+        lambda _url: Connection(),
+    )
+
+    class Store:
+        database_url = "postgresql://paper"
+        calls = 0
+
+        def consume_kill_activation(
+            self, activation_event_id: str, payload_hash: str, *, received_at: object
+        ) -> KillCancelResult:
+            assert activation_event_id == "a" * 64
+            assert payload_hash == "b" * 64
+            assert received_at is not None
+            self.calls += 1
+            return KillCancelResult(
+                True,
+                False,
+                activation_event_id,
+                None,
+                "d" * 64,
+                0,
+                True,
+                False,
+            )
+
+    store = Store()
+    result = DurableKillActivationWorker(store).run_once()  # type: ignore[arg-type]
+
+    assert result == KillActivationProgress("a" * 64, 0, False)
+    assert store.calls == 1
+
+
+def test_runner_drains_pending_authorization_before_kill_completion() -> None:
+    events: list[str] = []
+
+    class Store:
+        def apply_next_phase7_recorded_book(self) -> None:
+            raise AssertionError("recorded books cannot run while Kill completion is pending")
+
+        def reconcile(
+            self, _account_id: str, *, checkpoint_id: str, created_at: object
+        ) -> ReconciliationResult:
+            assert checkpoint_id.startswith("paper-runtime-")
+            assert created_at is not None
+            events.append("reconcile")
+            return ReconciliationResult("HEALTHY", (), "a" * 64, "b" * 64)
+
+    class KillWorker:
+        results = [
+            KillActivationProgress("a" * 64, 1, False),
+            KillActivationProgress("a" * 64, 0, False),
+            KillActivationProgress("a" * 64, 0, False),
+            KillActivationProgress("a" * 64, 0, True),
+        ]
+
+        def run_once(self) -> KillActivationProgress:
+            events.append("kill")
+            return self.results.pop(0)
+
+    class AuthorizationWorker:
+        results = [
+            CommitResult(
+                True,
+                {"result": "BLOCKED", "reason_code": "KILL_SWITCH_ACTIVE"},
+                "c" * 64,
+            ),
+            CommitResult(
+                True,
+                {"result": "BLOCKED", "reason_code": "KILL_SWITCH_ACTIVE"},
+                "d" * 64,
+            ),
+        ]
+
+        def run_once(self) -> CommitResult:
+            events.append("authorization")
+            return self.results.pop(0)
+
+    runner = ReconcilingAuthorizationRunner(
+        Store(),  # type: ignore[arg-type]
+        reconciliation_interval_seconds=60,
+        clock=lambda: 1.0,
+    )
+    runner._kill_worker = KillWorker()  # type: ignore[assignment]
+    runner._worker = AuthorizationWorker()  # type: ignore[assignment]
+
+    drained = runner.run_once()
+    completed = runner.run_once()
+
+    assert isinstance(drained, CommitResult)
+    assert drained.response["reason_code"] == "KILL_SWITCH_ACTIVE"
+    assert completed == KillActivationProgress("a" * 64, 0, True)
+    assert events == [
+        "kill",
+        "authorization",
+        "kill",
+        "reconcile",
+        "kill",
+        "authorization",
+        "kill",
+        "reconcile",
+    ]
+
+
 def test_supervised_worker_failure_is_recorded_before_exit() -> None:
     class Runner:
         def run_once(self) -> None:

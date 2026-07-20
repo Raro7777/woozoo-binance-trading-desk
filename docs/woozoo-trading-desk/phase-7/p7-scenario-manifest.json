@@ -8,7 +8,7 @@
   "phase_schedule_amendment": "docs/woozoo-trading-desk/phase-5/phase-0-contract-amendment.md",
   "phase_schedule_amendment_sha256": "faab0952b4c60d6cc432bd699d549f52d9c9b43f75e4e7050b30e01bb70b6c68",
   "implementation_contract": "docs/woozoo-trading-desk/phase-7/implementation-contract.md",
-  "implementation_contract_sha256": "f8378a13c1b917e2e135178e8156d79f0b825f793519e03d01d6ff1835a6aa23",
+  "implementation_contract_sha256": "bdd451e971be9806abcdd7e55f360a386db728218a297e0e7d48ab9336bb9ad1",
   "fixed_seed": 0,
   "timezone": "UTC",
   "trading_mode": "paper",
@@ -270,7 +270,7 @@
       ],
       "source_sha256": [
         "9d5d32d65c8bf17db096b4ecd718969c96b4be5f613db594f8021b7ff2325abc",
-        "13d6bd2753bc8301d793027b6410a967ce9135f7e02f2f3466b484e092ec8ffb",
+        "a20489a6a7e5bf46f052dcbd8000d00277205d563f2fc80a2d4b028d5f306e1a",
         "9aee089bc0aa944c9a96eec974f6cf583218bfdf99c34e6ca7dfdd04acf74738"
       ],
       "oracle": "Approval issuance rejects a reconciliation checkpoint whose stamped authority sequence predates any committed Paper effect. Kill, reconciliation, revocation, stale books and execution-quality drift are revalidated at the first Paper attempt; any failure consumes or blocks the authorization terminally with no order, hold, fill or ledger effect."
@@ -303,10 +303,10 @@
       "source_sha256": [
         "c4b7370eac01be33cc74aaca376e8520a44460adc2ac5b0f3a6472bf6c832fb5",
         "dd85d3264e1a7374d1e34e8f7fde5a083fd8ae115b927d453941c5a4be9942d3",
-        "13d6bd2753bc8301d793027b6410a967ce9135f7e02f2f3466b484e092ec8ffb",
+        "a20489a6a7e5bf46f052dcbd8000d00277205d563f2fc80a2d4b028d5f306e1a",
         "07cb535db57cca0e4f13b44a2ad75a2716461abe283517bb6cfe67d0409757c6",
-        "cf2f8ed902b1e7bebd7b362843c67c2c947c35d56b6304693d5cb19fc2ae6632",
-        "1953140c85e5c6d1c28d2133ef5b94085b4a083ad4acb29f3dbc286e7e9999af"
+        "5769abf0ed4b9a57c849a168da2536cb6397d2b24dc514d06b8c45e54633c7a8",
+        "040bee0d0228ab50ee17bcb60110d25770e8c5a5277e13bf9ff8f04a89dcaa2e"
       ],
       "configuration_sources": [
         {
@@ -370,14 +370,18 @@
         "tests/e2e/trading-room.spec.ts::[live] E2E-004",
         "tests/integration/test_trading_room_api.py::test_e2e_004_kill_cancels_open_order_and_manual_recovery_is_audited",
         "tests/integration/test_phase7_paper_first_attempt_authority.py::test_recovery_races_consumer_but_requires_completion_and_later_checkpoint",
-        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_recovery_rejects_checkpoint_that_predates_a_pending_authorization_effect"
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_kill_completion_waits_for_pending_authorization_and_recovery_resumes",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_test_namespace_attempt_cannot_satisfy_pending_paper_authorization",
+        "tests/unit/test_paper_authorization_worker_runtime.py::test_kill_worker_yields_when_completion_waits_for_authorization_drain",
+        "tests/unit/test_paper_authorization_worker_runtime.py::test_runner_drains_pending_authorization_before_kill_completion"
       ],
       "source_sha256": [
         "c4b7370eac01be33cc74aaca376e8520a44460adc2ac5b0f3a6472bf6c832fb5",
         "dd85d3264e1a7374d1e34e8f7fde5a083fd8ae115b927d453941c5a4be9942d3",
-        "13d6bd2753bc8301d793027b6410a967ce9135f7e02f2f3466b484e092ec8ffb"
+        "a20489a6a7e5bf46f052dcbd8000d00277205d563f2fc80a2d4b028d5f306e1a",
+        "5769abf0ed4b9a57c849a168da2536cb6397d2b24dc514d06b8c45e54633c7a8"
       ],
-      "oracle": "Kill activation cancels the open Paper order, permits no later fill and remains active until an authenticated operator supplies the bound incident reference after healthy reconciliation. Recovery remains blocked when the current market projection, stream watermark, collector session or raw-bound public book authority is stale or invalid, even if a recent normalized book row still says healthy. A checkpoint whose stamped authority sequence predates a committed Paper effect is likewise unhealthy and cannot release Kill."
+      "oracle": "Kill activation cancels the open Paper order, permits no later fill and remains active until an authenticated operator supplies the bound incident reference after healthy reconciliation. Recovery remains blocked when the current market projection, stream watermark, collector session or raw-bound public book authority is stale or invalid, even if a recent normalized book row still says healthy. Cancellation completion waits until all already-issued Paper authorizations are terminally blocked under Kill, and a test-namespace attempt cannot satisfy that drain condition; a pre-completion checkpoint cannot release Kill, while the later checkpoint bound to the immutable completion digest restores manual recovery."
     },
     {
       "id": "E2E-005",

@@ -1986,7 +1986,7 @@ def test_recovery_races_consumer_but_requires_completion_and_later_checkpoint(
         ).fetchone() == (False, "NOT_ACTIVE", False)
 
 
-def test_recovery_rejects_checkpoint_that_predates_a_pending_authorization_effect(
+def test_kill_completion_waits_for_pending_authorization_and_recovery_resumes(
     postgres: None,
 ) -> None:
     pending_authorization_id, _ = _seed_authorization(
@@ -2016,26 +2016,44 @@ def test_recovery_rejects_checkpoint_that_predates_a_pending_authorization_effec
             "SELECT payload_hash FROM outbox_events WHERE event_id=%s",
             (activated.outbox_event_id,),
         ).fetchone()[0]
-    cancelled = store.consume_kill_activation(
+    cancellation_waiting_for_drain = store.consume_kill_activation(
         activated.activation_event_id,
         payload_hash,
         received_at=datetime.now(UTC),
     )
-    assert cancelled.completion_created is True
+    assert cancellation_waiting_for_drain.cancelled_count == 1
+    assert cancellation_waiting_for_drain.has_more is True
+    assert cancellation_waiting_for_drain.completion_created is False
     with psycopg.connect(DATABASE_URL) as connection:
-        completion = connection.execute(
-            "SELECT state_digest,completed_at FROM paper_kill_cancel_completions "
-            "WHERE activation_event_id=%s",
+        assert connection.execute(
+            "SELECT count(*) FROM paper_kill_cancel_completions WHERE activation_event_id=%s",
             (activated.activation_event_id,),
-        ).fetchone()
-        assert completion is not None
-
-    checkpoint = store.reconcile(
-        ACCOUNT_ID,
-        checkpoint_id="phase7-recovery-authority-drift-ready",
-        created_at=datetime.now(UTC),
-    )
-    assert checkpoint.status == "HEALTHY" and checkpoint.input_digest == completion[0]
+        ).fetchone() == (0,)
+        assert connection.execute(
+            "SELECT authorization_id FROM paper_pending_authorizations_v1"
+        ).fetchall() == [(pending_authorization_id,)]
+    with pytest.raises(
+        psycopg.errors.RaiseException,
+        match="PAPER_KILL_CANCELLATION_NOT_COMPLETE",
+    ):
+        with psycopg.connect(DATABASE_URL) as connection:
+            connection.execute(
+                "INSERT INTO paper_kill_cancel_completions("
+                "activation_event_id,payload_hash,paper_account_id,batch_count,"
+                "cancelled_count,state_digest,completed_at) VALUES (%s,%s,%s,1,1,%s,%s)",
+                (
+                    activated.activation_event_id,
+                    payload_hash,
+                    ACCOUNT_ID,
+                    store.semantic_digest(ACCOUNT_ID),
+                    datetime.now(UTC),
+                ),
+            )
+    with psycopg.connect(DATABASE_URL) as connection:
+        assert connection.execute(
+            "SELECT count(*) FROM paper_kill_cancel_completions WHERE activation_event_id=%s",
+            (activated.activation_event_id,),
+        ).fetchone() == (0,)
     pending_effect = store.attempt_phase7_authorization(pending_authorization_id)
     assert pending_effect.created is True
     assert pending_effect.response == {
@@ -2044,21 +2062,24 @@ def test_recovery_rejects_checkpoint_that_predates_a_pending_authorization_effec
         "reason_code": "KILL_SWITCH_ACTIVE",
     }
 
+    with psycopg.connect(DATABASE_URL) as connection:
+        completion = connection.execute(
+            "SELECT state_digest,completed_at FROM paper_kill_cancel_completions "
+            "WHERE activation_event_id=%s",
+            (activated.activation_event_id,),
+        ).fetchone()
+        assert completion is not None
+        assert connection.execute(
+            "SELECT count(*) FROM paper_pending_authorizations_v1"
+        ).fetchone() == (0,)
+        assert connection.execute(
+            "SELECT count(*) FROM paper_pending_kill_activations_v1"
+        ).fetchone() == (0,)
+    assert pending_effect.semantic_digest == completion[0]
+
     observed_at = datetime.now(UTC)
     session_digest, csrf_digest = _seed_operator_csrf("recovery-authority-drift", observed_at)
     with psycopg.connect(DATABASE_URL) as connection:
-        latest_checkpoint = connection.execute(
-            "SELECT status,mismatch_codes,authority_sequence,created_at,input_digest "
-            "FROM paper_reconciliation_checkpoints WHERE account_id=%s "
-            "ORDER BY created_at DESC,checkpoint_id DESC LIMIT 1",
-            (ACCOUNT_ID,),
-        ).fetchone()
-        current_authority_sequence = connection.execute(
-            "SELECT COALESCE(max(event.ingestion_sequence),0) "
-            "FROM paper_outbox_links link JOIN outbox_events event USING(event_id) "
-            "WHERE link.account_id=%s",
-            (ACCOUNT_ID,),
-        ).fetchone()
         blocked_link_count = connection.execute(
             "SELECT count(*) FROM paper_outbox_links link "
             "JOIN outbox_events event USING(event_id) "
@@ -2076,11 +2097,6 @@ def test_recovery_rejects_checkpoint_that_predates_a_pending_authorization_effec
             "last_progress_at=NULL,last_result=NULL,last_error_code=NULL,stopped_at=NULL",
             (observed_at, observed_at),
         )
-    assert latest_checkpoint is not None and current_authority_sequence is not None
-    assert latest_checkpoint[0:2] == ("HEALTHY", [])
-    assert latest_checkpoint[2] < current_authority_sequence[0]
-    assert latest_checkpoint[3] > completion[1]
-    assert latest_checkpoint[4] == completion[0]
     assert blocked_link_count == (1,)
     _record_current_public_books("recovery-authority-drift", sequence=9700)
     with psycopg.connect(DATABASE_URL) as connection:
@@ -2122,4 +2138,108 @@ def test_recovery_rejects_checkpoint_that_predates_a_pending_authorization_effec
         assert connection.execute("SELECT count(*) FROM kill_recovery_events").fetchone() == (0,)
         assert connection.execute(
             "SELECT count(*) FROM outbox_events WHERE event_type='kill-switch.recovered.v2'"
+        ).fetchone() == (0,)
+
+    checkpoint_after_completion = store.reconcile(
+        ACCOUNT_ID,
+        checkpoint_id="phase7-recovery-authority-complete",
+        created_at=datetime.now(UTC),
+    )
+    assert checkpoint_after_completion.status == "HEALTHY"
+    assert checkpoint_after_completion.input_digest == completion[0]
+    with psycopg.connect(DATABASE_URL) as connection:
+        assert connection.execute(
+            "SELECT cancellation_status,open_order_count,data_status,"
+            "reconciliation_status,ledger_status,recovery_allowed "
+            "FROM kill_switch_recovery_reader_v1"
+        ).fetchone() == ("COMPLETE", 0, "HEALTHY", "HEALTHY", "BALANCED", True)
+        recovered = connection.execute(
+            "SELECT created,response FROM recover_kill_switch_v1("
+            "%s,%s,1,%s,%s,%s,'operator-local-1',%s,%s,%s,%s)",
+            (
+                recovery_key,
+                canonical_hash({"recovery": activated.activation_event_id}),
+                activated.activation_event_id,
+                "INCIDENT-P7-AUTHORITY-DRIFT",
+                "pending authorization drained before immutable completion",
+                session_digest,
+                csrf_digest,
+                canonical_hash({"origin": "recovery-authority-drift"}),
+                datetime.now(UTC),
+            ),
+        ).fetchone()
+    assert recovered is not None and recovered[0] is True
+    assert recovered[1]["result"] == "RECOVERED"
+    with psycopg.connect(DATABASE_URL) as connection:
+        assert connection.execute(
+            "SELECT active,version FROM kill_switch_state WHERE scope='paper-global'"
+        ).fetchone() == (False, 2)
+        assert connection.execute(
+            "SELECT count(*) FROM risk_kill_recovery_command_receipts WHERE idempotency_key=%s",
+            (recovery_key,),
+        ).fetchone() == (1,)
+        assert connection.execute("SELECT count(*) FROM kill_recovery_events").fetchone() == (1,)
+        assert connection.execute(
+            "SELECT count(*) FROM outbox_events WHERE event_type='kill-switch.recovered.v2'"
+        ).fetchone() == (1,)
+
+
+def test_test_namespace_attempt_cannot_satisfy_pending_paper_authorization(
+    postgres: None,
+) -> None:
+    authorization_id, _ = _seed_authorization(
+        "kill-pending-namespace-collision", healthy_reconciliation=False
+    )
+    observed_at = datetime.now(UTC)
+    with psycopg.connect(DATABASE_URL) as connection:
+        connection.execute("SET session_replication_role='replica'")
+        connection.execute(
+            "INSERT INTO paper_authorization_attempts("
+            "authorization_id,authorization_nonce,account_id,command_scope,"
+            "idempotency_key,namespace,request_hash,outcome,reason_code,created_at) "
+            "VALUES (%s,%s,%s,'paper.create.v1',%s,'test',%s,'BLOCKED','TEST_BLOCK',%s)",
+            (
+                authorization_id,
+                "test-namespace-collision-nonce",
+                ACCOUNT_ID,
+                "test-namespace-collision-key",
+                canonical_hash({"test-namespace-collision": authorization_id}),
+                observed_at,
+            ),
+        )
+        connection.execute("SET session_replication_role='origin'")
+
+    activated = PostgresKillSwitch(DATABASE_URL).activate(
+        KillActivation(
+            request_id="phase7-kill-pending-namespace-collision",
+            expected_version=0,
+            trigger_kind="MANUAL",
+            actor_id="operator:phase7-namespace-collision",
+            reason_code="MANUAL_SAFETY_STOP",
+            reason="prove test attempts cannot drain paper authorizations",
+            observed_at=observed_at,
+            context_digest=canonical_hash({"namespace-collision": authorization_id}),
+        )
+    )
+    with psycopg.connect(DATABASE_URL) as connection:
+        payload_hash = connection.execute(
+            "SELECT payload_hash FROM outbox_events WHERE event_id=%s",
+            (activated.outbox_event_id,),
+        ).fetchone()[0]
+
+    waiting = PostgresPaperStore(PAPER_WRITER_URL).consume_kill_activation(
+        activated.activation_event_id,
+        payload_hash,
+        received_at=datetime.now(UTC),
+    )
+    assert waiting.cancelled_count == 0
+    assert waiting.has_more is True
+    assert waiting.completion_created is False
+    with psycopg.connect(DATABASE_URL) as connection:
+        assert connection.execute(
+            "SELECT authorization_id FROM paper_pending_authorizations_v1"
+        ).fetchall() == [(authorization_id,)]
+        assert connection.execute(
+            "SELECT count(*) FROM paper_kill_cancel_completions WHERE activation_event_id=%s",
+            (activated.activation_event_id,),
         ).fetchone() == (0,)
