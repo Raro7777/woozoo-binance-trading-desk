@@ -25,6 +25,8 @@ test("PLAT-UI-STATUS translates Phase 7 failure states and fails unknown values 
   assert.equal(statusTone("UNRECOGNIZED_STATE"), "danger");
   assert.equal(diagnosticLabel("UNRECOGNIZED_REASON"), "알 수 없는 진단 정보");
   assert.equal(killSwitchPresentation({}), "UNKNOWN");
+  assert.equal(killSwitchPresentation({ status: "ACTIVE" }), "UNKNOWN");
+  assert.equal(killSwitchPresentation({ status: "INACTIVE" }), "UNKNOWN");
   assert.equal(killSwitchPresentation({ active: true, status: "INACTIVE" }), "UNKNOWN");
   assert.equal(killSwitchPresentation({ active: false, status: "INACTIVE" }), "INACTIVE");
   assert.equal(killSwitchPresentation({ active: true, status: "ACTIVE" }), "ACTIVE");

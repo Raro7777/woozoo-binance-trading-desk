@@ -511,6 +511,7 @@ def _record_current_public_book(
     suffix: str,
     *,
     sequence: int,
+    symbol: str = "BTCUSDT",
     bid_price: str = "9999",
     bid_quantity: str = "0.00010000",
     ask_price: str = "10000",
@@ -522,7 +523,7 @@ def _record_current_public_book(
 ) -> tuple[str, datetime]:
     raw_event_id = canonical_hash({"recorded-book-raw": suffix})
     session_id = "00000000-0000-7000-8000-000000000777"
-    stream = "btcusdt@bookTicker"
+    stream = f"{symbol.lower()}@bookTicker"
     with psycopg.connect(DATABASE_URL) as connection:
         observed_row = connection.execute("SELECT clock_timestamp()").fetchone()
         assert observed_row is not None
@@ -545,7 +546,7 @@ def _record_current_public_book(
         canonical_raw_payload = canonical_json(
             {
                 "u": sequence,
-                "s": "BTCUSDT",
+                "s": symbol,
                 "b": bid_price,
                 "B": bid_quantity,
                 "a": ask_price,
@@ -562,13 +563,14 @@ def _record_current_public_book(
             "(id,collector_session_id,source,stream,symbol,record_kind,parent_raw_event_id,"
             "source_dedupe_key,payload_bytes,payload_hash,source_event_time,received_at,"
             "ingested_at,sequence,schema_version) VALUES "
-            "(%s,%s,'binance_spot_public',%s,'BTCUSDT','stream_message',NULL,%s,%s,%s,"
+            "(%s,%s,'binance_spot_public',%s,%s,'stream_message',NULL,%s,%s,%s,"
             "%s,%s,%s,%s,'woozoo.raw-market-event/v1')",
             (
                 raw_event_id,
                 session_id,
                 stream,
-                f"book_ticker:BTCUSDT:{sequence}",
+                symbol,
+                f"book_ticker:{symbol}:{sequence}",
                 payload_bytes,
                 payload_hash,
                 None,
@@ -582,11 +584,12 @@ def _record_current_public_book(
             "(id,raw_event_id,event_type,schema_version,source,symbol,event_time,received_at,"
             "sequence,raw_payload_hash,correlation_id,quality_status,quality_reasons,"
             "stream_watermark,payload) VALUES (%s,%s,'book_ticker',"
-            "'woozoo.market-event/v1','binance_spot_public','BTCUSDT',%s,%s,%s,%s,%s,"
+            "'woozoo.market-event/v1','binance_spot_public',%s,%s,%s,%s,%s,%s,"
             "'healthy',%s,%s,%s)",
             (
                 market_event_id,
                 raw_event_id,
+                symbol,
                 observed_at,
                 observed_at,
                 sequence,
@@ -618,12 +621,13 @@ def _record_current_public_book(
             "INSERT INTO market_status_projections"
             "(symbol,price,event_time,received_at,quality_status,quality_reasons,"
             "stream_watermark,last_event_id) VALUES "
-            "('BTCUSDT',%s,%s,%s,'healthy',%s,%s,%s) "
+            "(%s,%s,%s,%s,'healthy',%s,%s,%s) "
             "ON CONFLICT (symbol) DO UPDATE SET price=EXCLUDED.price,"
             "event_time=EXCLUDED.event_time,received_at=EXCLUDED.received_at,"
             "quality_status='healthy',quality_reasons=EXCLUDED.quality_reasons,"
             "stream_watermark=EXCLUDED.stream_watermark,last_event_id=EXCLUDED.last_event_id",
             (
+                symbol,
                 bid_price,
                 observed_at,
                 observed_at,
@@ -633,6 +637,21 @@ def _record_current_public_book(
             ),
         )
     return market_event_id, observed_at
+
+
+def _record_current_public_books(suffix: str, *, sequence: int) -> None:
+    _record_current_public_book(
+        f"{suffix}-btc", sequence=sequence, symbol="BTCUSDT"
+    )
+    _record_current_public_book(
+        f"{suffix}-eth",
+        sequence=sequence,
+        symbol="ETHUSDT",
+        bid_price="1999",
+        bid_quantity="0.00100000",
+        ask_price="2001",
+        ask_quantity="0.00100000",
+    )
 
 
 def _assert_blocked_only(authorization_id: str, reason_code: str) -> None:
@@ -1691,6 +1710,7 @@ def test_recovery_races_consumer_but_requires_completion_and_later_checkpoint(
     session_digest, csrf_digest = _seed_operator_csrf("recovery-race", observed_at)
     recovery_key = "phase7-recovery-race-command"
     recovery_hash = canonical_hash({"recovery": activated.activation_event_id})
+    _record_current_public_books("recovery-race-initial", sequence=9600)
     with psycopg.connect(DATABASE_URL) as connection:
         assert connection.execute(
             "SELECT cancellation_status,open_order_count,data_status,"
@@ -1747,6 +1767,7 @@ def test_recovery_races_consumer_but_requires_completion_and_later_checkpoint(
 
     assert recovery_result[0] == "error"
     assert getattr(consumer_result, "completion_created") is True
+    _record_current_public_books("recovery-race-completed", sequence=9601)
     with psycopg.connect(DATABASE_URL) as connection:
         completion = connection.execute(
             "SELECT state_digest,completed_at FROM paper_kill_cancel_completions "
@@ -1770,12 +1791,64 @@ def test_recovery_races_consumer_but_requires_completion_and_later_checkpoint(
         created_at=checkpoint_time,
     )
     assert checkpoint.status == "HEALTHY" and checkpoint.input_digest == completion[0]
+    _record_current_public_books("recovery-race-ready", sequence=9602)
     with psycopg.connect(DATABASE_URL) as connection:
         assert connection.execute(
             "SELECT cancellation_status,open_order_count,data_status,"
             "reconciliation_status,ledger_status,recovery_allowed "
             "FROM kill_switch_recovery_reader_v1"
         ).fetchone() == ("COMPLETE", 0, "HEALTHY", "HEALTHY", "BALANCED", True)
+
+    with psycopg.connect(DATABASE_URL) as connection:
+        connection.execute(
+            "UPDATE market_status_projections SET quality_status='stale',"
+            "quality_reasons='[\"sequence_gap\"]'::jsonb WHERE symbol='BTCUSDT'"
+        )
+        connection.execute(
+            "UPDATE stream_watermark_projections SET quality_status='stale' "
+            "WHERE collector_session_id='00000000-0000-7000-8000-000000000777' "
+            "AND stream='btcusdt@bookTicker'"
+        )
+        connection.execute(
+            "UPDATE collector_sessions SET status='stale' "
+            "WHERE id='00000000-0000-7000-8000-000000000777'"
+        )
+    with psycopg.connect(DATABASE_URL) as connection:
+        assert connection.execute(
+            "SELECT data_status,recovery_allowed FROM kill_switch_recovery_reader_v1"
+        ).fetchone() == ("UNHEALTHY", False)
+        with pytest.raises(psycopg.errors.RaiseException, match="KILL_RECOVERY_DATA_UNHEALTHY"):
+            connection.execute(
+                "SELECT created,response FROM recover_kill_switch_v1("
+                "%s,%s,1,%s,%s,%s,'operator-local-1',%s,%s,%s,%s)",
+                (
+                    recovery_key,
+                    recovery_hash,
+                    activated.activation_event_id,
+                    "INCIDENT-P7-RACE",
+                    "cancellation and reconciliation reviewed",
+                    session_digest,
+                    csrf_digest,
+                    canonical_hash({"origin": "recovery-race"}),
+                    datetime.now(UTC),
+                ),
+            )
+        connection.rollback()
+    with psycopg.connect(DATABASE_URL) as connection:
+        assert connection.execute(
+            "SELECT active FROM kill_switch_state WHERE scope='paper-global'"
+        ).fetchone() == (True,)
+        assert connection.execute(
+            "SELECT count(*) FROM risk_kill_recovery_command_receipts "
+            "WHERE idempotency_key=%s",
+            (recovery_key,),
+        ).fetchone() == (0,)
+
+    _record_current_public_books("recovery-race-repaired", sequence=9603)
+    with psycopg.connect(DATABASE_URL) as connection:
+        assert connection.execute(
+            "SELECT data_status,recovery_allowed FROM kill_switch_recovery_reader_v1"
+        ).fetchone() == ("HEALTHY", True)
         recovered = connection.execute(
             "SELECT created,response FROM recover_kill_switch_v1("
             "%s,%s,1,%s,%s,%s,'operator-local-1',%s,%s,%s,%s)",

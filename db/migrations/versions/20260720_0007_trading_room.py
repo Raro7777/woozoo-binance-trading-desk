@@ -2343,7 +2343,8 @@ def upgrade() -> None:
           WHERE latest.quality_status='healthy'
             AND latest.received_at<=CURRENT_TIMESTAMP
             AND latest.received_at>=CURRENT_TIMESTAMP-interval '5 seconds'
-            AND latest.payload ?& array['bid_price','ask_price'];
+            AND latest.payload ?& array['bid_price','ask_price']
+            AND paper_recorded_book_market_is_current_v1(latest.id);
           IF data_material IS NULL OR jsonb_array_length(data_material)<>2 THEN
             RAISE EXCEPTION 'KILL_RECOVERY_DATA_UNHEALTHY';
           END IF;
@@ -2809,6 +2810,7 @@ def upgrade() -> None:
             AND latest.received_at<=CURRENT_TIMESTAMP
             AND latest.received_at>=CURRENT_TIMESTAMP-interval '5 seconds'
             AND latest.payload ?& array['bid_price','ask_price']
+            AND paper_recorded_book_market_is_current_v1(latest.id)
         ) data_health
         LEFT JOIN LATERAL (
           SELECT latest.checkpoint_id,latest.status,latest.mismatch_codes,
@@ -3032,7 +3034,7 @@ def upgrade() -> None:
     )
     op.execute(
         "GRANT EXECUTE ON FUNCTION paper_recorded_book_market_is_current_v1(varchar) "
-        "TO woozoo_paper_engine"
+        "TO woozoo_paper_engine, woozoo_control_api, woozoo_control_reader"
     )
     op.execute("GRANT SELECT ON paper_pending_authorizations_v1 TO woozoo_paper_engine")
     op.execute("GRANT SELECT ON paper_pending_kill_activations_v1 TO woozoo_paper_engine")
@@ -3077,7 +3079,6 @@ def downgrade() -> None:
     )
     op.execute("DROP FUNCTION paper_lock_execution_authorization_v1(varchar)")
     op.execute("DROP FUNCTION paper_validate_kill_activation_v1(varchar,varchar)")
-    op.execute("DROP FUNCTION paper_recorded_book_market_is_current_v1(varchar)")
     op.execute(
         "DROP FUNCTION issue_paper_approval_v1(varchar,varchar,varchar,varchar,bigint,"
         "varchar,varchar,varchar,varchar,varchar,varchar,varchar,timestamptz)"
@@ -3186,6 +3187,7 @@ def downgrade() -> None:
         "paper_approval_view_v1",
     ):
         op.execute(f"DROP VIEW {view}")
+    op.execute("DROP FUNCTION paper_recorded_book_market_is_current_v1(varchar)")
     op.execute("DROP FUNCTION trading_room_public_audit_data_v1(jsonb)")
     op.execute(
         "DROP TRIGGER paper_reconciliation_authority_sequence_v1 "

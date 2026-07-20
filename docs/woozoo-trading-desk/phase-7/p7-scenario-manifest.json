@@ -8,7 +8,7 @@
   "phase_schedule_amendment": "docs/woozoo-trading-desk/phase-5/phase-0-contract-amendment.md",
   "phase_schedule_amendment_sha256": "faab0952b4c60d6cc432bd699d549f52d9c9b43f75e4e7050b30e01bb70b6c68",
   "implementation_contract": "docs/woozoo-trading-desk/phase-7/implementation-contract.md",
-  "implementation_contract_sha256": "ade18ce3fa6bd5befa76d727a6e89ccdfd4bb38583c1672fcd06086c3eb97d0a",
+  "implementation_contract_sha256": "e7d11328dfb9a1ad703b5188fa3a0c3cd76b14ebc94cf11bb3f74c06943af630",
   "fixed_seed": 0,
   "timezone": "UTC",
   "trading_mode": "paper",
@@ -269,7 +269,7 @@
       ],
       "source_sha256": [
         "9d5d32d65c8bf17db096b4ecd718969c96b4be5f613db594f8021b7ff2325abc",
-        "724b8ac22e0617ce5f7f93b83e94569e16e2b756a245286e88aec8f0360d574f",
+        "7f70d55eac93cf395a6fce7330104cb9456bf5529ea4f5d2396a6eb1698eea1a",
         "9aee089bc0aa944c9a96eec974f6cf583218bfdf99c34e6ca7dfdd04acf74738"
       ],
       "oracle": "Kill, reconciliation, revocation, stale books and execution-quality drift are revalidated at the first Paper attempt; any failure consumes or blocks the authorization terminally with no order, hold, fill or ledger effect."
@@ -300,17 +300,17 @@
         "tests/integration/test_trading_room_migration_contract.py::test_phase7_migration_upgrades_with_digest_only_storage_and_least_privilege"
       ],
       "source_sha256": [
-        "a7eb1bb0ebff17f5461c10500a0f09e0e2d11b637980c1af71dfbf19159cbaa4",
+        "c4b7370eac01be33cc74aaca376e8520a44460adc2ac5b0f3a6472bf6c832fb5",
         "dd85d3264e1a7374d1e34e8f7fde5a083fd8ae115b927d453941c5a4be9942d3",
-        "724b8ac22e0617ce5f7f93b83e94569e16e2b756a245286e88aec8f0360d574f",
+        "7f70d55eac93cf395a6fce7330104cb9456bf5529ea4f5d2396a6eb1698eea1a",
         "07cb535db57cca0e4f13b44a2ad75a2716461abe283517bb6cfe67d0409757c6",
         "cf2f8ed902b1e7bebd7b362843c67c2c947c35d56b6304693d5cb19fc2ae6632",
-        "e54f7490fe897a8507abb6823b886058880ad9a6d0831c50530c988b90a4b2f2"
+        "b8b385334142d1dc3b20e0c692a05464ef5fad297172f3746f4a904ab2d62aa5"
       ],
       "configuration_sources": [
         {
           "path": "tests/e2e/live_control_api.py",
-          "sha256": "e4e8cfb2ac99c0602942088226e762d9ccb4ec1d9a3de4eae9a84ce8a2f5465a"
+          "sha256": "4603dcc29057ede150c3eb9117f66e25b473367dc41912c8068e3412a322510c"
         },
         {
           "path": "tests/e2e/https-web-server.mjs",
@@ -334,7 +334,7 @@
         "tests/integration/test_trading_room_api.py::test_e2e_002_stale_data_consumes_csrf_and_blocks_without_order"
       ],
       "source_sha256": [
-        "a7eb1bb0ebff17f5461c10500a0f09e0e2d11b637980c1af71dfbf19159cbaa4",
+        "c4b7370eac01be33cc74aaca376e8520a44460adc2ac5b0f3a6472bf6c832fb5",
         "dd85d3264e1a7374d1e34e8f7fde5a083fd8ae115b927d453941c5a4be9942d3"
       ],
       "oracle": "Stale Evidence is displayed in Korean as a fail-closed hold, consumes the command token according to policy and creates no Proposal, authorization or Paper order."
@@ -353,7 +353,7 @@
         "tests/integration/test_trading_room_command_ports.py::test_concurrent_same_request_issues_once_without_browser_paper_effect"
       ],
       "source_sha256": [
-        "a7eb1bb0ebff17f5461c10500a0f09e0e2d11b637980c1af71dfbf19159cbaa4",
+        "c4b7370eac01be33cc74aaca376e8520a44460adc2ac5b0f3a6472bf6c832fb5",
         "799fbd11362ba754a2a385d84d01f0ac4a37ed283de66553be5876e3524d69c3",
         "9aee089bc0aa944c9a96eec974f6cf583218bfdf99c34e6ca7dfdd04acf74738"
       ],
@@ -367,13 +367,15 @@
       "result_artifact": "artifacts/e2e/E2E-004/result.json",
       "test_nodes": [
         "tests/e2e/trading-room.spec.ts::[live] E2E-004",
-        "tests/integration/test_trading_room_api.py::test_e2e_004_kill_cancels_open_order_and_manual_recovery_is_audited"
+        "tests/integration/test_trading_room_api.py::test_e2e_004_kill_cancels_open_order_and_manual_recovery_is_audited",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_recovery_races_consumer_but_requires_completion_and_later_checkpoint"
       ],
       "source_sha256": [
-        "a7eb1bb0ebff17f5461c10500a0f09e0e2d11b637980c1af71dfbf19159cbaa4",
-        "dd85d3264e1a7374d1e34e8f7fde5a083fd8ae115b927d453941c5a4be9942d3"
+        "c4b7370eac01be33cc74aaca376e8520a44460adc2ac5b0f3a6472bf6c832fb5",
+        "dd85d3264e1a7374d1e34e8f7fde5a083fd8ae115b927d453941c5a4be9942d3",
+        "7f70d55eac93cf395a6fce7330104cb9456bf5529ea4f5d2396a6eb1698eea1a"
       ],
-      "oracle": "Kill activation cancels the open Paper order, permits no later fill and remains active until an authenticated operator supplies the bound incident reference after healthy reconciliation."
+      "oracle": "Kill activation cancels the open Paper order, permits no later fill and remains active until an authenticated operator supplies the bound incident reference after healthy reconciliation. Recovery remains blocked when the current market projection, stream watermark, collector session or raw-bound public book authority is stale or invalid, even if a recent normalized book row still says healthy."
     },
     {
       "id": "E2E-005",
@@ -386,7 +388,7 @@
         "tests/integration/test_trading_room_api.py::test_audit_api_preserves_provenance_and_recursively_redacts_command_secrets"
       ],
       "source_sha256": [
-        "a7eb1bb0ebff17f5461c10500a0f09e0e2d11b637980c1af71dfbf19159cbaa4",
+        "c4b7370eac01be33cc74aaca376e8520a44460adc2ac5b0f3a6472bf6c832fb5",
         "dd85d3264e1a7374d1e34e8f7fde5a083fd8ae115b927d453941c5a4be9942d3"
       ],
       "configuration_sources": [

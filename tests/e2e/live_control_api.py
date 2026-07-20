@@ -12,6 +12,7 @@ from datetime import UTC, datetime, timedelta
 import os
 from uuid import uuid4
 
+import psycopg
 import uvicorn
 from fastapi import FastAPI
 
@@ -265,7 +266,11 @@ def bootstrap_public_data() -> int:
     return 0
 
 
-def refresh_evidence(symbol: str, non_crossing_buy_symbol: str | None = None) -> int:
+def refresh_evidence(
+    symbol: str,
+    non_crossing_buy_symbol: str | None = None,
+    non_crossing_sell_symbol: str | None = None,
+) -> int:
     """Refresh both authoritative books, then materialize immutable Evidence."""
     from evidence_worker.runner import materialize_evidence_command
     from market_data_worker.persistence import PostgresMarketStore
@@ -273,6 +278,7 @@ def refresh_evidence(symbol: str, non_crossing_buy_symbol: str | None = None) ->
     from market_data_worker.recovery import PostgresRestartRepository
 
     market_url = _required_environment("MARKET_DATABASE_URL")
+    paper_url = _required_environment("PAPER_DATABASE_URL")
     market_store = PostgresMarketStore(market_url)
     snapshot = PostgresRestartRepository(market_url).load()
     pipeline = CollectorPipeline(market_store)
@@ -299,6 +305,12 @@ def refresh_evidence(symbol: str, non_crossing_buy_symbol: str | None = None) ->
             public_price = "61000.00" if refresh_symbol == "BTCUSDT" else "3100.00"
             best_bid = public_price
             best_ask = "61000.01" if refresh_symbol == "BTCUSDT" else "3100.01"
+        if refresh_symbol == non_crossing_sell_symbol:
+            # Preserve an outstanding SELL by keeping the public bid below its
+            # limit while still refreshing both authoritative market streams.
+            public_price = "59000.00" if refresh_symbol == "BTCUSDT" else "2900.00"
+            best_bid = public_price
+            best_ask = "59000.01" if refresh_symbol == "BTCUSDT" else "2900.01"
         trade = pipeline.ingest(
             snapshot.session_id,
             f"{lower}@trade",
@@ -332,6 +344,59 @@ def refresh_evidence(symbol: str, non_crossing_buy_symbol: str | None = None) ->
             raise RuntimeError(
                 f"E2E_BOOK_REFRESH_REJECTED:{refresh_symbol}:{trade.reason or book.reason}"
             )
+
+    # Drain the same inbound-less Paper worker path before Risk snapshots the
+    # account. A non-crossing book still creates an immutable NO_FILL effect;
+    # allowing that effect to land after Risk would correctly cause approval
+    # drift and make the browser journey timing-dependent.
+    paper_store = PostgresPaperStore(paper_url)
+
+    def reconcile_if_needed() -> None:
+        with psycopg.connect(paper_url) as connection:
+            current_digest = paper_store.semantic_digest(
+                PAPER_ACCOUNT_ID, connection=connection
+            )
+            latest = connection.execute(
+                "SELECT input_digest,status FROM paper_reconciliation_checkpoints "
+                "WHERE account_id=%s ORDER BY created_at DESC,checkpoint_id DESC LIMIT 1",
+                (PAPER_ACCOUNT_ID,),
+            ).fetchone()
+        if latest == (current_digest, "HEALTHY"):
+            return
+        try:
+            result = paper_store.reconcile(
+                PAPER_ACCOUNT_ID,
+                checkpoint_id=f"e2e-refresh-reconciliation-{uuid4()}",
+                created_at=datetime.now(UTC),
+            )
+        except psycopg.errors.UniqueViolation:
+            # The live background worker won the same digest race.
+            with psycopg.connect(paper_url) as connection:
+                current_digest = paper_store.semantic_digest(
+                    PAPER_ACCOUNT_ID, connection=connection
+                )
+                latest = connection.execute(
+                    "SELECT input_digest,status FROM paper_reconciliation_checkpoints "
+                    "WHERE account_id=%s ORDER BY created_at DESC,checkpoint_id DESC LIMIT 1",
+                    (PAPER_ACCOUNT_ID,),
+                ).fetchone()
+            if latest != (current_digest, "HEALTHY"):
+                raise RuntimeError("E2E_RECONCILIATION_RACE_UNRESOLVED")
+        else:
+            if result.status != "HEALTHY":
+                raise RuntimeError(
+                    "E2E_REFRESH_RECONCILIATION_FAILED:"
+                    + ",".join(result.mismatch_codes)
+                )
+
+    for _attempt in range(64):
+        reconcile_if_needed()
+        result = paper_store.apply_next_phase7_recorded_book()
+        if result is None:
+            reconcile_if_needed()
+            break
+    else:
+        raise RuntimeError("E2E_RECORDED_BOOK_DRAIN_LIMIT")
 
     # Keep the requested Evidence window point-in-time valid even when the full
     # browser suite runs beyond the shortest (1m) interval.
@@ -509,6 +574,7 @@ def main() -> int:
     parser.add_argument("--bootstrap-public-data", action="store_true")
     parser.add_argument("--refresh-evidence", choices=("BTCUSDT", "ETHUSDT"))
     parser.add_argument("--non-crossing-buy-book", choices=("BTCUSDT", "ETHUSDT"))
+    parser.add_argument("--non-crossing-sell-book", choices=("BTCUSDT", "ETHUSDT"))
     parser.add_argument("--record-partial-book", choices=("BTCUSDT", "ETHUSDT"))
     parser.add_argument("--create-sell-analysis", choices=("BTCUSDT", "ETHUSDT"))
     args = parser.parse_args()
@@ -519,7 +585,11 @@ def main() -> int:
     if args.bootstrap_public_data:
         return bootstrap_public_data()
     if args.refresh_evidence:
-        return refresh_evidence(args.refresh_evidence, args.non_crossing_buy_book)
+        return refresh_evidence(
+            args.refresh_evidence,
+            args.non_crossing_buy_book,
+            args.non_crossing_sell_book,
+        )
     if args.record_partial_book:
         return record_partial_book(args.record_partial_book)
     if args.create_sell_analysis:

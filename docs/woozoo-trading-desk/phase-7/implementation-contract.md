@@ -40,7 +40,12 @@ immutable Evidence
   terminal whether it creates one order or records `BLOCKED`.
 - Manual Kill recovery requires the active activation event, expected version,
   an incident reference, authenticated actor, and healthy data, ledger, and
-  reconciliation. Timer, AI, restart, and Redis cannot recover Kill.
+  reconciliation. Its reader and writer select the same latest BTCUSDT and
+  ETHUSDT book event IDs and require the raw-bound current-market verifier to
+  pass for both while transaction locks are held. A stale projection,
+  watermark, collector session, raw provenance, future clock, or lock conflict
+  therefore keeps recovery on HOLD even when an immutable normalized row still
+  says healthy. Timer, AI, restart, and Redis cannot recover Kill.
 
 ## Paper order preview policy v1
 

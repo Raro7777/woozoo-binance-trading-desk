@@ -13,9 +13,7 @@ export function killSwitchPresentation(state: JsonRecord): "ACTIVE" | "INACTIVE"
     ? "ACTIVE"
     : activeField === false && (rawStatus === undefined || rawStatus === "INACTIVE")
       ? "INACTIVE"
-      : activeField === undefined && (rawStatus === "ACTIVE" || rawStatus === "INACTIVE")
-        ? rawStatus
-        : "UNKNOWN";
+      : "UNKNOWN";
 }
 
 export function OperationsConsole() {

@@ -113,6 +113,14 @@ def test_phase7_migration_closes_auth_approval_authorization_and_recovery_bounda
     assert "decision.risk_input->'market_books'" in source
     assert "KILL_RECOVERY_WORKER_NOT_READY" in source
     assert "CURRENT_TIMESTAMP-interval '5 seconds'" in source
+    recovery_guard = source.split("CREATE FUNCTION recover_kill_switch_v1", 1)[1].split(
+        "CREATE FUNCTION assert_phase7_risk_outbox_consistency", 1
+    )[0]
+    recovery_reader = source.split("CREATE VIEW kill_switch_recovery_reader_v1", 1)[1].split(
+        "CREATE FUNCTION trading_room_public_audit_data_v1", 1
+    )[0]
+    assert "paper_recorded_book_market_is_current_v1(latest.id)" in recovery_guard
+    assert "paper_recorded_book_market_is_current_v1(latest.id)" in recovery_reader
     assert "checkpoint.authority_sequence<>authority.current_sequence" in source
     assert "SECURITY DEFINER SET search_path = pg_catalog, public" in source
     assert "kill_switch_state_phase7_transition" in source
@@ -241,13 +249,17 @@ def test_phase7_migration_upgrades_with_digest_only_storage_and_least_privilege(
                 assert connection.execute(
                     "SELECT has_function_privilege('woozoo_paper_engine',"
                     "'paper_recorded_book_market_is_current_v1(varchar)','EXECUTE'),"
+                    "has_function_privilege('woozoo_control_api',"
+                    "'paper_recorded_book_market_is_current_v1(varchar)','EXECUTE'),"
+                    "has_function_privilege('woozoo_control_reader',"
+                    "'paper_recorded_book_market_is_current_v1(varchar)','EXECUTE'),"
                     "has_table_privilege('woozoo_paper_engine','raw_market_events','SELECT'),"
                     "has_table_privilege('woozoo_paper_engine','collector_sessions','SELECT'),"
                     "has_table_privilege('woozoo_paper_engine',"
                     "'stream_watermark_projections','SELECT'),"
                     "has_table_privilege('woozoo_paper_engine',"
                     "'market_status_projections','SELECT')"
-                ).fetchone() == (True, False, False, False, False)
+                ).fetchone() == (True, True, True, False, False, False, False)
                 assert connection.execute(
                     "SELECT has_table_privilege('woozoo_evidence_writer',"
                     "'raw_market_events','SELECT'),"

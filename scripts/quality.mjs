@@ -1022,6 +1022,7 @@ const actions = {
       "E2E-004": [
         "tests/e2e/trading-room.spec.ts::[live] E2E-004",
         "tests/integration/test_trading_room_api.py::test_e2e_004_kill_cancels_open_order_and_manual_recovery_is_audited",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_recovery_races_consumer_but_requires_completion_and_later_checkpoint",
       ],
       "E2E-005": [
         "tests/e2e/trading-room.spec.ts::[live] E2E-005",

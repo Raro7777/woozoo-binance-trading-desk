@@ -57,11 +57,15 @@ function createSellAnalysis(symbol: "BTCUSDT" | "ETHUSDT"): string {
 function refreshEvidence(
   symbol: "BTCUSDT" | "ETHUSDT",
   nonCrossingBuySymbol?: "BTCUSDT" | "ETHUSDT",
+  nonCrossingSellSymbol?: "BTCUSDT" | "ETHUSDT",
 ) {
   const protection = nonCrossingBuySymbol === undefined
     ? []
     : ["--non-crossing-buy-book", nonCrossingBuySymbol];
-  runLiveControl("--refresh-evidence", symbol, ...protection);
+  const sellProtection = nonCrossingSellSymbol === undefined
+    ? []
+    : ["--non-crossing-sell-book", nonCrossingSellSymbol];
+  runLiveControl("--refresh-evidence", symbol, ...protection, ...sellProtection);
 }
 
 function recordPartialBook(symbol: "BTCUSDT" | "ETHUSDT") {
@@ -198,10 +202,17 @@ test("[live] E2E-001 HTTPS approval, automatic Paper partial fill, and operator 
   const initialPortfolio = await initialPortfolioResponse.json() as { orders?: Array<{ order_id?: string }> };
   const initialOrders = initialPortfolio.orders ?? [];
   const initialOrderIds = new Set(initialOrders.map((order) => order.order_id));
-  refreshEvidence(symbol);
+  refreshEvidence(
+    symbol,
+    undefined,
+    testInfo.project.name === "mobile-chromium" ? "BTCUSDT" : undefined,
+  );
   await page.reload();
   await expect(page.getByText("정상", { exact: true }).first()).toBeVisible();
-  await expect(page.getByText("60000.000000000000000000", { exact: true }).first()).toBeVisible();
+  const expectedBtcPrice = testInfo.project.name === "mobile-chromium"
+    ? "59000.000000000000000000"
+    : "60000.000000000000000000";
+  await expect(page.getByText(expectedBtcPrice, { exact: true }).first()).toBeVisible();
   await expect(page.getByText("3000.000000000000000000", { exact: true }).first()).toBeVisible();
   await expect(page.locator(".field", { hasText: "워터마크" }).first()).toContainText("#");
   await expect(page.locator(".field", { hasText: "연결" }).first()).not.toContainText("정보 없음");
@@ -568,7 +579,11 @@ test("[live] E2E-005 desktop and mobile journey is keyboard accessible, Axe-clea
     );
     expect(protectedEthOrder?.order_id).toMatch(/^[a-f0-9]{64}$/);
   }
-  refreshEvidence(symbol, testInfo.project.name === "mobile-chromium" ? "ETHUSDT" : undefined);
+  refreshEvidence(
+    symbol,
+    testInfo.project.name === "mobile-chromium" ? "ETHUSDT" : undefined,
+    testInfo.project.name === "mobile-chromium" ? "BTCUSDT" : undefined,
+  );
   if (protectedEthOrder?.order_id !== undefined) {
     await expect.poll(async () => {
       const response = await page.request.get("/api/v1/paper-portfolio");
