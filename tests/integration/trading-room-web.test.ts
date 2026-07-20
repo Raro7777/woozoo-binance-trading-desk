@@ -94,18 +94,63 @@ function startWeb(port: number) {
         stdio: ["ignore", "pipe", "pipe"],
         windowsHide: true,
       })
-    : spawn("corepack", argumentsForPnpm, { cwd: root, stdio: ["ignore", "pipe", "pipe"] });
+    : spawn("corepack", argumentsForPnpm, {
+        cwd: root,
+        detached: true,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+}
+
+function processGroupExists(processGroupId: number): boolean {
+  try {
+    process.kill(-processGroupId, 0);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ESRCH") return false;
+    throw error;
+  }
 }
 
 async function stopWeb(processToStop: ReturnType<typeof startWeb>): Promise<void> {
-  if (processToStop.exitCode !== null || processToStop.pid === undefined) return;
+  if (processToStop.pid === undefined) return;
   if (process.platform === "win32") {
+    if (processToStop.exitCode !== null) return;
     spawnSync("taskkill", ["/PID", String(processToStop.pid), "/T", "/F"], { windowsHide: true });
   } else {
-    processToStop.kill("SIGTERM");
+    // `corepack pnpm` launches Next as a descendant. Killing only the wrapper
+    // leaves that server holding the stdout pipes open on Linux CI, so the
+    // node:test process never exits. The detached process group gives this
+    // fixture one precise, disposable target for teardown.
+    try {
+      process.kill(-processToStop.pid, "SIGTERM");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+    }
   }
-  for (let attempts = 0; attempts < 20 && processToStop.exitCode === null; attempts += 1) {
+  for (
+    let attempts = 0;
+    attempts < 20 &&
+    (process.platform === "win32"
+      ? processToStop.exitCode === null
+      : processGroupExists(processToStop.pid));
+    attempts += 1
+  ) {
     await delay(100);
+  }
+  if (process.platform !== "win32" && processGroupExists(processToStop.pid)) {
+    try {
+      process.kill(-processToStop.pid, "SIGKILL");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+    }
+    for (
+      let attempts = 0;
+      attempts < 20 && processGroupExists(processToStop.pid);
+      attempts += 1
+    ) {
+      await delay(100);
+    }
+    assert.equal(processGroupExists(processToStop.pid), false, "web fixture process group did not terminate");
   }
 }
 
