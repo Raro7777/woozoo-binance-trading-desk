@@ -1,0 +1,312 @@
+from decimal import Decimal
+
+import pytest
+
+from datetime import UTC, datetime
+
+from paper_engine import ExecutionFixture, MarkFixture, OrderSide, PaperEngine
+from paper_engine.models import Journal, LedgerEntry
+
+
+def fixture(number: int) -> ExecutionFixture:
+    return ExecutionFixture(f"auth-{number}", f"nonce-{number}", f"{number:x}".rjust(64, "0"))
+
+
+def test_fin_001_generated_fill_cancel_sequences_conserve_and_balance() -> None:
+    for case in range(1, 41):
+        engine = PaperEngine()
+        engine.seed_balance("USDT", "10000", seed_id=f"seed-{case}")
+        quantity = Decimal(case) / Decimal("100")
+        order = engine.create_limit_order(
+            idempotency_key=f"cmd-{case}",
+            client_order_id=f"order-{case}",
+            authorization=fixture(case),
+            symbol="BTCUSDT",
+            side=OrderSide.BUY,
+            quantity_text=format(quantity, "f"),
+            limit_price_text="1000",
+        )
+        for part in range(1, 6):
+            engine.apply_book_observation(
+                order_id=order.order_id,
+                observation_id=f"book-{case}-{part}",
+                best_bid_text="999",
+                best_ask_text="1000",
+                displayed_quantity_text=format(quantity * Decimal("2"), "f"),
+            )
+            if engine.orders[order.order_id].filled_quantity == quantity:
+                break
+        current = engine.orders[order.order_id]
+        if current.filled_quantity < current.quantity:
+            engine.cancel(order.order_id, cancel_id=f"cancel-{case}")
+        assert engine.available["USDT"] >= 0
+        assert engine.held.get("USDT", Decimal(0)) >= 0
+        assert engine.position("BTC") >= 0
+        assert sum(fill.quantity for fill in engine.fills.values()) <= quantity
+        for journal in engine.journals.values():
+            journal.assert_balanced()
+
+
+def test_fin_002_insufficient_cash_or_long_inventory_has_zero_order_and_ledger_effect() -> None:
+    engine = PaperEngine()
+    engine.seed_balance("USDT", "10", seed_id="seed")
+    journals_before = dict(engine.journals)
+    with pytest.raises(ValueError, match="INSUFFICIENT_FUNDS"):
+        engine.create_limit_order(
+            idempotency_key="buy",
+            client_order_id="buy",
+            authorization=fixture(1),
+            symbol="BTCUSDT",
+            side=OrderSide.BUY,
+            quantity_text="1",
+            limit_price_text="11",
+        )
+    assert engine.orders == {}
+    assert engine.journals == journals_before
+    with pytest.raises(ValueError, match="INSUFFICIENT_FUNDS"):
+        engine.create_limit_order(
+            idempotency_key="sell",
+            client_order_id="sell",
+            authorization=fixture(2),
+            symbol="BTCUSDT",
+            side=OrderSide.SELL,
+            quantity_text="0.1",
+            limit_price_text="100",
+        )
+    assert engine.orders == {}
+    assert engine.available["USDT"] == Decimal("10.000000000000000000")
+
+
+def test_fin_003_exact_partial_fill_fifo_and_pnl_oracle() -> None:
+    engine = PaperEngine()
+    engine.seed_balance("USDT", "200", seed_id="J-000")
+    buy = engine.create_limit_order(
+        idempotency_key="J-001",
+        client_order_id="buy",
+        authorization=fixture(1),
+        symbol="BTCUSDT",
+        side=OrderSide.BUY,
+        quantity_text="0.01000000",
+        limit_price_text="10000.000000",
+    )
+    for event, displayed in (("B1", "0.02000000"), ("B2", "0.01500000"), ("B3", "0.02500000")):
+        engine.apply_book_observation(
+            order_id=buy.order_id,
+            observation_id=event,
+            best_bid_text="9999",
+            best_ask_text="10000",
+            displayed_quantity_text=displayed,
+        )
+    engine.cancel(buy.order_id, cancel_id="J-005")
+    sell = engine.create_limit_order(
+        idempotency_key="J-006",
+        client_order_id="sell",
+        authorization=fixture(2),
+        symbol="BTCUSDT",
+        side=OrderSide.SELL,
+        quantity_text="0.00400000",
+        limit_price_text="11000.000000",
+    )
+    engine.apply_book_observation(
+        order_id=sell.order_id,
+        observation_id="S1",
+        best_bid_text="11000",
+        best_ask_text="11001",
+        displayed_quantity_text="0.04000000",
+    )
+    assert engine.available["USDT"] == Decimal("183.896000000000000000")
+    assert engine.held["USDT"] == 0
+    assert engine.position("BTC") == Decimal("0.002000000000000000")
+    assert engine.realized_pnl("BTC") == Decimal("3.916000000000000000")
+    mark = MarkFixture("11000", "fixture", datetime(2026, 7, 19, tzinfo=UTC), "VALID", "mark-v1")
+    unrealized = engine.unrealized_pnl("BTC", mark)
+    assert unrealized.amount == Decimal("1.980000000000000000")
+    assert unrealized.mark == mark
+    assert engine.realized_pnl("BTC") + unrealized.amount == Decimal("5.896000000000000000")
+
+
+def test_ord_001_one_observation_budget_is_shared_across_orders() -> None:
+    engine = PaperEngine()
+    engine.seed_balance("USDT", "1000", seed_id="seed")
+    orders = [
+        engine.create_limit_order(
+            idempotency_key=f"create-{number}",
+            client_order_id=f"client-{number}",
+            authorization=fixture(number),
+            symbol="BTCUSDT",
+            side=OrderSide.BUY,
+            quantity_text="0.1",
+            limit_price_text="100",
+        )
+        for number in (1, 2)
+    ]
+    for order in orders:
+        engine.apply_book_observation(
+            order_id=order.order_id,
+            observation_id="shared",
+            best_bid_text="99",
+            best_ask_text="100",
+            displayed_quantity_text="1",
+        )
+    assert sum(fill.quantity for fill in engine.fills.values()) == Decimal("0.100000000000000000")
+
+
+def test_ord_001_shared_observation_requires_canonical_order_allocation() -> None:
+    engine = PaperEngine()
+    engine.seed_balance("USDT", "1000", seed_id="canonical-seed")
+    first, second = [
+        engine.create_limit_order(
+            idempotency_key=f"canonical-create-{number}",
+            client_order_id=f"canonical-client-{number}",
+            authorization=fixture(number + 10),
+            symbol="BTCUSDT",
+            side=OrderSide.BUY,
+            quantity_text="0.1",
+            limit_price_text="100",
+        )
+        for number in (1, 2)
+    ]
+    sequence_before = engine.broker_seq
+    with pytest.raises(ValueError, match="NON_CANONICAL_OBSERVATION_ORDER"):
+        engine.apply_book_observation(
+            order_id=second.order_id,
+            observation_id="canonical-shared",
+            best_bid_text="99",
+            best_ask_text="100",
+            displayed_quantity_text="1",
+        )
+    assert engine.broker_seq == sequence_before
+    assert engine.observation_budgets == {}
+    engine.apply_book_observation(
+        order_id=first.order_id,
+        observation_id="canonical-shared",
+        best_bid_text="99",
+        best_ask_text="100",
+        displayed_quantity_text="1",
+    )
+
+
+def test_ord_001_mixed_eligibility_preserves_canonical_allocation_for_generated_limits() -> None:
+    for case in range(1, 21):
+        engine = PaperEngine()
+        engine.seed_balance("USDT", "10000", seed_id=f"mixed-seed-{case}")
+        first_limit = Decimal("100") + Decimal(case)
+        later_limit = first_limit - Decimal("10")
+        ask = first_limit - Decimal("5")
+        first = engine.create_limit_order(
+            idempotency_key=f"mixed-first-{case}",
+            client_order_id=f"mixed-first-{case}",
+            authorization=fixture(case),
+            symbol="BTCUSDT",
+            side=OrderSide.BUY,
+            quantity_text="0.1",
+            limit_price_text=format(first_limit, "f"),
+        )
+        later = engine.create_limit_order(
+            idempotency_key=f"mixed-later-{case}",
+            client_order_id=f"mixed-later-{case}",
+            authorization=fixture(case + 100),
+            symbol="BTCUSDT",
+            side=OrderSide.BUY,
+            quantity_text="0.1",
+            limit_price_text=format(later_limit, "f"),
+        )
+        before = engine.semantic_digest()
+
+        with pytest.raises(ValueError, match="NON_CANONICAL_OBSERVATION_ORDER"):
+            engine.apply_book_observation(
+                order_id=later.order_id,
+                observation_id=f"mixed-book-{case}",
+                best_bid_text=format(ask - Decimal(1), "f"),
+                best_ask_text=format(ask, "f"),
+                displayed_quantity_text="1",
+            )
+
+        assert engine.semantic_digest() == before
+        assert engine.apply_book_observation(
+            order_id=first.order_id,
+            observation_id=f"mixed-book-{case}",
+            best_bid_text=format(ask - Decimal(1), "f"),
+            best_ask_text=format(ask, "f"),
+            displayed_quantity_text="1",
+        )
+
+
+def test_fin_001_extreme_sell_overflow_is_transactionally_closed_for_generated_prices() -> None:
+    for case in range(1, 21):
+        engine = PaperEngine()
+        engine.seed_balance("USDT", "99999999999999999999", seed_id=f"max-cash-{case}")
+        engine.seed_balance("BTC", "1", seed_id=f"inventory-{case}")
+        price = Decimal("100") + Decimal(case)
+        order = engine.create_limit_order(
+            idempotency_key=f"extreme-sell-{case}",
+            client_order_id=f"extreme-sell-{case}",
+            authorization=fixture(case),
+            symbol="BTCUSDT",
+            side=OrderSide.SELL,
+            quantity_text="1",
+            limit_price_text=format(price, "f"),
+        )
+        before = engine.semantic_digest()
+
+        with pytest.raises(ValueError, match=r"NUMERIC\(38,18\)"):
+            engine.apply_book_observation(
+                order_id=order.order_id,
+                observation_id=f"overflow-book-{case}",
+                best_bid_text=format(price, "f"),
+                best_ask_text=format(price + Decimal(1), "f"),
+                displayed_quantity_text="10",
+            )
+
+        assert engine.semantic_digest() == before
+
+
+def test_fin_001_generated_large_journal_imbalances_remain_exactly_visible() -> None:
+    for case in range(1, 21):
+        integer = 10**20 - case
+        debit = Decimal(f"{integer}.000000000000000000")
+        credit = Decimal(f"{integer - 1}.999999999999999999")
+        journal = Journal(
+            f"{case:x}".rjust(64, "0"),
+            "paper.test",
+            f"exact-balance-{case}",
+            "PHYSICAL",
+            (
+                LedgerEntry("paper.available", "USDT", debit, Decimal(0)),
+                LedgerEntry("paper.equity", "USDT", Decimal(0), credit),
+            ),
+        )
+        with pytest.raises(ValueError, match="LEDGER_IMBALANCE:USDT"):
+            journal.assert_balanced()
+
+
+def test_ord_001_generated_participation_boundaries_floor_before_quantizing() -> None:
+    threshold = Decimal("0.000100000000000000")
+    quantum = Decimal("0.000000000000000001")
+    for case in range(1, 21):
+        for label, displayed, expected in (
+            ("below", threshold - quantum * case, Decimal(0)),
+            ("exact", threshold, Decimal("0.00001")),
+            ("above", threshold + quantum * case, Decimal("0.00001")),
+        ):
+            engine = PaperEngine()
+            engine.seed_balance("USDT", "100", seed_id=f"floor-seed-{case}-{label}")
+            order = engine.create_limit_order(
+                idempotency_key=f"floor-create-{case}-{label}",
+                client_order_id=f"floor-client-{case}-{label}",
+                authorization=fixture(case),
+                symbol="BTCUSDT",
+                side=OrderSide.BUY,
+                quantity_text="0.00003",
+                limit_price_text="200000",
+            )
+            observation_id = f"floor-book-{case}-{label}"
+            fill = engine.apply_book_observation(
+                order_id=order.order_id,
+                observation_id=observation_id,
+                best_bid_text="199999",
+                best_ask_text="200000",
+                displayed_quantity_text=format(displayed, "f"),
+            )
+            assert engine.observation_budgets[observation_id][1] == Decimal(0)
+            assert (fill.quantity if fill is not None else Decimal(0)) == expected

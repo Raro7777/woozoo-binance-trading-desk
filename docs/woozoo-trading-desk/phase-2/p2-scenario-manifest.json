@@ -1,0 +1,22 @@
+{
+  "schema_version": "woozoo.market.replay-manifest/v1",
+  "phase": 2,
+  "source_revision": "binance-spot-api-docs@29c227d84058dd2be3fe3b42ab368d1d1ce910e5",
+  "allowlist_version": "binance-spot-public.v1@29c227d84058dd2be3fe3b42ab368d1d1ce910e5",
+  "collector_policy_version": "woozoo.market.collector-policy/v1",
+  "fixture_manifest_sha256": "7ad31ec79946ab383176360ae3ee069135ea9d8758ad2e16c13d3811cc05ce40",
+  "recorded_events_sha256": "00fd2685d77192031cebdc12f3a1da64c560e5b24bc443918236288874ed0e65",
+  "expected_replay_digest": "9a33bc2d4ab17eeed76587b3c6d68b576682d4e9d7a4cdcb51815afbebd4171b",
+  "fixed_seed": 0,
+  "timezone": "UTC",
+  "network_allowed": false,
+  "scenarios": [
+    {"id": "DATA-001", "command": "pnpm test:replay", "artifact": "artifacts/replay/DATA-001.json"},
+    {"id": "DATA-002", "command": "pnpm test:replay", "artifact": "artifacts/replay/DATA-002.json"},
+    {"id": "DATA-003", "command": "pnpm test:failure", "artifact": "artifacts/failure/DATA-003.json"},
+    {"id": "DATA-004", "command": "pnpm test:failure", "artifact": "artifacts/failure/DATA-004.json"},
+    {"id": "DATA-005", "command": "pnpm test:failure", "artifact": "artifacts/failure/DATA-005.json"},
+    {"id": "DATA-006", "command": "pnpm test:failure", "artifact": "artifacts/failure/DATA-006.json"},
+    {"id": "DATA-007", "command": "pnpm test:property", "artifact": "artifacts/property/DATA-007.json"}
+  ]
+}

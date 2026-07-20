@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "phase": 5,
+  "status": "PASS",
+  "frozen_code_commit": "f45fd13c320c54fdc3bbf182c0bf84217bf4b528",
+  "frozen_code_tree": "4325154f9eafb4a0aa8a0238dd6c1bd78a64ac2b",
+  "review_evidence_commit": "8abd2ed71c31101ca207e17d10ac8955ca154f95",
+  "branch": "codex/phase-5-risk-engine",
+  "base": "main",
+  "push": {
+    "status": "PASS",
+    "remote": "origin",
+    "remote_head": "8abd2ed71c31101ca207e17d10ac8955ca154f95"
+  },
+  "draft_pr": {
+    "status": "PASS",
+    "url": "https://github.com/Raro7777/woozoo-binance-trading-desk/pull/6",
+    "number": 6,
+    "state": "open",
+    "draft": true,
+    "mergeable": true,
+    "base": "main",
+    "head": "codex/phase-5-risk-engine",
+    "verified_head_sha": "8abd2ed71c31101ca207e17d10ac8955ca154f95",
+    "created_at": "2026-07-20T01:36:35Z"
+  },
+  "gate_effect": "PASS. PR #6 is an open mergeable Draft targeting main from codex/phase-5-risk-engine and contained the frozen implementation plus final review evidence when verified."
+}

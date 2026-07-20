@@ -1,0 +1,7 @@
+packages:
+  - apps/*
+  - packages/contracts
+  - packages/typescript/*
+
+engineStrict: true
+nodeVersion: 24.17.0

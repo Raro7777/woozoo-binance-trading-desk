@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "woozoo.evidence-snapshot/v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "evidence_id",
+    "evidence_digest",
+    "symbol",
+    "as_of",
+    "knowledge_cutoff",
+    "recipe_version",
+    "input_digest",
+    "quality",
+    "quality_reasons",
+    "collector_session_id",
+    "watermark_digest",
+    "items",
+    "candles",
+    "features"
+  ],
+  "properties": {
+    "evidence_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "evidence_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "symbol": {"enum": ["BTCUSDT", "ETHUSDT"]},
+    "as_of": {"type": "string", "format": "date-time"},
+    "knowledge_cutoff": {"type": "string", "format": "date-time"},
+    "recipe_version": {"const": "woozoo.evidence.closed-candles-approved-features/v1"},
+    "input_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "quality": {"const": "healthy"},
+    "quality_reasons": {"type": "array", "maxItems": 0},
+    "collector_session_id": {"type": "string", "format": "uuid"},
+    "watermark_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "items": {
+      "type": "array",
+      "minItems": 256,
+      "maxItems": 256,
+      "items": {"$ref": "#/$defs/EvidenceItemV1"}
+    },
+    "candles": {
+      "type": "array",
+      "minItems": 84,
+      "maxItems": 84,
+      "items": {"$ref": "#/$defs/EvidenceCandleV1"}
+    },
+    "features": {
+      "type": "array",
+      "minItems": 12,
+      "maxItems": 12,
+      "items": {"$ref": "#/$defs/EvidenceFeatureV1"}
+    }
+  },
+  "$defs": {
+    "NonNegativeDecimalString": {"type": "string", "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$"},
+    "PositiveDecimalString": {"type": "string", "pattern": "^([1-9][0-9]*)(\\.[0-9]+)?$|^0\\.[0-9]*[1-9][0-9]*$"},
+    "FixedScale18SignedDecimalString": {"type": "string", "pattern": "^-?(0|[1-9][0-9]*)\\.[0-9]{18}$"},
+    "EvidenceItemV1": {
+      "oneOf": [
+        {"$ref": "#/$defs/NormalizedMarketEventItemV1"},
+        {"$ref": "#/$defs/FeatureObservationItemV1"}
+      ]
+    },
+    "NormalizedMarketEventItemV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["item_type", "item_id", "raw_event_id", "raw_payload_hash"],
+      "properties": {
+        "item_type": {"const": "normalized_market_event"},
+        "item_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "raw_event_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "raw_payload_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      }
+    },
+    "FeatureObservationItemV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["item_type", "item_id", "raw_event_id", "raw_payload_hash"],
+      "properties": {
+        "item_type": {"const": "feature_observation"},
+        "item_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "raw_event_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "raw_payload_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      }
+    },
+    "EvidenceCandleV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["normalized_event_id", "raw_event_id", "raw_payload_hash", "interval", "event_time", "received_at", "open_time", "close_time", "open", "high", "low", "close", "base_volume"],
+      "properties": {
+        "normalized_event_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "raw_event_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "raw_payload_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "interval": {"enum": ["1m", "5m", "1h", "4h"]},
+        "event_time": {"type": "string", "format": "date-time"},
+        "received_at": {"type": "string", "format": "date-time"},
+        "open_time": {"type": "string", "format": "date-time"},
+        "close_time": {"type": "string", "format": "date-time"},
+        "open": {"$ref": "#/$defs/PositiveDecimalString"},
+        "high": {"$ref": "#/$defs/PositiveDecimalString"},
+        "low": {"$ref": "#/$defs/PositiveDecimalString"},
+        "close": {"$ref": "#/$defs/PositiveDecimalString"},
+        "base_volume": {"$ref": "#/$defs/NonNegativeDecimalString"}
+      }
+    },
+    "EvidenceFeatureV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["feature_id", "name", "definition_version", "interval", "feature_time", "value", "input_digest"],
+      "properties": {
+        "feature_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "name": {"enum": ["close_return_1", "close_sma_20", "close_rsi_14"]},
+        "definition_version": {"const": "woozoo.feature.ohlcv-return-sma20-rsi14/v1"},
+        "interval": {"enum": ["1m", "5m", "1h", "4h"]},
+        "feature_time": {"type": "string", "format": "date-time"},
+        "value": {"$ref": "#/$defs/FixedScale18SignedDecimalString"},
+        "input_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      }
+    }
+  }
+}

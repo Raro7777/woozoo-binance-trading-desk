@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "phase": 3,
+  "status": "READY_FOR_DIGEST_BOUND_USER_APPROVAL",
+  "acceptance_status": "UNVERIFIED",
+  "digest_algorithm": "SHA-256",
+  "digest_definition": "SHA-256 of this UTF-8 manifest. The manifest does not contain its own digest; the frozen implementation commit and tree bind product source, while the artifact list binds ignored CI evidence.",
+  "frozen_code_revision": {
+    "commit": "15c4fb7472b884b63e39dd0a26479b8020e11acd",
+    "tree": "dd8e7166b8d33230ca2f2053f6c82017d8a269c6",
+    "verified_worktree_digest": "0796dc1bed0fc4e0bb13446fd47332eee00d3ab5c08ce887bef2fc524200faf0",
+    "verified_file_count": 222,
+    "branch": "codex/phase-3-evidence",
+    "verdict": "PASS"
+  },
+  "acceptance_support_revision": {
+    "commit": "cd524a4ec8d5b5b920b31f06b653b6a5e5e29d63",
+    "tree": "baaf6f5942e27a8de5d02a0a09d21e4432fbd424"
+  },
+  "phase_item_verdicts": {
+    "P3-01": "PASS",
+    "P3-02": "PASS",
+    "P3-03": "PASS",
+    "P3-04": "PASS",
+    "P3-05": "PASS",
+    "P3-06": "PASS",
+    "P3-07": "PASS",
+    "P3-08": "PASS",
+    "P3-09": "PASS",
+    "P3-10": "PASS",
+    "P3-11": "PASS",
+    "P3-12": "PASS"
+  },
+  "review_gate": {
+    "role_separated_safety_qa": "PASS",
+    "codex_cross_review": "NO_CONFIRMED_FINDINGS",
+    "codex_cross_review_is_same_engine": true,
+    "external_review": "external-review-unavailable",
+    "external_gate_satisfied": false,
+    "external_review_is_not_pass": true,
+    "claude_used": false,
+    "approval_boundary": "Acceptance remains UNVERIFIED until the user explicitly approves the SHA-256 of this exact manifest. This manifest is not authority to begin Phase 4."
+  },
+  "git_gate": {
+    "status": "PASS",
+    "evidence_path": "docs/woozoo-trading-desk/phase-3/p3-git-gate-evidence.json",
+    "draft_pr": "https://github.com/Raro7777/woozoo-binance-trading-desk/pull/4",
+    "verified_pr_head": "8d3edd43cf86070c088fbdd04400ff6ae12282fb",
+    "base": "main"
+  },
+  "verification": {
+    "canonical_command": "corepack pnpm ci",
+    "status": "PASS",
+    "scenario_evidence": "docs/woozoo-trading-desk/phase-3/p3-scenario-manifest.json",
+    "artifact_worktree_digest": "0796dc1bed0fc4e0bb13446fd47332eee00d3ab5c08ce887bef2fc524200faf0"
+  },
+  "artifacts": [
+    {"path": "AGENTS.md", "sha256": "48a07aed6f8ac753df49740797cbbbf20e821240d1c14e63912b6c0a289b4e64", "verdict": "PASS"},
+    {"path": "artifacts/unit/EVID-001.json", "sha256": "0ddc00e7ed11fc295613266762799e10772131502584233f76bbc2eaf1c3afb0", "verdict": "PASS"},
+    {"path": "artifacts/contracts/EVID-002.json", "sha256": "dd4f8dffba6a27dc40748765e2d199e764dc126c4fa7e4f73754456bfb074b38", "verdict": "PASS"},
+    {"path": "artifacts/property/EVID-003.json", "sha256": "f5a83c58678369a2e48da8ab56325b79d0dbe614e99824acf0b635ab84bf360c", "verdict": "PASS"},
+    {"path": "artifacts/replay/EVID-004.json", "sha256": "5be9994084f2ec125998ff4e7c7f1cc94a771f8154c0d0bfd5d705d4acd9375c", "verdict": "PASS"},
+    {"path": "artifacts/integration/EVID-005.json", "sha256": "1afa1b7abab30534a8c7bb5fb2dc6d87c8e9aa454c8674836eb052c6fbdaa537", "verdict": "PASS"},
+    {"path": "artifacts/failure/EVID-006.json", "sha256": "cc59349a902a16f0eabf498e1334bb71d47a8771b2301efaf563f0ba966a72f1", "verdict": "PASS"},
+    {"path": "artifacts/safety/EVID-007.json", "sha256": "e4e572a5b3a82c728e154a05456f506e2004e5dcb2ec9bb697ee5540920e96de", "verdict": "PASS"},
+    {"path": "docs/woozoo-trading-desk/phase-3/implementation-contract.md", "sha256": "46c1f25411391e77228b2ec88e5c03b59581d0a4845715598362a70e4a18bc43", "verdict": "PASS"},
+    {"path": "docs/woozoo-trading-desk/phase-3/p3-scenario-manifest.json", "sha256": "cb753b8826cd721cfef2a3b27b50b9f34d97e622db09db65c34851909f7f8277", "verdict": "PASS"},
+    {"path": "docs/woozoo-trading-desk/phase-3/external-review-status.json", "sha256": "4588a826f0b650c07e13bdc51893cee9f61e4ae4d5d24dd77baf2f425c2824d0", "verdict": "external-review-unavailable"},
+    {"path": "docs/woozoo-trading-desk/phase-3/final-review-record.md", "sha256": "346c8e68302a1382478baa7fedc048f2db77dee04b1d9215704da26d498ca235", "verdict": "PASS"},
+    {"path": "docs/woozoo-trading-desk/phase-3/p3-git-gate-evidence.json", "sha256": "91682c02fe87ecf95cd953161a65a47826bdfcaf9a52d64f2c10bba18c16673d", "verdict": "PASS"},
+    {"path": "docs/woozoo-trading-desk/working_history/phase-3_point-in-time-evidence_20260719.md", "sha256": "15119dd38186dc55ed3bc50070e05a847934f5166bb5b04e9696a3459fe43353", "verdict": "PASS"}
+  ]
+}

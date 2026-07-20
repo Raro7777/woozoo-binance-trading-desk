@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "approval_id": "P1-TO-P2-20260719-01",
+  "from_phase": 1,
+  "to_phase": 2,
+  "approval_status": "approved",
+  "evidence_manifest": "docs/woozoo-trading-desk/phase-1/p1-acceptance-evidence-manifest.json",
+  "acceptance_evidence_digest": "f27e59b5e308ebd121eefa86824750a857ffb7ae70d02b724e92d1995b98c4c8",
+  "approval_prompt": "Phase 2 전환 승인: P1 acceptance digest f27e59b5e308ebd121eefa86824750a857ffb7ae70d02b724e92d1995b98c4c8 승인",
+  "user_response": "승인했다",
+  "binding_interpretation": "The user explicitly approved the immediately preceding, digest-specific Phase 2 transition request. This envelope binds only the stated P1 acceptance evidence digest and does not authorize later phase transitions or prohibited capabilities.",
+  "approved_by": "user",
+  "approved_at": "2026-07-19T04:29:45Z",
+  "recorded_by": "codex-orchestrator",
+  "recorded_at": "2026-07-19T04:29:45Z"
+}

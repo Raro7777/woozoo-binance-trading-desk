@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "phase": 6,
+  "status": "PASS",
+  "frozen_code_commit": "2f7682c00a1ab93029ba1dfec1e472d1abf944a5",
+  "frozen_code_tree": "858429669b9d0dba6577fe951d8c70b852355772",
+  "review_evidence_commit": "6aa5ff5d382df5a71c1acdb1f1c2dc6d92474a73",
+  "branch": "codex/phase-6-ai-proposal",
+  "base": "main",
+  "push": {
+    "status": "PASS",
+    "remote": "origin",
+    "remote_head": "6aa5ff5d382df5a71c1acdb1f1c2dc6d92474a73"
+  },
+  "draft_pr": {
+    "status": "PASS",
+    "url": "https://github.com/Raro7777/woozoo-binance-trading-desk/pull/7",
+    "number": 7,
+    "state": "open",
+    "draft": true,
+    "mergeable": true,
+    "base": "main",
+    "head": "codex/phase-6-ai-proposal",
+    "verified_head_sha": "6aa5ff5d382df5a71c1acdb1f1c2dc6d92474a73",
+    "created_at": "2026-07-20T04:04:06Z"
+  },
+  "verification": {
+    "github_connector": "PASS",
+    "public_github_metadata": "PASS"
+  },
+  "gate_effect": "PASS. PR #7 is an open mergeable Draft targeting main from codex/phase-6-ai-proposal and contained the frozen implementation plus final review evidence when verified."
+}
