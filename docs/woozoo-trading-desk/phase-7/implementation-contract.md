@@ -38,6 +38,12 @@ immutable Evidence
   success or domain rejection.
 - Approval and authorization nonces are distinct. The first Paper attempt is
   terminal whether it creates one order or records `BLOCKED`.
+- Approval issuance and Kill recovery hold the Paper account lock and require
+  the latest reconciliation checkpoint's stamped authority sequence to equal
+  the current Paper outbox sequence. Any committed Paper effect therefore
+  requires a new reconciliation before either writer can proceed; a healthy
+  but stale checkpoint is never accepted merely because its digest still
+  matches an earlier Risk decision or cancellation completion.
 - Manual Kill recovery requires the active activation event, expected version,
   an incident reference, authenticated actor, and healthy data, ledger, and
   reconciliation. Its reader and writer select the same latest BTCUSDT and

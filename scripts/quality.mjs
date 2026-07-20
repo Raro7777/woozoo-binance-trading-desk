@@ -1023,6 +1023,7 @@ const actions = {
         "tests/e2e/trading-room.spec.ts::[live] E2E-004",
         "tests/integration/test_trading_room_api.py::test_e2e_004_kill_cancels_open_order_and_manual_recovery_is_audited",
         "tests/integration/test_phase7_paper_first_attempt_authority.py::test_recovery_races_consumer_but_requires_completion_and_later_checkpoint",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_recovery_rejects_checkpoint_that_predates_a_pending_authorization_effect",
       ],
       "E2E-005": [
         "tests/e2e/trading-room.spec.ts::[live] E2E-005",
@@ -1117,6 +1118,7 @@ const actions = {
   "test:failure": async () => {
     await phase7DataScenario("failure", "AUTH-002", [
       "tests/failure/test_trading_room_authorization_failures.py::test_auth_002_stale_state_before_human_decision_has_zero_order_effect",
+      "tests/integration/test_phase7_paper_first_attempt_authority.py::test_approval_rejects_checkpoint_that_predates_a_paper_effect",
       "tests/integration/test_phase7_paper_first_attempt_authority.py::test_kill_first_attempt_stays_blocked_after_recovery_and_retry",
       "tests/integration/test_phase7_paper_first_attempt_authority.py::test_missing_reconciliation_consumes_authorization_without_financial_effects",
       "tests/integration/test_phase7_paper_first_attempt_authority.py::test_newer_changed_book_blocks_and_audit_projection_removes_nonce[BTCUSDT-10001-10002]",

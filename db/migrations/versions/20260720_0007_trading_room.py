@@ -1018,6 +1018,11 @@ def upgrade() -> None:
             ORDER BY created_at DESC,checkpoint_id DESC LIMIT 1;
           IF NOT FOUND OR checkpoint_row.status<>'HEALTHY'
              OR checkpoint_row.mismatch_codes<>'[]'::jsonb
+             OR checkpoint_row.authority_sequence<>COALESCE((
+                  SELECT max(event.ingestion_sequence)
+                  FROM paper_outbox_links link
+                  JOIN outbox_events event USING(event_id)
+                  WHERE link.account_id='{PAPER_DEFAULT_ACCOUNT_ID}'),0)
              OR encode(digest(convert_to(risk_canonical_jsonb(jsonb_build_object(
                   'checkpoint_id',checkpoint_row.checkpoint_id,
                   'health',checkpoint_row.status,
@@ -2355,6 +2360,11 @@ def upgrade() -> None:
             ORDER BY created_at DESC,checkpoint_id DESC LIMIT 1;
           IF NOT FOUND OR checkpoint_row.status<>'HEALTHY'
              OR checkpoint_row.mismatch_codes<>'[]'::jsonb
+             OR checkpoint_row.authority_sequence<>COALESCE((
+                  SELECT max(event.ingestion_sequence)
+                  FROM paper_outbox_links link
+                  JOIN outbox_events event USING(event_id)
+                  WHERE link.account_id='{PAPER_DEFAULT_ACCOUNT_ID}'),0)
              OR checkpoint_row.created_at<=completion_row.completed_at
              OR checkpoint_row.input_digest<>completion_row.state_digest
              OR EXISTS (
@@ -2769,6 +2779,7 @@ def upgrade() -> None:
                WHEN completion.activation_event_id IS NOT NULL
                 AND checkpoint.status='HEALTHY'
                 AND checkpoint.mismatch_codes='[]'::jsonb
+                AND health.reconciliation_status='HEALTHY'
                 AND checkpoint.created_at>completion.completed_at
                 AND checkpoint.input_digest=completion.state_digest
                THEN 'HEALTHY' ELSE 'UNHEALTHY'
