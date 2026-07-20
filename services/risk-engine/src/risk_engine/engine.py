@@ -214,9 +214,30 @@ def _product(left: Decimal, right: Decimal) -> Decimal:
 
 
 def _sum(values: Sequence[Decimal]) -> Decimal:
-    with localcontext() as context:
-        context.prec = 80
-        return sum(values, Decimal(0))
+    """Sum finite Decimals exactly, independent of the process Decimal context."""
+    items = tuple(values)
+    if not items:
+        return Decimal(0)
+    exponents = tuple(item.as_tuple().exponent for item in items)
+    if any(
+        not item.is_finite() or not isinstance(exponent, int)
+        for item, exponent in zip(items, exponents, strict=True)
+    ):
+        raise ValueError("non-finite financial sum")
+    integer_exponents = tuple(exponent for exponent in exponents if isinstance(exponent, int))
+    common_exponent = min(integer_exponents)
+    total = 0
+    for item, exponent in zip(items, integer_exponents, strict=True):
+        parts = item.as_tuple()
+        coefficient = 0
+        for digit in parts.digits:
+            coefficient = coefficient * 10 + digit
+        if parts.sign:
+            coefficient = -coefficient
+        total += coefficient * 10 ** (exponent - common_exponent)
+    sign = 1 if total < 0 else 0
+    digits = tuple(int(digit) for digit in str(abs(total))) if total else (0,)
+    return Decimal((sign, digits, common_exponent))
 
 
 def _difference(left: Decimal, right: Decimal) -> Decimal:
@@ -528,9 +549,18 @@ def evaluate_risk(risk_input: object) -> RiskDecision:
     if quantity <= 0 or limit_price <= 0:
         reasons.add("INVALID_PRICE_OR_QTY")
 
-    if not isinstance(kill["active"], bool) or not isinstance(kill["version"], int):
+    kill_active = kill["active"]
+    kill_version = kill["version"]
+    kill_event_id = kill["event_id"]
+    if (
+        not isinstance(kill_active, bool)
+        or not isinstance(kill_version, int)
+        or isinstance(kill_version, bool)
+        or (kill_active and (kill_version <= 0 or not _valid_hash(kill_event_id)))
+        or (not kill_active and (kill_version != 0 or kill_event_id is not None))
+    ):
         reasons.add("INPUT_SCHEMA_INVALID")
-    elif kill["active"]:
+    elif kill_active:
         reasons.add("KILL_SWITCH_ACTIVE")
 
     if not data["evidence_id"] or not _valid_hash(data["evidence_hash"]):

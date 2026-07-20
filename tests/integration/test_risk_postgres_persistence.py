@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 import time
 from typing import Iterator
 
@@ -145,7 +146,7 @@ def run(*command: str) -> None:
 
 @contextmanager
 def infrastructure_lock() -> Iterator[None]:
-    path = ROOT / ".p1-integration.lock"
+    path = Path(tempfile.gettempdir()) / "woozoo-docker-integration.lock"
     with path.open("a+b") as lock:
         lock.seek(0)
         lock.write(b"0")
@@ -191,6 +192,37 @@ def postgres() -> Iterator[None]:
 
 
 def test_risk_decision_persistence_is_atomic_unique_and_replay_stable() -> None:
+    with psycopg.connect(DATABASE_URL) as connection:
+        assert connection.execute(
+            "SELECT has_table_privilege('woozoo_risk_engine','risk_decisions','INSERT')"
+        ).fetchone() == (False,)
+    with psycopg.connect(RISK_WRITER_URL) as connection:
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            connection.execute(
+                "INSERT INTO risk_decisions"
+                "(decision_id,risk_input_digest,risk_input,decision_hash,verdict,"
+                "primary_reason,ordered_reason_codes,policy_version,proposal_hash,"
+                "portfolio_snapshot_hash,data_state_hash,paper_order_preview_hash,"
+                "reconciliation_checkpoint_hash,kill_switch_version,decision_as_of,"
+                "recorded_at) VALUES (%s,%s,%s,%s,'ALLOWED','RISK_ALLOWED',%s,%s,%s,%s,"
+                "%s,%s,%s,0,%s,%s)",
+                (
+                    "0" * 64,
+                    "1" * 64,
+                    Jsonb({"risk_input_schema_version": "woozoo.risk-input/v1"}),
+                    "2" * 64,
+                    Jsonb(["RISK_ALLOWED"]),
+                    "woozoo.risk-policy/v1",
+                    "3" * 64,
+                    "4" * 64,
+                    "5" * 64,
+                    "6" * 64,
+                    "7" * 64,
+                    NOW,
+                    NOW,
+                ),
+            )
+        connection.rollback()
     payload = risk_input()
     decision = evaluate_risk(payload)
     store = PostgresRiskStore(DATABASE_URL)
@@ -256,26 +288,79 @@ def test_risk_decision_persistence_is_atomic_unique_and_replay_stable() -> None:
 
 
 def test_risk_writer_cannot_reset_or_decrease_the_kill_barrier() -> None:
-    unbound_event_id = "b" * 64
-    unbound_outbox_id = "1" * 64
-    unbound_request_hash = "c" * 64
+    forged_command = KillActivation(
+        request_id="complete-forged-json-null",
+        expected_version=0,
+        trigger_kind="MANUAL",
+        actor_id="operator:forged-null-test",
+        reason_code="MANUAL_SAFETY_STOP",
+        reason="must rollback",
+        observed_at=NOW,
+        context_digest="a" * 64,
+    )
+    unbound_request_hash = canonical_hash(forged_command.request_material())
+    event_material = {**forged_command.request_material(), "prior_version": 0, "version": 1}
+    unbound_event_id = canonical_hash(event_material)
+    unbound_outbox_id = canonical_hash(["event", "kill-switch.activated.v1", unbound_event_id, "1"])
+    event_data = {
+        "scope": "paper-global",
+        "active": True,
+        "prior_version": 0,
+        "version": 1,
+        "activation_event_id": unbound_event_id,
+        "trigger_kind": forged_command.trigger_kind,
+        "actor_id": forged_command.actor_id,
+        "reason_code": forged_command.reason_code,
+        "reason": forged_command.reason,
+        "observed_at": NOW.isoformat(),
+        "context_digest": forged_command.context_digest,
+    }
+    payload_hash = canonical_hash(event_data)
+    forged_envelope = {
+        "spec_version": "woozoo.event/v1",
+        "event_id": unbound_outbox_id,
+        "event_type": "kill-switch.activated.v1",
+        "event_version": 1,
+        "occurred_at": NOW.isoformat(),
+        "producer": None,
+        "activation_phase": 7,
+        "aggregate_id": unbound_event_id,
+        "aggregate_version": 1,
+        "payload_hash": payload_hash,
+        "data": event_data,
+    }
     with psycopg.connect(RISK_WRITER_URL) as connection:
         connection.execute(
             "INSERT INTO kill_switch_events"
             "(activation_event_id,scope,request_id,request_hash,trigger_kind,actor_id,"
             "reason_code,reason,observed_at,context_digest,prior_version,new_version) "
-            "VALUES (%s,'paper-global','complete-without-state',%s,'MANUAL',"
-            "'operator:unbound-test','MANUAL_SAFETY_STOP','must rollback',%s,%s,0,1)",
-            (unbound_event_id, unbound_request_hash, NOW, "a" * 64),
+            "VALUES (%s,'paper-global',%s,%s,'MANUAL',%s,'MANUAL_SAFETY_STOP',%s,%s,%s,0,1)",
+            (
+                unbound_event_id,
+                forged_command.request_id,
+                unbound_request_hash,
+                forged_command.actor_id,
+                forged_command.reason,
+                NOW,
+                forged_command.context_digest,
+            ),
         )
         connection.execute(
             "INSERT INTO risk_kill_command_receipts"
             "(request_id,request_hash,activation_event_id,response,created_at) "
-            "VALUES ('complete-without-state',%s,%s,%s,%s)",
+            "VALUES (%s,%s,%s,%s,%s)",
             (
+                forged_command.request_id,
                 unbound_request_hash,
                 unbound_event_id,
-                Jsonb({"activation_event_id": unbound_event_id, "version": 1}),
+                Jsonb(
+                    {
+                        "activation_event_id": unbound_event_id,
+                        "prior_version": 0,
+                        "version": 1,
+                        "outbox_event_id": unbound_outbox_id,
+                    }
+                ),
                 NOW,
             ),
         )
@@ -286,13 +371,8 @@ def test_risk_writer_cannot_reset_or_decrease_the_kill_barrier() -> None:
             "(%s,'kill-switch.activated.v1',%s,%s,%s,'kill_switch',%s,1)",
             (
                 unbound_outbox_id,
-                Jsonb(
-                    {
-                        "producer": "risk-engine",
-                        "data": {"activation_event_id": unbound_event_id},
-                    }
-                ),
-                "2" * 64,
+                Jsonb(forged_envelope),
+                payload_hash,
                 NOW,
                 unbound_event_id,
             ),

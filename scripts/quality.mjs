@@ -30,6 +30,7 @@ const riskBoundaryCases = [
   "order_type_not_limit", "side_not_long_cash", "tif_not_allowed",
   "invalid_price_or_qty", "insufficient_available_balance", "fee_reserve_insufficient",
   "sell_exceeds_position", "sell_held_only", "max_precision_exposure_above",
+  "kill_snapshot_inconsistent",
   "invalid_open_order_state", "loss_scale_edge_below",
 ];
 const riskGuardReasonCases = {
@@ -284,6 +285,7 @@ const actions = {
       "tests/unit/test_risk_engine.py::test_complete_input_schema_rejects_nested_type_and_range_counterexamples[numeric_proposal_id]",
       "tests/unit/test_risk_engine.py::test_complete_input_schema_rejects_nested_type_and_range_counterexamples[negative_kill_version]",
       "tests/unit/test_risk_engine.py::test_decimal_thresholds_use_unrounded_values_and_documented_comparators",
+      "tests/unit/test_risk_engine.py::test_unbounded_commitment_sum_is_exact_beyond_fixed_decimal_precision",
       "tests/property/test_risk_properties.py::test_spread_and_directional_slippage_boundaries",
       ...riskBoundaryCases.map((name) => `tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[${name}]`),
     ]);

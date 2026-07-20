@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from decimal import Decimal
+from decimal import Decimal, localcontext
 
 import pytest
 
 from risk_engine import canonical_hash, evaluate_risk
+from risk_engine.engine import _product, _sum
 
 
 def risk_input() -> dict[str, object]:
@@ -164,6 +165,16 @@ def test_risk_001_same_complete_input_has_same_allowed_decision() -> None:
     assert len(first.decision_hash) == 64
 
 
+def test_unbounded_commitment_sum_is_exact_beyond_fixed_decimal_precision() -> None:
+    operand = Decimal("99999999999999999999.999999999999999999")
+    product = _product(operand, operand)
+    values = [product] * 100_000
+    with localcontext() as context:
+        context.prec = 200
+        expected = product * Decimal(len(values))
+    assert _sum(values) == expected
+
+
 def test_risk_001_every_bound_section_mutation_changes_digest() -> None:
     baseline = risk_input()
     baseline_digest = evaluate_risk(baseline).risk_input_digest
@@ -187,7 +198,7 @@ def test_risk_001_every_bound_section_mutation_changes_digest() -> None:
 
 def test_risk_002_closed_reason_precedence_collects_all_applicable_reasons() -> None:
     payload = risk_input()
-    payload["kill_switch"] = {"active": True, "version": 4, "event_id": "kill-4"}
+    payload["kill_switch"] = {"active": True, "version": 4, "event_id": "4" * 64}
     payload["data"]["freshness"] = "STALE"  # type: ignore[index]
     payload["duplicate"]["proposal_seen"] = True  # type: ignore[index]
     payload["order_preview"]["symbol"] = "DOGEUSDT"  # type: ignore[index]
@@ -219,7 +230,7 @@ def test_invalid_or_non_fixture_input_fails_closed_without_approval_dependency()
     assert evaluate_risk(production).ordered_reason_codes == ("INPUT_SCHEMA_INVALID",)
 
     active = risk_input()
-    active["kill_switch"] = {"active": True, "version": 1, "event_id": "kill-1"}
+    active["kill_switch"] = {"active": True, "version": 1, "event_id": "1" * 64}
     assert evaluate_risk(active).ordered_reason_codes == ("KILL_SWITCH_ACTIVE",)
 
 
@@ -360,6 +371,7 @@ RISK_BOUNDARY_CASES = [
     ("sell_exceeds_position", "SELL_EXCEEDS_POSITION", True),
     ("sell_held_only", "SELL_EXCEEDS_POSITION", True),
     ("max_precision_exposure_above", "SYMBOL_EXPOSURE_LIMIT_EXCEEDED", True),
+    ("kill_snapshot_inconsistent", "INPUT_SCHEMA_INVALID", True),
     ("ledger_mismatch", "LEDGER_IMBALANCE", True),
     ("invalid_open_order_state", "INPUT_SCHEMA_INVALID", True),
     ("loss_scale_edge_below", "REALIZED_LOSS_LIMIT_EXCEEDED", False),
@@ -577,6 +589,8 @@ def test_risk_002_complete_boundary_matrix(case: str, reason: str, present: bool
             worst_case_notional="0.0000000001",
         )
         rehash_section(payload, "portfolio", "snapshot_hash")
+    elif case == "kill_snapshot_inconsistent":
+        payload["kill_switch"] = {"active": False, "version": 1, "event_id": "c" * 64}
     elif case == "ledger_mismatch":
         payload["reconciliation"]["health"] = "FAILED"  # type: ignore[index]
         payload["reconciliation"]["mismatch_codes"] = ["LEDGER_IMBALANCE"]  # type: ignore[index]

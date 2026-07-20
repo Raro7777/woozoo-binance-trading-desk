@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 import time
 from typing import Iterator
 from uuid import uuid4
@@ -71,7 +72,7 @@ def get_health_response(app: object) -> httpx.Response:
 
 @contextmanager
 def integration_infrastructure_lock() -> Iterator[None]:
-    path = ROOT / ".p1-integration.lock"
+    path = Path(tempfile.gettempdir()) / "woozoo-docker-integration.lock"
     with path.open("a+b") as lock:
         lock.seek(0)
         lock.write(b"0")

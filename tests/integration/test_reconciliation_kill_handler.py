@@ -11,6 +11,7 @@ import time
 from typing import Iterator
 
 import psycopg
+import pytest
 
 from paper_engine.persistence import PostgresPaperStore
 from risk_engine import PostgresReconciliationKillHandler, canonical_hash
@@ -30,21 +31,36 @@ def run(*command: str) -> None:
 
 @contextmanager
 def infrastructure_lock() -> Iterator[None]:
-    path = Path(tempfile.gettempdir()) / "woozoo-p5-integration.lock"
-    deadline = time.monotonic() + 180
-    while True:
+    path = Path(tempfile.gettempdir()) / "woozoo-docker-integration.lock"
+    with path.open("a+b") as lock:
+        lock.seek(0)
+        lock.write(b"0")
+        lock.flush()
+        deadline = time.monotonic() + 60
+        while True:
+            try:
+                if os.name == "nt":
+                    import msvcrt
+
+                    lock.seek(0)
+                    msvcrt.locking(lock.fileno(), msvcrt.LK_NBLCK, 1)
+                else:
+                    import fcntl
+
+                    fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except OSError:
+                if time.monotonic() >= deadline:
+                    raise TimeoutError("timed out waiting for integration infrastructure")
+                time.sleep(0.1)
         try:
-            descriptor = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-            os.close(descriptor)
-            break
-        except FileExistsError:
-            if time.monotonic() >= deadline:
-                raise TimeoutError("timed out waiting for integration infrastructure")
-            time.sleep(0.1)
-    try:
-        yield
-    finally:
-        path.unlink(missing_ok=True)
+            yield
+        finally:
+            if os.name == "nt":
+                lock.seek(0)
+                msvcrt.locking(lock.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
 
 
 def test_critical_reconciliation_mismatch_activates_kill_once_and_retries_idempotently() -> None:
@@ -74,9 +90,27 @@ def test_critical_reconciliation_mismatch_activates_kill_once_and_retries_idempo
 
             handler = PostgresReconciliationKillHandler(RISK_WRITER_URL)
             first = handler.handle(checkpoint_id)
+            assert first.activation is not None
+            with psycopg.connect(DATABASE_URL) as connection:
+                connection.execute(
+                    "UPDATE outbox_events SET published_at=%s WHERE event_id=%s",
+                    (NOW, first.activation.outbox_event_id),
+                )
+            with psycopg.connect(DATABASE_URL) as connection:
+                connection.execute(
+                    "UPDATE outbox_events SET payload=jsonb_set(payload,'{producer}','null') "
+                    "WHERE event_id=%s",
+                    (first.activation.outbox_event_id,),
+                )
+                with pytest.raises(
+                    psycopg.errors.RaiseException,
+                    match="activation transaction is incomplete",
+                ):
+                    connection.commit()
+                connection.rollback()
             second = handler.handle(checkpoint_id)
             assert first.reason_code == "PHYSICAL_LEDGER_MISMATCH"
-            assert first.activation is not None and first.activation.created is True
+            assert first.activation.created is True
             assert second.activation is not None and second.activation.created is False
             assert second.activation.activation_event_id == first.activation.activation_event_id
 

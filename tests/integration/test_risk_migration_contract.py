@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 import time
 from typing import Iterator
 
@@ -47,7 +48,7 @@ def normalized_phase4_function_digests(
 
 @contextmanager
 def infrastructure_lock() -> Iterator[None]:
-    path = ROOT / ".p1-integration.lock"
+    path = Path(tempfile.gettempdir()) / "woozoo-docker-integration.lock"
     with path.open("a+b") as lock:
         lock.seek(0)
         lock.write(b"0")
@@ -105,6 +106,7 @@ def test_risk_migration_001_closes_authority_and_barrier_boundaries() -> None:
     ):
         assert required in text
     assert "GRANT UPDATE ON kill_switch_state TO woozoo_paper_engine" not in text
+    assert "GRANT INSERT ON risk_decisions" not in text
     assert "GRANT INSERT ON kill_switch_state TO woozoo_paper_engine" not in text
     assert "GRANT DELETE ON kill_switch_state TO woozoo_paper_engine" not in text
     assert "RECOVERY" not in text

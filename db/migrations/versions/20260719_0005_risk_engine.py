@@ -242,6 +242,28 @@ def upgrade() -> None:
         BEFORE UPDATE ON kill_switch_state FOR EACH ROW
         EXECUTE FUNCTION enforce_kill_state_activation_only()
     """)
+    op.execute(r"""
+        CREATE FUNCTION risk_canonical_jsonb(value jsonb) RETURNS text AS $$
+        DECLARE result text;
+        BEGIN
+          CASE jsonb_typeof(value)
+            WHEN 'object' THEN
+              SELECT '{'||COALESCE(string_agg(
+                to_jsonb(entry.key)::text||':'||risk_canonical_jsonb(entry.value),
+                ',' ORDER BY entry.key),'')||'}'
+                INTO result FROM jsonb_each(value) AS entry(key,value);
+            WHEN 'array' THEN
+              SELECT '['||COALESCE(string_agg(
+                risk_canonical_jsonb(entry.value),',' ORDER BY entry.ordinality),'')||']'
+                INTO result
+                FROM jsonb_array_elements(value) WITH ORDINALITY AS entry(value,ordinality);
+            ELSE result := value::text;
+          END CASE;
+          RETURN result;
+        END;
+        $$ LANGUAGE plpgsql IMMUTABLE STRICT
+    """)
+    op.execute("REVOKE ALL ON FUNCTION risk_canonical_jsonb(jsonb) FROM PUBLIC")
     op.execute("""
         CREATE FUNCTION assert_kill_activation_consistency() RETURNS trigger AS $$
         BEGIN
@@ -276,6 +298,7 @@ def upgrade() -> None:
                     to_jsonb(event.activation_event_id)::text||','||
                     to_jsonb(event.new_version::text)::text||']','UTF8'),'sha256'),'hex')
                OR jsonb_typeof(outbox.payload)<>'object'
+               OR jsonb_strip_nulls(outbox.payload) IS DISTINCT FROM outbox.payload
                OR (SELECT count(*) FROM jsonb_object_keys(outbox.payload))<>11
                OR NOT (outbox.payload ?& ARRAY[
                     'spec_version','event_id','event_type','event_version','occurred_at',
@@ -387,13 +410,98 @@ def upgrade() -> None:
              AND decision.decision_id=link.aggregate_id
             WHERE link.aggregate_kind='risk-decision'
               AND (decision.decision_id IS NULL OR outbox.event_id IS NULL
-                   OR outbox.event_type<>'risk.decision.recorded.v1'
-                   OR outbox.aggregate_type<>'risk_decision'
-                   OR outbox.aggregate_id<>decision.decision_id
-                   OR outbox.aggregate_version<>1
-                   OR outbox.payload->>'producer'<>'risk-engine'
-                   OR outbox.payload->'data'->>'decision_id'<>decision.decision_id
-                   OR outbox.payload->'data'->>'decision_hash'<>decision.decision_hash)
+                   OR jsonb_typeof(decision.risk_input) IS DISTINCT FROM 'object'
+                   OR decision.risk_input->>'risk_input_schema_version'
+                        IS DISTINCT FROM 'woozoo.risk-input/v1'
+                   OR decision.risk_input->>'namespace' IS DISTINCT FROM 'test'
+                   OR decision.risk_input_digest IS DISTINCT FROM encode(digest(convert_to(
+                        risk_canonical_jsonb(decision.risk_input),'UTF8'),'sha256'),'hex')
+                   OR decision.decision_id IS DISTINCT FROM encode(digest(convert_to(
+                        risk_canonical_jsonb(jsonb_build_array(
+                          'risk-decision',decision.decision_hash)),'UTF8'),'sha256'),'hex')
+                   OR decision.decision_hash IS DISTINCT FROM encode(digest(convert_to(
+                        risk_canonical_jsonb(jsonb_build_object(
+                          'decision_schema_version','woozoo.risk-decision/v1',
+                          'ordered_reason_codes',decision.ordered_reason_codes,
+                          'risk_input_digest',decision.risk_input_digest,
+                          'verdict',decision.verdict)),'UTF8'),'sha256'),'hex')
+                   OR jsonb_typeof(decision.ordered_reason_codes) IS DISTINCT FROM 'array'
+                   OR CASE
+                        WHEN jsonb_typeof(decision.ordered_reason_codes)='array'
+                        THEN jsonb_array_length(decision.ordered_reason_codes)<1
+                        ELSE true
+                      END
+                   OR decision.primary_reason IS DISTINCT FROM
+                        decision.ordered_reason_codes->>0
+                   OR (decision.verdict='ALLOWED') IS DISTINCT FROM
+                        (decision.ordered_reason_codes='["RISK_ALLOWED"]'::jsonb)
+                   OR (decision.verdict='ERROR') IS DISTINCT FROM
+                        (decision.primary_reason IN (
+                          'RISK_POLICY_MISSING','RISK_POLICY_HASH_MISMATCH',
+                          'DECIMAL_POLICY_INVALID','INPUT_SCHEMA_INVALID','EQUITY_INVALID'))
+                   OR decision.policy_version IS DISTINCT FROM
+                        decision.risk_input->'policy'->>'version'
+                   OR decision.proposal_hash IS DISTINCT FROM
+                        decision.risk_input->'proposal'->>'proposal_hash'
+                   OR decision.portfolio_snapshot_hash IS DISTINCT FROM
+                        decision.risk_input->'portfolio'->>'snapshot_hash'
+                   OR decision.data_state_hash IS DISTINCT FROM encode(digest(convert_to(
+                        risk_canonical_jsonb(decision.risk_input->'data'),
+                        'UTF8'),'sha256'),'hex')
+                   OR decision.paper_order_preview_hash IS DISTINCT FROM
+                        decision.risk_input->'order_preview'->>'paper_order_preview_hash'
+                   OR decision.reconciliation_checkpoint_hash IS DISTINCT FROM
+                        decision.risk_input->'reconciliation'->>'checkpoint_hash'
+                   OR to_jsonb(decision.kill_switch_version) IS DISTINCT FROM
+                        decision.risk_input->'kill_switch'->'version'
+                   OR decision.decision_as_of IS DISTINCT FROM
+                        (decision.risk_input->'decision_clock'->>'decision_as_of')::timestamptz
+                   OR outbox.event_type IS DISTINCT FROM 'risk.decision.recorded.v1'
+                   OR outbox.aggregate_type IS DISTINCT FROM 'risk_decision'
+                   OR outbox.aggregate_id IS DISTINCT FROM decision.decision_id
+                   OR outbox.aggregate_version IS DISTINCT FROM 1
+                   OR outbox.event_id IS DISTINCT FROM encode(digest(convert_to(
+                        risk_canonical_jsonb(jsonb_build_array(
+                          'event','risk.decision.recorded.v1',decision.decision_id,'1')),
+                        'UTF8'),'sha256'),'hex')
+                   OR jsonb_typeof(outbox.payload) IS DISTINCT FROM 'object'
+                   OR jsonb_strip_nulls(outbox.payload) IS DISTINCT FROM outbox.payload
+                   OR (SELECT count(*) FROM jsonb_object_keys(outbox.payload))<>11
+                   OR outbox.payload->>'spec_version' IS DISTINCT FROM 'woozoo.event/v1'
+                   OR outbox.payload->>'event_id' IS DISTINCT FROM outbox.event_id
+                   OR outbox.payload->>'event_type' IS DISTINCT FROM outbox.event_type
+                   OR outbox.payload->'event_version' IS DISTINCT FROM '1'::jsonb
+                   OR (outbox.payload->>'occurred_at')::timestamptz
+                        IS DISTINCT FROM decision.recorded_at
+                   OR outbox.occurred_at IS DISTINCT FROM decision.recorded_at
+                   OR outbox.payload->>'producer' IS DISTINCT FROM 'risk-engine'
+                   OR outbox.payload->'activation_phase' IS DISTINCT FROM '7'::jsonb
+                   OR outbox.payload->>'aggregate_id' IS DISTINCT FROM decision.decision_id
+                   OR outbox.payload->'aggregate_version' IS DISTINCT FROM '1'::jsonb
+                   OR outbox.payload->>'payload_hash' IS DISTINCT FROM outbox.payload_hash
+                   OR (outbox.payload->'data'->>'decision_as_of')::timestamptz
+                        IS DISTINCT FROM decision.decision_as_of
+                   OR outbox.payload->'data' IS DISTINCT FROM jsonb_build_object(
+                        'decision_schema_version','woozoo.risk-decision/v1',
+                        'decision_id',decision.decision_id,
+                        'risk_input_digest',decision.risk_input_digest,
+                        'decision_hash',decision.decision_hash,
+                        'verdict',decision.verdict,
+                        'primary_reason',decision.primary_reason,
+                        'ordered_reason_codes',decision.ordered_reason_codes,
+                        'policy_version',decision.policy_version,
+                        'proposal_hash',decision.proposal_hash,
+                        'portfolio_snapshot_hash',decision.portfolio_snapshot_hash,
+                        'data_state_hash',decision.data_state_hash,
+                        'paper_order_preview_hash',decision.paper_order_preview_hash,
+                        'reconciliation_checkpoint_hash',
+                          decision.reconciliation_checkpoint_hash,
+                        'kill_switch_version',decision.kill_switch_version,
+                        'decision_as_of',
+                          outbox.payload->'data'->>'decision_as_of')
+                   OR outbox.payload_hash IS DISTINCT FROM encode(digest(convert_to(
+                        risk_canonical_jsonb(outbox.payload->'data'),
+                        'UTF8'),'sha256'),'hex'))
           ) OR EXISTS (
             SELECT 1 FROM risk_decisions decision
             LEFT JOIN risk_outbox_links link
@@ -473,8 +581,9 @@ def upgrade() -> None:
           v_replaced := regexp_replace(
             v_definition,
             'BEGIN',
-            'BEGIN IF TG_TABLE_NAME=''outbox_events'' AND TG_OP=''INSERT'' '
-            'AND to_jsonb(NEW)->''payload''->>''producer''=''risk-engine'' '
+            'BEGIN IF TG_TABLE_NAME=''outbox_events'' AND TG_OP IN (''INSERT'',''UPDATE'') '
+            'AND COALESCE(to_jsonb(NEW)->''payload''->>''producer'', '
+            'to_jsonb(OLD)->''payload''->>''producer'')=''risk-engine'' '
             'THEN RETURN NULL; END IF;'
           );
           IF v_replaced=v_definition THEN
@@ -567,7 +676,7 @@ def upgrade() -> None:
         "paper_reconciliation_checkpoints, outbox_events TO woozoo_risk_engine"
     )
     op.execute(
-        "GRANT INSERT ON risk_decisions, kill_switch_events, risk_kill_command_receipts, "
+        "GRANT INSERT ON kill_switch_events, risk_kill_command_receipts, "
         "risk_outbox_links, outbox_events TO woozoo_risk_engine"
     )
     op.execute(
@@ -643,6 +752,7 @@ def downgrade() -> None:
     op.execute("DROP FUNCTION enforce_kill_state_activation_only()")
     op.execute("DROP TRIGGER outbox_events_kill_activation_consistency ON outbox_events")
     op.execute("DROP FUNCTION assert_kill_activation_consistency()")
+    op.execute("DROP FUNCTION risk_canonical_jsonb(jsonb)")
     # Alembic may continue directly into the Phase 4 downgrade in the same
     # transaction. Drain deferred outbox consistency triggers before that
     # migration alters the shared outbox table.

@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 import time
 from threading import Barrier
 from typing import Iterator
@@ -54,7 +55,7 @@ def run(*command: str) -> None:
 
 @contextmanager
 def infrastructure_lock() -> Iterator[None]:
-    path = ROOT / ".p1-integration.lock"
+    path = Path(tempfile.gettempdir()) / "woozoo-docker-integration.lock"
     with path.open("a+b") as lock:
         lock.seek(0)
         lock.write(b"0")

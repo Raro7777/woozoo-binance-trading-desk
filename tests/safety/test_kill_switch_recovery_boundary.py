@@ -26,7 +26,7 @@ def run(*command: str) -> None:
 
 @contextmanager
 def infrastructure_lock() -> Iterator[None]:
-    path = Path(tempfile.gettempdir()) / "woozoo-p5-kill-safety.lock"
+    path = Path(tempfile.gettempdir()) / "woozoo-docker-integration.lock"
     with path.open("a+b") as lock:
         lock.seek(0)
         lock.write(b"0")
