@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
   "project": "woozoo-binance-trading-desk",
-  "current_phase": 5,
+  "current_phase": 6,
   "status": "active",
-  "updated_at": "2026-07-19T20:35:32Z",
+  "updated_at": "2026-07-20T01:43:01Z",
   "transition_policy": "monotonic_explicit_approval_only",
-  "acceptance_contract_ref": "woozoo-phase-gates#phase-5",
+  "acceptance_contract_ref": "woozoo-phase-gates#phase-6",
   "acceptance_contract_runtime_paths": {
-    "codex": ".agents/skills/woozoo-phase-gates/references/phase-contract.md#phase-5",
-    "claude": ".claude/skills/woozoo-phase-gates/references/phase-contract.md#phase-5"
+    "codex": ".agents/skills/woozoo-phase-gates/references/phase-contract.md#phase-6",
+    "claude": ".claude/skills/woozoo-phase-gates/references/phase-contract.md#phase-6"
   },
   "acceptance_evidence_digest": null,
   "phase_approval": {
@@ -25,19 +25,21 @@
   },
   "phase_scope_ref": "docs/woozoo-trading-desk/mvp-plan-and-acceptance.md",
   "allowed_change_scope": [
-    "deterministic_versioned_risk_policy_and_decisions",
-    "proposal_portfolio_data_quality_order_preview_and_policy_digest_binding",
-    "exposure_loss_drawdown_spread_slippage_stale_duplicate_and_reconciliation_checks",
-    "stable_risk_reason_codes_and_precedence",
-    "manual_or_invariant_triggered_kill_switch_activation_without_automatic_reset",
-    "deterministic_audited_open_paper_order_cancellation_on_kill",
-    "phase_5_contracts_migrations_tests_ci_and_documentation"
+    "mock_llm_and_provider_adapter_without_external_order_capability",
+    "evidence_bound_market_regime_technical_and_trade_flow_analysis",
+    "structured_bull_bear_debate_and_trade_proposal_generation",
+    "immutable_evidence_ids_as_of_knowledge_cutoff_and_prompt_manifest_binding",
+    "schema_validation_orphan_evidence_rejection_and_hold_fallback",
+    "prompt_injection_timeout_malformed_output_and_provider_failure_handling",
+    "test_namespace_proposal_to_risk_chain_fixtures_without_production_activation",
+    "phase_6_contracts_migrations_tests_ci_and_documentation"
   ],
   "forbidden_change_scope": [
     "human_approval_ui_or_active_approval_ingress",
     "paper_execution_authorization_or_trading_room_domain_controls",
-    "ai_agent_or_trade_proposal_input_or_implementation",
-    "production_activation_of_phase_7_authorized_paper_routes",
+    "production_activation_of_proposal_risk_approval_or_paper_routes",
+    "ai_access_to_account_balance_risk_verdict_approval_order_or_exchange_tools",
+    "unstructured_or_unvalidated_model_output_as_trading_authority",
     "public_derivatives_telemetry",
     "testnet_or_private_exchange_capability",
     "mainnet_private_live_withdrawal_futures_margin_leverage_or_short",
@@ -96,6 +98,14 @@
       "at": "2026-07-19T20:35:32Z",
       "evidence_digest": "80dc665bf231fc2857e107177985f637907b7c90d9ede1e0959be177c3a95e8f",
       "approval_ref": "docs/woozoo-trading-desk/phase-4/p4-to-p5-transition-approval.json"
+    },
+    {
+      "from_phase": 5,
+      "to_phase": 6,
+      "event": "advanced_after_digest_bound_user_approval",
+      "at": "2026-07-20T01:43:01Z",
+      "evidence_digest": "571c2d344a9f9254f08ed43b1d2f770dc04b4c55446a45b828e7be3fd6fafc8e",
+      "approval_ref": "docs/woozoo-trading-desk/phase-5/p5-to-p6-transition-approval.json"
     }
   ]
 }
