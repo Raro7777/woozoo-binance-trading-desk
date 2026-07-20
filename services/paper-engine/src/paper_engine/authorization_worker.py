@@ -15,7 +15,7 @@ import os
 import signal
 from threading import Event
 from time import monotonic
-from typing import Protocol
+from typing import Protocol, cast
 from uuid import uuid4
 
 import psycopg
@@ -25,6 +25,17 @@ from .persistence import (
     CommitResult,
     Phase7AuthorizationWorker,
     PostgresPaperStore,
+)
+
+
+_TRANSIENT_RECORDED_BOOK_HOLD_REASONS = frozenset(
+    {
+        "PAPER_RECONCILIATION_HOLD",
+        "PAPER_KILL_SWITCH_ACTIVE",
+        "ORDER_NOT_FILLABLE",
+        "INVALID_RECORDED_BOOK_INPUT",
+        "CURRENT_MARKET_STATE_UNHEALTHY",
+    }
 )
 
 
@@ -100,6 +111,19 @@ class DurableKillActivationWorker:
                 return KillActivationProgress(pending[0], cancelled_count, completion_created)
 
 
+class DurableRecordedBookWorker:
+    """Consume one DB-owned public book without exposing a command ingress."""
+
+    def __init__(self, store: PostgresPaperStore) -> None:
+        self._store = store
+
+    def run_once(self) -> CommitResult | None:
+        apply_next = getattr(self._store, "apply_next_phase7_recorded_book", None)
+        if apply_next is None:
+            return None
+        return cast(CommitResult | None, apply_next())
+
+
 class ReconcilingAuthorizationRunner:
     """Consume authorizations and keep health fresh after all Paper effects.
 
@@ -117,6 +141,7 @@ class ReconcilingAuthorizationRunner:
         self._store = store
         self._kill_worker = DurableKillActivationWorker(store)
         self._worker = Phase7AuthorizationWorker(store)
+        self._recorded_book_worker = DurableRecordedBookWorker(store)
         self._interval = reconciliation_interval_seconds
         self._clock = clock
         self._last_reconciliation: float | None = None
@@ -125,6 +150,17 @@ class ReconcilingAuthorizationRunner:
         result: object | None = self._kill_worker.run_once()
         if result is None:
             result = self._worker.run_once()
+        if result is None:
+            result = self._recorded_book_worker.run_once()
+        recorded_book_hold = False
+        if (
+            isinstance(result, CommitResult)
+            and result.response.get("result") == "RECORDED_BOOK_HOLD"
+        ):
+            reason_code = result.response.get("reason_code")
+            if reason_code not in _TRANSIENT_RECORDED_BOOK_HOLD_REASONS:
+                raise RuntimeError(f"UNEXPECTED_RECORDED_BOOK_HOLD:{reason_code}")
+            recorded_book_hold = True
         now = self._clock()
         due = self._last_reconciliation is None or now - self._last_reconciliation >= self._interval
         if result is not None or due:
@@ -138,7 +174,7 @@ class ReconcilingAuthorizationRunner:
                     "PAPER_RECONCILIATION_FAILED:" + ",".join(reconciliation.mismatch_codes)
                 )
             self._last_reconciliation = now
-        return result
+        return None if recorded_book_hold else result
 
 
 class WorkerStateReporter(Protocol):

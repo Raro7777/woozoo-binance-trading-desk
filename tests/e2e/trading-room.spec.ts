@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { expect, test, type Locator, type Page, type Route } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import { delimiter, resolve } from "node:path";
 
@@ -16,7 +16,7 @@ function paperDatabaseUrl(): string {
   return `postgresql://woozoo_paper_engine@127.0.0.1:${match[1]}/woozoo`;
 }
 
-function refreshEvidence(symbol: "BTCUSDT" | "ETHUSDT") {
+function runLiveControl(...args: string[]) {
   const pythonPath = [
     resolve(root, "packages/python/platform-core/src"),
     resolve(root, "services/control-api/src"),
@@ -29,7 +29,7 @@ function refreshEvidence(symbol: "BTCUSDT" | "ETHUSDT") {
   ].filter(Boolean).join(delimiter);
   execFileSync("python", [
     "-m", "uv", "run", "--locked", "python", "tests/e2e/live_control_api.py",
-    "--refresh-evidence", symbol,
+    ...args,
   ], {
     cwd: root,
     env: {
@@ -43,11 +43,43 @@ function refreshEvidence(symbol: "BTCUSDT" | "ETHUSDT") {
   });
 }
 
+function refreshEvidence(
+  symbol: "BTCUSDT" | "ETHUSDT",
+  nonCrossingBuySymbol?: "BTCUSDT" | "ETHUSDT",
+) {
+  const protection = nonCrossingBuySymbol === undefined
+    ? []
+    : ["--non-crossing-buy-book", nonCrossingBuySymbol];
+  runLiveControl("--refresh-evidence", symbol, ...protection);
+}
+
+function recordPartialBook(symbol: "BTCUSDT" | "ETHUSDT") {
+  runLiveControl("--record-partial-book", symbol);
+}
+
 async function login(page: Page) {
   await page.goto("/login");
   await page.getByLabel("로컬 운영자 비밀번호").fill("paper-only-password");
   await page.getByRole("button", { name: "안전하게 로그인" }).click();
   await expect(page).toHaveURL(/\/$/);
+}
+
+async function focusByKeyboard(
+  page: Page,
+  target: Locator,
+  accessibleName: string,
+  direction: "forward" | "backward" = "forward",
+) {
+  await expect(target).toHaveAccessibleName(accessibleName);
+  const key = direction === "forward" ? "Tab" : "Shift+Tab";
+  for (let step = 0; step < 80; step += 1) {
+    await page.keyboard.press(key);
+    if (await target.evaluate((element) => element === document.activeElement)) {
+      await expect(target).toBeFocused();
+      return;
+    }
+  }
+  throw new Error(`KEYBOARD_FOCUS_UNREACHABLE:${accessibleName}:${direction}`);
 }
 
 const approvalView = {
@@ -140,8 +172,8 @@ async function mockControlApi(page: Page, commandDelay = 0) {
   });
 }
 
-test("[live] E2E-001 HTTPS login, analysis, approval, automatic authorization worker, and one Paper order", async ({ page }, testInfo) => {
-  test.setTimeout(60_000);
+test("[live] E2E-001 HTTPS approval, automatic Paper partial fill, and operator cancellation", async ({ page }, testInfo) => {
+  test.setTimeout(90_000);
   const symbol = testInfo.project.name === "mobile-chromium" ? "ETHUSDT" : "BTCUSDT";
   const analysisButton = symbol === "BTCUSDT" ? "BTC / USDT 분석" : "ETH / USDT 분석";
   page.on("dialog", (dialog) => dialog.accept());
@@ -153,8 +185,9 @@ test("[live] E2E-001 HTTPS login, analysis, approval, automatic authorization wo
   await expect(page.getByLabel("로컬 운영자 비밀번호")).toHaveCount(0);
   const initialPortfolioResponse = await page.request.get("/api/v1/paper-portfolio");
   expect(initialPortfolioResponse.ok()).toBe(true);
-  const initialPortfolio = await initialPortfolioResponse.json() as { orders?: Array<Record<string, unknown>> };
-  const initialOrderCount = initialPortfolio.orders?.length ?? 0;
+  const initialPortfolio = await initialPortfolioResponse.json() as { orders?: Array<{ order_id?: string }> };
+  const initialOrders = initialPortfolio.orders ?? [];
+  const initialOrderIds = new Set(initialOrders.map((order) => order.order_id));
   refreshEvidence(symbol);
   await page.reload();
   await expect(page.getByText("정상", { exact: true }).first()).toBeVisible();
@@ -215,16 +248,103 @@ test("[live] E2E-001 HTTPS login, analysis, approval, automatic authorization wo
   }).toBe("CONSUMED");
   const finalPortfolioResponse = await page.request.get("/api/v1/paper-portfolio");
   expect(finalPortfolioResponse.ok()).toBe(true);
-  const finalPortfolio = await finalPortfolioResponse.json() as { orders?: Array<{ status?: string; symbol?: string }> };
+  const finalPortfolio = await finalPortfolioResponse.json() as {
+    orders?: Array<{
+      order_id?: string;
+      status?: string;
+      symbol?: string;
+      quantity?: string;
+      filled_quantity?: string;
+      version?: number;
+    }>;
+  };
   const finalOrders = finalPortfolio.orders ?? [];
-  expect(finalOrders).toHaveLength(initialOrderCount + 1);
-  expect(finalOrders.some((order) => order.symbol === symbol && order.status === "OPEN")).toBe(true);
+  expect(finalOrders).toHaveLength(initialOrders.length + 1);
+  const createdOrder = finalOrders.find((order) =>
+    order.symbol === symbol && order.status === "OPEN" && !initialOrderIds.has(order.order_id)
+  );
+  expect(createdOrder?.order_id).toMatch(/^[a-f0-9]{64}$/);
+  const orderId = createdOrder?.order_id as string;
+
+  recordPartialBook(symbol);
+  await expect.poll(async () => {
+    const response = await page.request.get(`/api/v1/paper-orders/${orderId}`);
+    if (!response.ok()) return `HTTP_${response.status()}`;
+    return ((await response.json()) as { status?: string }).status;
+  }, { timeout: 20_000 }).toBe("PARTIALLY_FILLED");
+  const partialOrder = await page.request.get(`/api/v1/paper-orders/${orderId}`).then((response) => response.json()) as {
+    quantity: string;
+    filled_quantity: string;
+    status: string;
+    version: number;
+  };
+  expect(Number(partialOrder.filled_quantity)).toBeGreaterThan(0);
+  expect(Number(partialOrder.filled_quantity)).toBeLessThan(Number(partialOrder.quantity));
+
   await page.goto("/paper");
   await expect(page.getByRole("table").first().locator("tbody tr")).toHaveCount(finalOrders.length);
-  await expect(page.getByText(symbol, { exact: true })).toBeVisible();
-  await expect(page.getByText("미체결", { exact: true })).toHaveCount(
-    finalOrders.filter((order) => order.status === "OPEN").length,
+  const orderRow = page.getByRole("row").filter({ hasText: orderId });
+  await expect(orderRow).toContainText(symbol);
+  await expect(orderRow).toContainText("부분 체결");
+  await expect(orderRow).toContainText(partialOrder.filled_quantity);
+  // Keep the mobile order partially open so the later operations project
+  // proves that Kill cancels a real outstanding effect. The desktop journey
+  // below remains the live operator-cancellation proof for E2E-001.
+  if (testInfo.project.name === "mobile-chromium") {
+    await expect(orderRow.getByRole("button", { name: "취소", exact: true })).toBeEnabled();
+    await expect.poll(async () => {
+      const response = await page.request.get("/api/v1/paper-portfolio");
+      if (!response.ok()) return { status: `HTTP_${response.status()}` };
+      const state = await response.json() as {
+        orders?: Array<{ order_id?: string; status?: string; filled_quantity?: string }>;
+        reconciliation_status?: string;
+        checkpoint_authority_sequence?: number;
+        current_authority_sequence?: number;
+      };
+      const outstanding = state.orders?.find((order) => order.order_id === orderId);
+      return {
+        status: outstanding?.status,
+        filled_quantity: outstanding?.filled_quantity,
+        reconciled: state.reconciliation_status === "HEALTHY"
+          && state.checkpoint_authority_sequence === state.current_authority_sequence,
+      };
+    }, { timeout: 20_000 }).toEqual({
+      status: "PARTIALLY_FILLED",
+      filled_quantity: partialOrder.filled_quantity,
+      reconciled: true,
+    });
+    return;
+  }
+  const cancelResponsePromise = page.waitForResponse((response) =>
+    response.url().endsWith(`/api/v1/paper-orders/${orderId}/cancel`)
+    && response.request().method() === "POST"
   );
+  await orderRow.getByRole("button", { name: "취소", exact: true }).click();
+  const cancelResponse = await cancelResponsePromise;
+  expect(cancelResponse.ok()).toBe(true);
+  expect(await cancelResponse.json()).toMatchObject({ result: "ORDER_CANCELLED", status: "CANCELLED" });
+  await expect(orderRow).toContainText("취소됨");
+  await expect.poll(async () => {
+    const response = await page.request.get("/api/v1/paper-portfolio");
+    if (!response.ok()) return { status: `HTTP_${response.status()}` };
+    const state = await response.json() as {
+      orders?: Array<{ order_id?: string; status?: string; filled_quantity?: string }>;
+      reconciliation_status?: string;
+      checkpoint_authority_sequence?: number;
+      current_authority_sequence?: number;
+    };
+    const cancelled = state.orders?.find((order) => order.order_id === orderId);
+    return {
+      status: cancelled?.status,
+      filled_quantity: cancelled?.filled_quantity,
+      reconciled: state.reconciliation_status === "HEALTHY"
+        && state.checkpoint_authority_sequence === state.current_authority_sequence,
+    };
+  }, { timeout: 20_000 }).toEqual({
+    status: "CANCELLED",
+    filled_quantity: partialOrder.filled_quantity,
+    reconciled: true,
+  });
 });
 
 test("[live] E2E-002 stale Evidence blocks analysis before a Proposal is actionable", async ({ page }) => {
@@ -270,9 +390,17 @@ test("[live] E2E-003 idempotent analysis retry and reload preserve one authorita
 
 test("[live] E2E-004 Kill activation cancels open orders and guarded recovery completes", async ({ page }) => {
   await login(page);
-  refreshEvidence("BTCUSDT");
+  // Do not append a new book before Kill: the outstanding mobile E2E-001
+  // order is the cancellation precondition, and any fresh executable book
+  // would correctly be consumed by the background Paper worker first.
   page.on("dialog", (dialog) => dialog.accept(dialog.type() === "prompt" ? "verified-e2e-incident" : undefined));
-  const beforePortfolio = await page.request.get("/api/v1/paper-portfolio").then((response) => response.json()) as { ledger_checkpoint_id?: string };
+  const beforePortfolio = await page.request.get("/api/v1/paper-portfolio").then((response) => response.json()) as {
+    ledger_checkpoint_id?: string;
+    orders?: Array<{ status?: string }>;
+  };
+  expect(beforePortfolio.orders?.some((order) =>
+    order.status === "OPEN" || order.status === "PARTIALLY_FILLED"
+  )).toBe(true);
   await page.goto("/operations");
   const activationResponsePromise = page.waitForResponse((response) =>
     response.url().endsWith("/api/v1/kill-switch/activate") && response.request().method() === "POST"
@@ -287,7 +415,7 @@ test("[live] E2E-004 Kill activation cancels open orders and guarded recovery co
     const response = await page.request.get("/api/v1/paper-portfolio");
     const portfolioState = await response.json() as { ledger_checkpoint_id?: string };
     return portfolioState.ledger_checkpoint_id;
-  }).not.toBe(beforePortfolio.ledger_checkpoint_id);
+  }, { timeout: 20_000 }).not.toBe(beforePortfolio.ledger_checkpoint_id);
   // Recovery authority requires both public books to be healthy and no more
   // than five seconds old at the command boundary.
   refreshEvidence("BTCUSDT");
@@ -314,8 +442,10 @@ test("[live] E2E-004 Kill activation cancels open orders and guarded recovery co
 
 test("[live] E2E-005 desktop and mobile journey is keyboard accessible, Axe-clean, and audit-safe", async ({ page }, testInfo) => {
   test.setTimeout(90_000);
-  await login(page);
-  const symbol = testInfo.project.name === "mobile-chromium" ? "ETHUSDT" : "BTCUSDT";
+  // BTC has already completed its E2E-001 lifecycle. Reusing it exercises the
+  // exact duplicate-order HOLD without advancing the outstanding ETH order
+  // that E2E-004 must cancel through Kill.
+  const symbol = "BTCUSDT";
   const analysisButton = symbol === "BTCUSDT" ? "BTC / USDT 분석" : "ETH / USDT 분석";
   const assertAccessible = async (path: string) => {
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
@@ -325,28 +455,144 @@ test("[live] E2E-005 desktop and mobile journey is keyboard accessible, Axe-clea
     expect(await page.locator("body").evaluate((body) => body.scrollWidth <= window.innerWidth)).toBe(true);
   };
 
-  refreshEvidence(symbol);
-  await page.reload();
-  await assertAccessible("/");
+  page.on("dialog", (dialog) => dialog.accept());
+  await page.goto("/login");
+  const password = page.getByLabel("로컬 운영자 비밀번호");
+  const loginButton = page.getByRole("button", { name: "안전하게 로그인" });
+  await focusByKeyboard(page, password, "로컬 운영자 비밀번호");
+  await page.keyboard.type("paper-only-password");
+  await focusByKeyboard(page, loginButton, "안전하게 로그인");
+  await page.keyboard.press("Shift+Tab");
+  await expect(password).toBeFocused();
   await page.keyboard.press("Tab");
-  await expect(page.getByRole("link", { name: "트레이딩룸 본문으로 건너뛰기" })).toBeFocused();
+  await expect(loginButton).toBeFocused();
+  await Promise.all([
+    page.waitForURL(/\/$/),
+    page.keyboard.press("Enter"),
+  ]);
+
+  await assertAccessible("/");
+  const skipLink = page.getByRole("link", { name: "트레이딩룸 본문으로 건너뛰기" });
+  await focusByKeyboard(page, skipLink, "트레이딩룸 본문으로 건너뛰기");
   await page.keyboard.press("Enter");
   await expect(page.locator("#trading-room-content")).toBeFocused();
 
-  await page.getByRole("button", { name: analysisButton }).click();
+  let protectedEthOrder: { order_id?: string; filled_quantity?: string } | undefined;
+  if (testInfo.project.name === "mobile-chromium") {
+    const beforeRefresh = await page.request.get("/api/v1/paper-portfolio");
+    expect(beforeRefresh.ok()).toBe(true);
+    const beforeState = await beforeRefresh.json() as {
+      orders?: Array<{ order_id?: string; symbol?: string; status?: string; filled_quantity?: string }>;
+    };
+    protectedEthOrder = beforeState.orders?.find((order) =>
+      order.symbol === "ETHUSDT" && order.status === "PARTIALLY_FILLED"
+    );
+    expect(protectedEthOrder?.order_id).toMatch(/^[a-f0-9]{64}$/);
+  }
+  refreshEvidence(symbol, testInfo.project.name === "mobile-chromium" ? "ETHUSDT" : undefined);
+  if (protectedEthOrder?.order_id !== undefined) {
+    await expect.poll(async () => {
+      const response = await page.request.get("/api/v1/paper-portfolio");
+      if (!response.ok()) return { status: `HTTP_${response.status()}` };
+      const state = await response.json() as {
+        orders?: Array<{ order_id?: string; status?: string; filled_quantity?: string }>;
+        reconciliation_status?: string;
+        checkpoint_authority_sequence?: number;
+        current_authority_sequence?: number;
+      };
+      const order = state.orders?.find((candidate) =>
+        candidate.order_id === protectedEthOrder?.order_id
+      );
+      return {
+        status: order?.status,
+        filled_quantity: order?.filled_quantity,
+        reconciled: state.reconciliation_status === "HEALTHY"
+          && state.checkpoint_authority_sequence === state.current_authority_sequence,
+      };
+    }, { timeout: 20_000 }).toEqual({
+      status: "PARTIALLY_FILLED",
+      filled_quantity: protectedEthOrder.filled_quantity,
+      reconciled: true,
+    });
+  }
+
+  const analysis = page.getByRole("button", { name: analysisButton });
+  await focusByKeyboard(page, analysis, analysisButton);
+  const analysisResponsePromise = page.waitForResponse((response) =>
+    response.url().endsWith("/api/v1/analysis-runs") && response.request().method() === "POST"
+  );
+  await page.keyboard.press("Space");
+  expect([200, 201]).toContain((await analysisResponsePromise).status());
   await expect(page).toHaveURL(/\/analysis\//);
   await expect(page.getByText("저장된 모의 언어 모델의 모의투자 분석", { exact: true })).toBeVisible();
   await expect(page.getByText("생성됨", { exact: true })).toBeVisible();
   await expect(page.getByText("모의 제공자", { exact: true })).toBeVisible();
   await assertAccessible(page.url());
-  await page.getByRole("link", { name: "승인 화면 열기" }).click();
-  await expect(page).toHaveURL(/\/proposals\//);
+  const approvalLink = page.getByRole("link", { name: "승인 화면 열기" });
+  await focusByKeyboard(page, approvalLink, "승인 화면 열기");
+  await Promise.all([
+    page.waitForURL(/\/proposals\//),
+    page.keyboard.press("Enter"),
+  ]);
   await assertAccessible(page.url());
 
-  for (const path of ["/paper", "/audit", "/operations"]) {
-    await page.goto(path);
-    await assertAccessible(path);
+  const approveButton = page.getByRole("button", { name: "정확한 미리보기 승인" });
+  const approvalViewResponse = await page.request.get(
+    page.url().replace("/proposals/", "/api/v1/proposals/") + "/approval-view",
+  );
+  expect(approvalViewResponse.ok()).toBe(true);
+  const approvalState = await approvalViewResponse.json() as {
+    approval_action_allowed?: boolean;
+    reason_codes?: string[];
+    risk_decision_id?: string;
+    status?: string;
+  };
+  if (approvalState.approval_action_allowed === true) {
+    await expect(approveButton).toBeEnabled();
+    await focusByKeyboard(page, approveButton, "정확한 미리보기 승인");
+    const approvalResponsePromise = page.waitForResponse((response) =>
+      response.url().endsWith("/api/v1/paper-approvals") && response.request().method() === "POST"
+    );
+    await page.keyboard.press("Space");
+    expect((await approvalResponsePromise).ok()).toBe(true);
+  } else {
+    // The canonical full suite has already approved this symbol in E2E-001.
+    // The second intent must remain keyboard-visible but fail closed under the
+    // immutable 15-minute duplicate-order policy.
+    expect(approvalState).toMatchObject({
+      status: "BLOCKED",
+      reason_codes: expect.arrayContaining(["AUTHORITY_BLOCKED"]),
+    });
+    expect(approvalState.risk_decision_id).toMatch(/^[a-f0-9]{64}$/);
+    const riskResponse = await page.request.get(
+      `/api/v1/risk-decisions/${approvalState.risk_decision_id}`,
+    );
+    expect(riskResponse.ok()).toBe(true);
+    const riskState = await riskResponse.json() as { ordered_reason_codes?: string[] };
+    expect(riskState.ordered_reason_codes).toEqual(
+      expect.arrayContaining(["DUPLICATE_ORDER_INTENT"]),
+    );
+    await expect(approveButton).toBeDisabled();
   }
+
+  const followNavigation = async (
+    accessibleName: string,
+    path: RegExp,
+    direction: "forward" | "backward" = "forward",
+  ) => {
+    const link = page.getByRole("link", { name: accessibleName, exact: true });
+    await focusByKeyboard(page, link, accessibleName, direction);
+    await Promise.all([
+      page.waitForURL(path),
+      page.keyboard.press("Enter"),
+    ]);
+    await assertAccessible(page.url());
+  };
+
+  await followNavigation("모의투자 데스크", /\/paper$/);
+  await followNavigation("운영", /\/operations$/, "backward");
+  await followNavigation("트레이딩룸", /\/$/);
+  await followNavigation("감사 기록", /\/audit$/);
 
   const response = await page.request.get("/api/v1/audit-events");
   expect(response.ok()).toBe(true);
@@ -367,7 +613,6 @@ test("[live] E2E-005 desktop and mobile journey is keyboard accessible, Axe-clea
     visit(event);
   });
   expect(forbidden).toEqual([]);
-  await page.goto("/audit");
   await expect(page.getByRole("columnheader", { name: "생성 주체" })).toBeVisible();
 });
 

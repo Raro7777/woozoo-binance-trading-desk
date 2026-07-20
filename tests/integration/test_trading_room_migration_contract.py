@@ -59,6 +59,31 @@ def test_phase7_migration_closes_auth_approval_authorization_and_recovery_bounda
     assert "kill_switch_reader_v1" in source
     assert "paper_authorization_worker_reader_v1" in source
     assert "paper_pending_kill_activations_v1" in source
+    assert "paper_recorded_book_market_is_current_v1" in source
+    assert (
+        "REVOKE ALL ON FUNCTION paper_recorded_book_market_is_current_v1(varchar) FROM PUBLIC"
+        in source
+    )
+    assert "GRANT EXECUTE ON FUNCTION paper_recorded_book_market_is_current_v1(varchar) " in source
+    recorded_book_guard = source.split(
+        "CREATE FUNCTION paper_recorded_book_market_is_current_v1", 1
+    )[1].split("CREATE FUNCTION enforce_phase7_attempt_binding", 1)[0]
+    assert recorded_book_guard.index(
+        "PERFORM 1 FROM stream_watermark_projections watermark"
+    ) < recorded_book_guard.index("PERFORM 1 FROM market_status_projections market")
+    assert recorded_book_guard.index(
+        "PERFORM 1 FROM market_status_projections market"
+    ) < recorded_book_guard.index("PERFORM 1 FROM collector_sessions collector")
+    assert recorded_book_guard.index("PERFORM 1 FROM collector_sessions collector") < (
+        recorded_book_guard.index("LOCK TABLE collector_sessions IN SHARE MODE")
+    )
+    assert "LOCK TABLE collector_sessions IN SHARE MODE NOWAIT" in recorded_book_guard
+    assert recorded_book_guard.index("LOCK TABLE collector_sessions IN SHARE MODE NOWAIT") < (
+        recorded_book_guard.index("observed_now := clock_timestamp()")
+    )
+    assert recorded_book_guard.index("LOCK TABLE collector_sessions IN SHARE MODE") < (
+        recorded_book_guard.index("SELECT latest.id FROM collector_sessions latest")
+    )
     assert "trading_room_market_reader_v1" in source
     assert "SELECT projection.sequence" in source
     assert "trading_room_audit_projection" in source
@@ -80,6 +105,7 @@ def test_phase7_migration_closes_auth_approval_authorization_and_recovery_bounda
     assert "TO woozoo_risk_engine" in source
     assert "TO woozoo_control_api" in source
     assert "GRANT INSERT ON paper_execution_authorizations TO woozoo_paper_engine" not in source
+    assert "candidate.symbol=paper_order.symbol AND candidate.side=paper_order.side" in source
     assert 'op.execute(f"REVOKE ALL ON {view} FROM PUBLIC")' in source
 
 
@@ -193,6 +219,24 @@ def test_phase7_migration_upgrades_with_digest_only_storage_and_least_privilege(
                     "'paper_execution_authorizations','INSERT')"
                 ).fetchone() == (True, False, False, False)
                 assert connection.execute(
+                    "SELECT has_function_privilege('woozoo_paper_engine',"
+                    "'paper_recorded_book_market_is_current_v1(varchar)','EXECUTE'),"
+                    "has_table_privilege('woozoo_paper_engine','raw_market_events','SELECT'),"
+                    "has_table_privilege('woozoo_paper_engine','collector_sessions','SELECT'),"
+                    "has_table_privilege('woozoo_paper_engine',"
+                    "'stream_watermark_projections','SELECT'),"
+                    "has_table_privilege('woozoo_paper_engine',"
+                    "'market_status_projections','SELECT')"
+                ).fetchone() == (True, False, False, False, False)
+                relational_definition = connection.execute(
+                    "SELECT pg_get_functiondef("
+                    "'assert_paper_relational_consistency()'::regprocedure)"
+                ).fetchone()[0]
+                assert (
+                    "candidate.symbol=paper_order.symbolANDcandidate.side=paper_order.side"
+                    in "".join(relational_definition.split())
+                )
+                assert connection.execute(
                     "SELECT count(*) FROM information_schema.views WHERE table_schema='public' "
                     "AND table_name IN ('paper_approval_view_v1',"
                     "'paper_authorization_view_v1','paper_order_reader_v1',"
@@ -249,6 +293,13 @@ def test_phase7_migration_upgrades_with_digest_only_storage_and_least_privilege(
                 assert page == [(later_ids[0],), (later_ids[1],)]
                 assert len(set(page)) == 2
                 connection.rollback()
+            with psycopg.connect(PAPER_WRITER_URL) as paper_connection:
+                assert paper_connection.execute(
+                    "SELECT paper_recorded_book_market_is_current_v1(%s)", ("f" * 64,)
+                ).fetchone() == (False,)
+                with pytest.raises(psycopg.errors.InsufficientPrivilege):
+                    paper_connection.execute("SELECT count(*) FROM market_status_projections")
+                paper_connection.rollback()
             lower_event_id = "9" * 64
             higher_event_id = "8" * 64
             lower = psycopg.connect(DATABASE_URL)
@@ -455,6 +506,10 @@ def test_phase7_migration_upgrades_with_digest_only_storage_and_least_privilege(
                 ).fetchone() == (0,)
                 assert connection.execute(
                     "SELECT to_regclass('public.paper_execution_authorizations')"
+                ).fetchone() == (None,)
+                assert connection.execute(
+                    "SELECT to_regprocedure("
+                    "'public.paper_recorded_book_market_is_current_v1(character varying)')"
                 ).fetchone() == (None,)
         finally:
             run("docker", "compose", "down", "-v")

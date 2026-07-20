@@ -312,6 +312,7 @@ class PaperEngine:
         )
         has_lower_eligible_order = any(
             candidate.symbol == order.symbol
+            and candidate.side == order.side
             and candidate.status not in {OrderStatus.FILLED, OrderStatus.CANCELLED}
             and (candidate.order_id, observation_id) not in self.observation_effects
             and (

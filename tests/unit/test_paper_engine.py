@@ -312,6 +312,73 @@ def test_ineligible_first_order_can_record_no_fill_before_eligible_later_order()
     )
 
 
+def test_side_partitioned_book_observations_keep_canonical_order_and_budgets_independent() -> None:
+    engine = PaperEngine()
+    engine.seed_balance("USDT", "1000", seed_id="cross-side-cash")
+    acquisition = engine.create_limit_order(
+        idempotency_key="cross-side-acquisition",
+        client_order_id="cross-side-acquisition",
+        authorization=authorization(1),
+        symbol="BTCUSDT",
+        side=OrderSide.BUY,
+        quantity_text="1",
+        limit_price_text="100",
+    )
+    assert (
+        engine.apply_book_observation(
+            order_id=acquisition.order_id,
+            observation_id="cross-side-acquisition-book:ASK",
+            best_bid_text="99",
+            best_ask_text="100",
+            displayed_quantity_text="10",
+        )
+        is not None
+    )
+    older_sell = engine.create_limit_order(
+        idempotency_key="cross-side-older-sell",
+        client_order_id="cross-side-older-sell",
+        authorization=authorization(2),
+        symbol="BTCUSDT",
+        side=OrderSide.SELL,
+        quantity_text="0.05",
+        limit_price_text="110",
+    )
+    later_buy = engine.create_limit_order(
+        idempotency_key="cross-side-later-buy",
+        client_order_id="cross-side-later-buy",
+        authorization=authorization(3),
+        symbol="BTCUSDT",
+        side=OrderSide.BUY,
+        quantity_text="0.05",
+        limit_price_text="120",
+    )
+
+    ask_fill = engine.apply_book_observation(
+        order_id=later_buy.order_id,
+        observation_id="cross-side-book:ASK",
+        best_bid_text="110",
+        best_ask_text="120",
+        displayed_quantity_text="0.2",
+    )
+    bid_fill = engine.apply_book_observation(
+        order_id=older_sell.order_id,
+        observation_id="cross-side-book:BID",
+        best_bid_text="110",
+        best_ask_text="120",
+        displayed_quantity_text="0.3",
+    )
+
+    assert ask_fill is not None and ask_fill.quantity == Decimal("0.02")
+    assert bid_fill is not None and bid_fill.quantity == Decimal("0.03")
+    assert engine.observation_budgets["cross-side-book:ASK"][1] == 0
+    assert engine.observation_budgets["cross-side-book:BID"][1] == 0
+    assert (later_buy.order_id, "cross-side-book:ASK") in engine.observation_effects
+    assert (older_sell.order_id, "cross-side-book:BID") in engine.observation_effects
+    assert all(value >= 0 for value in (*engine.available.values(), *engine.held.values()))
+    for journal in engine.journals.values():
+        journal.assert_balanced()
+
+
 def test_extreme_sell_balance_overflow_rolls_back_every_observation_effect() -> None:
     engine = PaperEngine()
     engine.seed_balance("USDT", "99999999999999999999", seed_id="max-cash")

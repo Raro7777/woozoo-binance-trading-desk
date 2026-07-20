@@ -81,8 +81,18 @@ async function runPlaywrightWithResultGate(expectedTestCount) {
   ) {
     throw new Error("Playwright must execute every declared browser scenario with zero failure, error, or skip");
   }
-  for (const id of ["E2E-001", "E2E-002", "E2E-003", "E2E-004", "E2E-005"]) {
-    if (!xml.includes(`[live] ${id}`)) throw new Error(`${id} must be reported as a live non-mock browser scenario`);
+  const liveScenarioCounts = {
+    "E2E-001": 2,
+    "E2E-002": 1,
+    "E2E-003": 1,
+    "E2E-004": 1,
+    "E2E-005": 2,
+  };
+  for (const [id, expectedCount] of Object.entries(liveScenarioCounts)) {
+    const actualCount = xml.split(`[live] ${id}`).length - 1;
+    if (actualCount !== expectedCount) {
+      throw new Error(`${id} must execute in every declared live browser project`);
+    }
   }
   for (const id of ["UI-001", "UI-002", "UI-003", "UI-004", "UI-005"]) {
     if (!xml.includes(`[ui-only] ${id}`)) throw new Error(`${id} must remain explicitly isolated UI-only coverage`);
@@ -111,6 +121,34 @@ async function runPytestWithResultGate(testPath, expectedTestCount) {
     || counts.skipped !== 0
   ) {
     throw new Error(`pytest ${testPath} must execute exactly ${expectedTestCount} tests with zero failure, error, or skip`);
+  }
+  return { command, testCount: counts.tests };
+}
+
+async function runPytestNodesWithResultGate(resultLabel, nodeIds) {
+  const resultPath = resolve(root, "artifacts", ".pytest-results", `${resultLabel}.xml`);
+  await mkdir(resolve(resultPath, ".."), { recursive: true });
+  const command = [
+    "python",
+    [
+      "-m", "uv", "run", "--locked", "pytest", ...nodeIds, "-q",
+      `--junitxml=${resultPath}`,
+    ],
+  ];
+  run(command[0], command[1]);
+  const xml = await readFile(resultPath, "utf8");
+  const suite = xml.match(/<testsuite\b([^>]*)>/);
+  const counts = suite === null
+    ? {}
+    : Object.fromEntries([...suite[1].matchAll(/\b(tests|errors|failures|skipped)="(\d+)"/g)].map((match) => [match[1], Number(match[2])]));
+  if (
+    suite === null
+    || counts.tests !== nodeIds.length
+    || counts.errors !== 0
+    || counts.failures !== 0
+    || counts.skipped !== 0
+  ) {
+    throw new Error(`${resultLabel} must execute every declared pytest node with zero failure, error, or skip`);
   }
   return { command, testCount: counts.tests };
 }
@@ -252,6 +290,123 @@ async function agentDataScenario(area, id, nodeIds) {
   });
 }
 
+async function phase7ScenarioContract(area, id, nodeIds) {
+  const manifestPath = resolve(root, "docs", "woozoo-trading-desk", "phase-7", "p7-scenario-manifest.json");
+  const manifestBytes = await readFile(manifestPath);
+  const manifest = JSON.parse(manifestBytes.toString("utf8"));
+  const requiredIds = manifest.denominator?.required_ids ?? [];
+  const requiredArtifacts = manifest.denominator?.required_artifacts ?? {};
+  const requiredArtifactIds = Object.keys(requiredArtifacts);
+  const phase7RequiredIds = manifest.denominator?.phase_7_required_ids ?? [];
+  const expectedPhase7RequiredIds = [
+    "AUTH-001", "AUTH-002", "E2E-001", "E2E-002", "E2E-003", "E2E-004", "E2E-005",
+  ];
+  if (
+    manifest.schema_version !== "woozoo.phase-7-scenario-manifest/v1"
+    || manifest.phase !== 7
+    || manifest.trading_mode !== "paper"
+    || manifest.runtime_namespace !== "paper"
+    || manifest.external_network_enabled !== false
+    || manifest.denominator?.required_count !== 43
+    || requiredIds.length !== 43
+    || new Set(requiredIds).size !== requiredIds.length
+    || requiredArtifactIds.length !== requiredIds.length
+    || JSON.stringify([...requiredArtifactIds].sort()) !== JSON.stringify([...requiredIds].sort())
+    || manifest.denominator?.phase_7_required_count !== 7
+    || phase7RequiredIds.length !== 7
+    || new Set(phase7RequiredIds).size !== phase7RequiredIds.length
+    || phase7RequiredIds.some((requiredId) => !requiredIds.includes(requiredId))
+    || JSON.stringify(phase7RequiredIds) !== JSON.stringify(expectedPhase7RequiredIds)
+  ) {
+    throw new Error("Phase 7 scenario manifest envelope or denominator is invalid");
+  }
+  const baseManifestText = await readFile(resolve(root, manifest.base_manifest), "utf8");
+  const frozenRows = baseManifestText
+    .split(/\r?\n/)
+    .map((line) => line.split("|").slice(1, -1).map((cell) => cell.trim()))
+    .filter((cells) => /^[A-Z][A-Z0-9-]+$/.test(cells[0] ?? "") && /^\d+$/.test(cells[1] ?? ""))
+    .filter((cells) => Number(cells[1]) <= 7)
+    .map((cells) => ({
+      id: cells[0],
+      artifact: cells[6].replaceAll("`", "").endsWith("/")
+        ? `${cells[6].replaceAll("`", "")}result.json`
+        : cells[6].replaceAll("`", ""),
+    }));
+  if (
+    frozenRows.length !== 43
+    || JSON.stringify(requiredIds) !== JSON.stringify(frozenRows.map((row) => row.id))
+    || frozenRows.some((row) => requiredArtifacts[row.id] !== row.artifact)
+  ) {
+    throw new Error("Phase 7 denominator must exactly preserve every frozen Phase 0 row");
+  }
+  for (const [path, digest] of [
+    [manifest.base_manifest, manifest.base_manifest_sha256],
+    [manifest.phase_schedule_amendment, manifest.phase_schedule_amendment_sha256],
+    [manifest.implementation_contract, manifest.implementation_contract_sha256],
+  ]) {
+    const actual = createHash("sha256").update(await readFile(resolve(root, path))).digest("hex");
+    if (actual !== digest) throw new Error(`Phase 7 manifest reference digest is stale: ${path}`);
+  }
+  for (const reference of manifest.regression_manifests ?? []) {
+    const actual = createHash("sha256").update(await readFile(resolve(root, reference.path))).digest("hex");
+    if (actual !== reference.sha256) {
+      throw new Error(`Phase 7 regression manifest digest is stale: ${reference.path}`);
+    }
+  }
+  const candidates = [
+    ...(manifest.scenarios ?? []),
+    ...(manifest.compatibility_scenarios ?? []),
+  ];
+  if (
+    JSON.stringify(phase7RequiredIds)
+    !== JSON.stringify((manifest.scenarios ?? []).map((candidate) => candidate.id))
+  ) {
+    throw new Error("Phase 7 required scenario IDs must match the complete Phase 7 scenario set");
+  }
+  const scenario = candidates.find((candidate) => candidate.id === id);
+  const artifact = area === "e2e" ? scenario?.result_artifact : scenario?.artifact;
+  const canonicalArtifact = area === "e2e"
+    ? `artifacts/e2e/${id}/result.json`
+    : `artifacts/${area}/${id}.json`;
+  if (
+    scenario === undefined
+    || candidates.filter((candidate) => candidate.id === id).length !== 1
+    || scenario.command !== `corepack pnpm test:${area}`
+    || artifact !== canonicalArtifact
+    || requiredArtifacts[id] !== canonicalArtifact
+    || JSON.stringify(scenario.test_nodes) !== JSON.stringify(nodeIds)
+    || typeof scenario.oracle !== "string"
+    || scenario.oracle.length === 0
+    || (area === "e2e" && scenario.artifact_bundle !== `artifacts/e2e/${id}/`)
+  ) {
+    throw new Error(`${id} Phase 7 scenario contract does not match its exact harness nodes`);
+  }
+  const sourcePaths = [...new Set(nodeIds.map((node) => node.split("::", 1)[0]))];
+  const sourceDigests = [];
+  for (const sourcePath of sourcePaths) {
+    sourceDigests.push(createHash("sha256").update(await readFile(resolve(root, sourcePath))).digest("hex"));
+  }
+  if (JSON.stringify(scenario.source_sha256) !== JSON.stringify(sourceDigests)) {
+    throw new Error(`${id} Phase 7 scenario source digest contract is stale`);
+  }
+  for (const reference of scenario.configuration_sources ?? []) {
+    const actual = createHash("sha256").update(await readFile(resolve(root, reference.path))).digest("hex");
+    if (actual !== reference.sha256) {
+      throw new Error(`${id} Phase 7 configuration digest is stale: ${reference.path}`);
+    }
+  }
+  return {
+    phase7_scenario_manifest_sha256: createHash("sha256").update(manifestBytes).digest("hex"),
+    scenario_input_digest: createHash("sha256").update(JSON.stringify(scenario)).digest("hex"),
+    declared_test_nodes: nodeIds,
+  };
+}
+
+async function phase7DataScenario(area, id, nodeIds, metadata = {}) {
+  const phase7Metadata = await phase7ScenarioContract(area, id, nodeIds);
+  await dataScenario(area, id, nodeIds, { ...metadata, ...phase7Metadata });
+}
+
 async function revisionEvidence() {
   const commit = spawnSync("git", ["rev-parse", "HEAD"], {
     cwd: root,
@@ -329,31 +484,8 @@ async function scenarios(
 }
 
 async function dataScenario(area, id, nodeIds, metadata = {}) {
-  const resultPath = resolve(root, "artifacts", ".pytest-results", `${id}.xml`);
-  await mkdir(resolve(resultPath, ".."), { recursive: true });
-  const command = [
-    "python",
-    [
-      "-m", "uv", "run", "--locked", "pytest", ...nodeIds, "-q",
-      `--junitxml=${resultPath}`,
-    ],
-  ];
-  run(command[0], command[1]);
-  const xml = await readFile(resultPath, "utf8");
-  const suite = xml.match(/<testsuite\b([^>]*)>/);
-  const counts = suite === null
-    ? {}
-    : Object.fromEntries([...suite[1].matchAll(/\b(tests|errors|failures|skipped)="(\d+)"/g)].map((match) => [match[1], Number(match[2])]));
-  if (
-    suite === null ||
-    counts.tests !== nodeIds.length ||
-    counts.errors !== 0 ||
-    counts.failures !== 0 ||
-    counts.skipped !== 0
-  ) {
-    throw new Error(`${id} must execute every declared node with zero failure, error, or skip`);
-  }
-  await scenarios(area, [id], [command], nodeIds.length, true, metadata);
+  const exact = await runPytestNodesWithResultGate(id, nodeIds);
+  await scenarios(area, [id], [exact.command], exact.testCount, true, metadata);
 }
 
 const actions = {
@@ -368,7 +500,7 @@ const actions = {
   },
   "test:unit": async () => {
     await scenarios("unit", ["CORE-001"], [["python", ["-m", "uv", "run", "--locked", "pytest", "tests/unit", "-q"]]]);
-    await dataScenario("unit", "AUTH-001", [
+    await phase7DataScenario("unit", "AUTH-001", [
       "tests/unit/test_trading_room_security.py::test_auth_001_session_rotation_csrf_one_time_and_absolute_expiry",
       "tests/unit/test_trading_room_security.py::test_auth_002_foreign_or_missing_origin_has_effect_zero",
       "tests/unit/test_trading_room_security.py::test_logout_revokes_session_and_consumes_csrf",
@@ -417,7 +549,7 @@ const actions = {
       "tests/safety/test_phase3_evidence_capabilities.py::test_evidence_worker_has_no_network_or_later_phase_capability",
       "tests/safety/test_phase3_evidence_capabilities.py::test_phase_three_registers_only_the_approved_evidence_command_route",
     ], { schema_version: "woozoo.evidence.replay-manifest/v1", evidence_recipe_version: evidenceRecipeVersion });
-    await dataScenario("safety", "PTI-003", [
+    await phase7DataScenario("safety", "PTI-003", [
       "tests/unit/test_evidence_builder.py::test_builder_fails_closed_when_an_interval_has_no_complete_window",
       "tests/unit/test_evidence_builder.py::test_builder_rejects_a_terminal_window_that_is_stale_at_the_cutoffs",
       "tests/unit/test_evidence_builder.py::test_builder_rejects_every_non_healthy_quality[degraded]",
@@ -498,33 +630,76 @@ const actions = {
   "test:e2e": async () => {
     const api = await runPytestWithResultGate("tests/integration/test_trading_room_api.py", 7);
     const playwright = await runPlaywrightWithResultGate(17);
-    const ids = ["E2E-001", "E2E-002", "E2E-003", "E2E-004", "E2E-005"];
-    await scenarios(
-      "e2e",
-      ids,
-      [
-        api.command,
-        playwright.command,
+    const scenarioNodes = {
+      "E2E-001": [
+        "tests/e2e/trading-room.spec.ts::[live] E2E-001",
+        "tests/integration/test_trading_room_api.py::test_e2e_001_authenticated_proposal_approval_creates_exactly_one_paper_order",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_authorized_order_recorded_book_partial_fill_then_cancel_is_atomic_and_idempotent",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_recorded_book_revalidates_current_stream_health_and_defers_stale_event",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_recorded_book_kill_barrier_holds_without_any_paper_effect",
+        "tests/unit/test_paper_engine.py::test_side_partitioned_book_observations_keep_canonical_order_and_budgets_independent",
+        "tests/unit/test_paper_authorization_worker_runtime.py::test_recorded_book_hold_reconciles_without_reporting_progress_or_failing_worker[PAPER_RECONCILIATION_HOLD]",
+        "tests/unit/test_paper_authorization_worker_runtime.py::test_recorded_book_hold_reconciles_without_reporting_progress_or_failing_worker[PAPER_KILL_SWITCH_ACTIVE]",
+        "tests/unit/test_paper_authorization_worker_runtime.py::test_recorded_book_hold_reconciles_without_reporting_progress_or_failing_worker[ORDER_NOT_FILLABLE]",
+        "tests/unit/test_paper_authorization_worker_runtime.py::test_recorded_book_hold_reconciles_without_reporting_progress_or_failing_worker[INVALID_RECORDED_BOOK_INPUT]",
+        "tests/unit/test_paper_authorization_worker_runtime.py::test_recorded_book_hold_reconciles_without_reporting_progress_or_failing_worker[CURRENT_MARKET_STATE_UNHEALTHY]",
+        "tests/unit/test_paper_authorization_worker_runtime.py::test_unexpected_recorded_book_exception_remains_fatal",
+        "tests/unit/test_paper_authorization_worker_runtime.py::test_unknown_recorded_book_hold_reason_remains_fatal",
+        "tests/integration/test_trading_room_migration_contract.py::test_phase7_migration_upgrades_with_digest_only_storage_and_least_privilege",
       ],
-      api.testCount + playwright.testCount,
-      true,
-    );
-    for (const id of ids) {
+      "E2E-002": [
+        "tests/e2e/trading-room.spec.ts::[live] E2E-002",
+        "tests/integration/test_trading_room_api.py::test_e2e_002_stale_data_consumes_csrf_and_blocks_without_order",
+      ],
+      "E2E-003": [
+        "tests/e2e/trading-room.spec.ts::[live] E2E-003",
+        "tests/property/test_trading_room_properties.py::test_phase7_preview_hash_is_mutation_sensitive_and_notional_is_policy_capped",
+        "tests/property/test_trading_room_properties.py::test_phase7_idempotency_same_hash_replays_and_changed_hash_conflicts",
+        "tests/integration/test_trading_room_command_ports.py::test_ack_loss_restart_replays_durable_receipts_without_second_paper_effect",
+        "tests/integration/test_trading_room_command_ports.py::test_concurrent_same_request_issues_once_without_browser_paper_effect",
+      ],
+      "E2E-004": [
+        "tests/e2e/trading-room.spec.ts::[live] E2E-004",
+        "tests/integration/test_trading_room_api.py::test_e2e_004_kill_cancels_open_order_and_manual_recovery_is_audited",
+      ],
+      "E2E-005": [
+        "tests/e2e/trading-room.spec.ts::[live] E2E-005",
+        "tests/integration/test_trading_room_api.py::test_audit_api_preserves_provenance_and_recursively_redacts_command_secrets",
+      ],
+    };
+    for (const [id, nodeIds] of Object.entries(scenarioNodes)) {
+      const metadata = await phase7ScenarioContract("e2e", id, nodeIds);
+      const supplemental = await runPytestNodesWithResultGate(`e2e-${id}`, nodeIds.slice(1));
+      await scenarios(
+        "e2e",
+        [id],
+        [api.command, playwright.command, supplemental.command],
+        api.testCount + playwright.testCount + supplemental.testCount,
+        true,
+        {
+          ...metadata,
+          declared_browser_scenario: nodeIds[0],
+          declared_pytest_count: supplemental.testCount,
+        },
+      );
       const directory = resolve(root, "artifacts", "e2e", id);
       await mkdir(directory, { recursive: true });
       await writeFile(resolve(directory, "result.json"), await readFile(resolve(root, "artifacts", "e2e", `${id}.json`)));
     }
   },
   "test:replay": async () => {
-    await dataScenario("replay", "PTI-001", [
-      "tests/unit/test_evidence_builder.py::test_builder_uses_only_closed_candles_inside_both_inclusive_time_boundaries",
+    await phase7DataScenario("replay", "PTI-001", [
+      "tests/property/test_evidence_boundaries.py::test_dual_cutoff_is_independently_inclusive[event_delta0-received_delta0-True]",
+      "tests/property/test_evidence_boundaries.py::test_dual_cutoff_is_independently_inclusive[event_delta1-received_delta1-True]",
+      "tests/property/test_evidence_boundaries.py::test_dual_cutoff_is_independently_inclusive[event_delta2-received_delta2-False]",
+      "tests/property/test_evidence_boundaries.py::test_dual_cutoff_is_independently_inclusive[event_delta3-received_delta3-False]",
     ], { schema_version: "woozoo.evidence.replay-manifest/v1", evidence_recipe_version: evidenceRecipeVersion });
-    await dataScenario("replay", "PTI-002", [
+    await phase7DataScenario("replay", "PTI-002", [
       "tests/unit/test_evidence_builder.py::test_builder_is_deterministic_and_prior_snapshot_is_immutable_under_late_arrival",
       "tests/unit/test_evidence_builder.py::test_newer_cutoff_deterministically_replaces_a_same_bucket_late_materialization",
     ], { schema_version: "woozoo.evidence.replay-manifest/v1", evidence_recipe_version: evidenceRecipeVersion });
-    await dataScenario("replay", "PTI-004", [
-      "tests/unit/test_evidence_builder.py::test_builder_is_deterministic_and_prior_snapshot_is_immutable_under_late_arrival",
+    await phase7DataScenario("replay", "PTI-004", [
+      "tests/unit/test_evidence_builder.py::test_pti_004_uses_only_explicit_clocks_and_never_reads_wall_clock",
     ], { schema_version: "woozoo.evidence.replay-manifest/v1", evidence_recipe_version: evidenceRecipeVersion });
     await dataScenario("replay", "DATA-001", [
       "tests/replay/test_market_data_replay.py::test_data_001_recorded_replay_is_deterministic_and_deduplicated",
@@ -558,6 +733,7 @@ const actions = {
     ], await paperMetadata());
     await dataScenario("replay", "ATOM-002", [
       "tests/replay/test_paper_restart_replay.py::test_atom_002_ack_loss_retry_returns_same_order_without_new_effect",
+      "tests/integration/test_trading_room_command_ports.py::test_ack_loss_restart_replays_durable_receipts_without_second_paper_effect",
       "tests/integration/test_paper_postgres_persistence.py::test_concurrent_command_and_observation_retries_return_one_stored_effect",
     ], await paperMetadata());
     await riskDataScenario("replay", "RISK-001", [
@@ -571,7 +747,7 @@ const actions = {
     ]);
   },
   "test:failure": async () => {
-    await dataScenario("failure", "AUTH-002", [
+    await phase7DataScenario("failure", "AUTH-002", [
       "tests/failure/test_trading_room_authorization_failures.py::test_auth_002_stale_state_before_human_decision_has_zero_order_effect",
       "tests/integration/test_phase7_paper_first_attempt_authority.py::test_kill_first_attempt_stays_blocked_after_recovery_and_retry",
       "tests/integration/test_phase7_paper_first_attempt_authority.py::test_missing_reconciliation_consumes_authorization_without_financial_effects",
@@ -625,8 +801,9 @@ const actions = {
       "tests/failure/test_paper_postgres_atomicity.py::test_injected_failure_rolls_back_every_authoritative_row[ledger-entry]",
       "tests/failure/test_paper_postgres_atomicity.py::test_injected_failure_rolls_back_every_authoritative_row[outbox]",
     ], await paperMetadata());
-    await dataScenario("failure", "ATOM-002", [
+    await phase7DataScenario("failure", "ATOM-002", [
       "tests/replay/test_paper_restart_replay.py::test_atom_002_ack_loss_retry_returns_same_order_without_new_effect",
+      "tests/integration/test_trading_room_command_ports.py::test_ack_loss_restart_replays_durable_receipts_without_second_paper_effect",
       "tests/integration/test_paper_postgres_persistence.py::test_concurrent_command_and_observation_retries_return_one_stored_effect",
     ], await paperMetadata());
     await riskDataScenario("failure", "KILL-001", [

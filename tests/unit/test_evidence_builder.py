@@ -1,9 +1,10 @@
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, tzinfo
 from decimal import Decimal
 import hashlib
 
 import pytest
 
+import evidence_worker.builder as builder_module
 from evidence_worker.builder import EvidenceBuildError, build_evidence_snapshot
 from evidence_worker.types import Candle
 
@@ -110,6 +111,42 @@ def test_builder_is_deterministic_and_prior_snapshot_is_immutable_under_late_arr
     assert tuple(item.normalized_event_id for item in first.candles) == (
         *(source_id("normalized", index) for index in range(21)),
     )
+
+
+def test_pti_004_uses_only_explicit_clocks_and_never_reads_wall_clock(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class ChangedWallClock(datetime):
+        current = datetime(2000, 1, 1, tzinfo=UTC)
+        reads = 0
+
+        @classmethod
+        def now(cls, tz: tzinfo | None = None) -> datetime:
+            cls.reads += 1
+            return cls.current if tz is None else cls.current.astimezone(tz)
+
+        @classmethod
+        def utcnow(cls) -> datetime:
+            cls.reads += 1
+            return cls.current.replace(tzinfo=None)
+
+        @classmethod
+        def today(cls) -> datetime:
+            cls.reads += 1
+            return cls.current
+
+    monkeypatch.setattr(builder_module, "datetime", ChangedWallClock)
+    inputs = candles()
+    as_of = BASE + timedelta(minutes=21)
+    cutoff = as_of + timedelta(seconds=10)
+
+    ChangedWallClock.current = datetime(2000, 1, 1, tzinfo=UTC)
+    first = build(inputs, as_of=as_of, cutoff=cutoff)
+    ChangedWallClock.current = datetime(2099, 12, 31, tzinfo=UTC)
+    second = build(inputs, as_of=as_of, cutoff=cutoff)
+
+    assert ChangedWallClock.reads == 0
+    assert second == first
 
 
 def test_builder_fails_closed_when_an_interval_has_no_complete_window() -> None:

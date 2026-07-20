@@ -68,9 +68,18 @@ def test_worker_polling_survives_transient_database_failure_and_processes_next_i
     assert not any(isinstance(item, tuple) and item[0] == "failed" for item in state.events)
 
 
-def test_worker_records_startup_and_post_effect_reconciliation() -> None:
+def test_worker_prioritizes_authorization_then_recorded_book_and_reconciles_each_effect() -> None:
     class Store:
         checkpoints = 0
+        recorded_book_calls = 0
+
+        def apply_next_phase7_recorded_book(self) -> CommitResult | None:
+            self.recorded_book_calls += 1
+            return CommitResult(
+                True,
+                {"result": "OBSERVATION_APPLIED", "status": "PARTIALLY_FILLED"},
+                "d" * 64,
+            )
 
         def reconcile(
             self, _account_id: str, *, checkpoint_id: str, created_at: object
@@ -96,9 +105,114 @@ def test_worker_records_startup_and_post_effect_reconciliation() -> None:
     runner._kill_worker.results = [None, None]  # type: ignore[attr-defined]
     runner._worker = Attempts()  # type: ignore[assignment]
 
-    assert runner.run_once() is None
-    assert runner.run_once() is not None
+    first = runner.run_once()
+    second = runner.run_once()
+    assert isinstance(first, CommitResult)
+    assert first.response["result"] == "OBSERVATION_APPLIED"
+    assert isinstance(second, CommitResult)
+    assert second.response["result"] == "CONSUMED_ORDER_CREATED"
+    assert store.recorded_book_calls == 1
     assert store.checkpoints == 2
+
+
+@pytest.mark.parametrize(
+    "reason_code",
+    [
+        "PAPER_RECONCILIATION_HOLD",
+        "PAPER_KILL_SWITCH_ACTIVE",
+        "ORDER_NOT_FILLABLE",
+        "INVALID_RECORDED_BOOK_INPUT",
+        "CURRENT_MARKET_STATE_UNHEALTHY",
+    ],
+)
+def test_recorded_book_hold_reconciles_without_reporting_progress_or_failing_worker(
+    reason_code: str,
+) -> None:
+    class Store:
+        checkpoints = 0
+
+        def apply_next_phase7_recorded_book(self) -> CommitResult:
+            return CommitResult(
+                False,
+                {
+                    "result": "RECORDED_BOOK_HOLD",
+                    "reason_code": reason_code,
+                },
+                "d" * 64,
+            )
+
+        def reconcile(
+            self, _account_id: str, *, checkpoint_id: str, created_at: object
+        ) -> ReconciliationResult:
+            assert checkpoint_id.startswith("paper-runtime-")
+            assert created_at is not None
+            self.checkpoints += 1
+            return ReconciliationResult("HEALTHY", (), "a" * 64, "b" * 64)
+
+    class EmptyWorker:
+        def run_once(self) -> None:
+            return None
+
+    store = Store()
+    runner = ReconcilingAuthorizationRunner(
+        store,  # type: ignore[arg-type]
+        reconciliation_interval_seconds=60,
+        clock=lambda: 1.0,
+    )
+    runner._kill_worker = EmptyWorker()  # type: ignore[assignment]
+    runner._worker = EmptyWorker()  # type: ignore[assignment]
+
+    assert runner.run_once() is None
+    assert store.checkpoints == 1
+
+
+def test_unexpected_recorded_book_exception_remains_fatal() -> None:
+    class Store:
+        def apply_next_phase7_recorded_book(self) -> CommitResult:
+            raise RuntimeError("BROKER_INPUT_CONFLICT")
+
+    class EmptyWorker:
+        def run_once(self) -> None:
+            return None
+
+    runner = ReconcilingAuthorizationRunner(
+        Store(),  # type: ignore[arg-type]
+        reconciliation_interval_seconds=60,
+        clock=lambda: 1.0,
+    )
+    runner._kill_worker = EmptyWorker()  # type: ignore[assignment]
+    runner._worker = EmptyWorker()  # type: ignore[assignment]
+
+    with pytest.raises(RuntimeError, match="BROKER_INPUT_CONFLICT"):
+        runner.run_once()
+
+
+def test_unknown_recorded_book_hold_reason_remains_fatal() -> None:
+    class Store:
+        def apply_next_phase7_recorded_book(self) -> CommitResult:
+            return CommitResult(
+                False,
+                {
+                    "result": "RECORDED_BOOK_HOLD",
+                    "reason_code": "UNKNOWN_HOLD",
+                },
+                "d" * 64,
+            )
+
+    class EmptyWorker:
+        def run_once(self) -> None:
+            return None
+
+    runner = ReconcilingAuthorizationRunner(
+        Store(),  # type: ignore[arg-type]
+        reconciliation_interval_seconds=60,
+        clock=lambda: 1.0,
+    )
+    runner._kill_worker = EmptyWorker()  # type: ignore[assignment]
+    runner._worker = EmptyWorker()  # type: ignore[assignment]
+
+    with pytest.raises(RuntimeError, match="UNEXPECTED_RECORDED_BOOK_HOLD:UNKNOWN_HOLD"):
+        runner.run_once()
 
 
 def test_pending_kill_activation_is_completed_before_authorization_and_replay_is_noop(

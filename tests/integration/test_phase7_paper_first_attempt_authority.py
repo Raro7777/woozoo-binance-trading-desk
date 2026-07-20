@@ -24,7 +24,8 @@ from agent_orchestrator import (
     bind_paper_risk_input,
 )
 from docker_infrastructure_lock import docker_infrastructure_lock
-from paper_engine.persistence import Phase7AuthorizationWorker, PostgresPaperStore
+from paper_engine.authorization_worker import DurableRecordedBookWorker
+from paper_engine.persistence import PersistenceStage, Phase7AuthorizationWorker, PostgresPaperStore
 from platform_core import canonical_hash
 from platform_core.generated_contracts import (
     PAPER_DOMAIN_EVENTS_V2_SCHEMA,
@@ -504,6 +505,117 @@ def _seed_authorization(
     return authorization_id, request_hash
 
 
+def _record_current_public_book(
+    suffix: str,
+    *,
+    sequence: int,
+    bid_price: str = "9999",
+    bid_quantity: str = "0.00010000",
+    ask_price: str = "10000",
+    ask_quantity: str = "0.00010000",
+    normalized_quality_reasons: tuple[str, ...] = (),
+    market_quality_reasons: tuple[str, ...] = (),
+) -> tuple[str, datetime]:
+    market_event_id = canonical_hash({"recorded-book": suffix})
+    raw_event_id = canonical_hash({"recorded-book-raw": suffix})
+    session_id = "00000000-0000-7000-8000-000000000777"
+    stream = "btcusdt@bookTicker"
+    with psycopg.connect(DATABASE_URL) as connection:
+        observed_row = connection.execute("SELECT clock_timestamp()").fetchone()
+        assert observed_row is not None
+        observed_at = observed_row[0]
+        watermark = {
+            "session_id": session_id,
+            "stream": stream,
+            "last_sequence": sequence,
+            "observed_at": observed_at.isoformat().replace("+00:00", "Z"),
+        }
+        connection.execute(
+            "INSERT INTO collector_sessions"
+            "(id,source,connection_id,allowlist_version,status,started_at,ended_at) "
+            "VALUES (%s,'binance_spot_public','phase7-recorded-book',"
+            "'binance-spot-public.v1@29c227d84058dd2be3fe3b42ab368d1d1ce910e5',"
+            "'degraded',%s,NULL) ON CONFLICT (id) DO UPDATE SET "
+            "status='degraded',ended_at=NULL",
+            (session_id, observed_at - timedelta(minutes=1)),
+        )
+        payload_hash = canonical_hash({"recorded-book-payload": suffix})
+        connection.execute(
+            "INSERT INTO raw_market_events"
+            "(id,collector_session_id,source,stream,symbol,record_kind,parent_raw_event_id,"
+            "source_dedupe_key,payload_bytes,payload_hash,source_event_time,received_at,"
+            "ingested_at,sequence,schema_version) VALUES "
+            "(%s,%s,'binance_spot_public',%s,'BTCUSDT','stream_message',NULL,%s,%s,%s,"
+            "%s,%s,%s,%s,'woozoo.raw-market-event/v1')",
+            (
+                raw_event_id,
+                session_id,
+                stream,
+                f"recorded-book-{suffix}",
+                b"{}",
+                payload_hash,
+                observed_at,
+                observed_at,
+                observed_at,
+                sequence,
+            ),
+        )
+        connection.execute(
+            "INSERT INTO normalized_market_events"
+            "(id,raw_event_id,event_type,schema_version,source,symbol,event_time,received_at,"
+            "sequence,raw_payload_hash,correlation_id,quality_status,quality_reasons,"
+            "stream_watermark,payload) VALUES (%s,%s,'book_ticker',"
+            "'woozoo.market-event/v1','binance_spot_public','BTCUSDT',%s,%s,%s,%s,%s,"
+            "'healthy',%s,%s,%s)",
+            (
+                market_event_id,
+                raw_event_id,
+                observed_at,
+                observed_at,
+                sequence,
+                payload_hash,
+                session_id,
+                Jsonb(list(normalized_quality_reasons)),
+                Jsonb(watermark),
+                Jsonb(
+                    {
+                        "bid_price": bid_price,
+                        "bid_quantity": bid_quantity,
+                        "ask_price": ask_price,
+                        "ask_quantity": ask_quantity,
+                    }
+                ),
+            ),
+        )
+        connection.execute(
+            "INSERT INTO stream_watermark_projections"
+            "(collector_session_id,stream,last_sequence,observed_at,quality_status) "
+            "VALUES (%s,%s,%s,%s,'healthy') ON CONFLICT (collector_session_id,stream) "
+            "DO UPDATE SET last_sequence=EXCLUDED.last_sequence,"
+            "observed_at=EXCLUDED.observed_at,quality_status='healthy'",
+            (session_id, stream, sequence, observed_at),
+        )
+        connection.execute(
+            "INSERT INTO market_status_projections"
+            "(symbol,price,event_time,received_at,quality_status,quality_reasons,"
+            "stream_watermark,last_event_id) VALUES "
+            "('BTCUSDT',%s,%s,%s,'healthy',%s,%s,%s) "
+            "ON CONFLICT (symbol) DO UPDATE SET price=EXCLUDED.price,"
+            "event_time=EXCLUDED.event_time,received_at=EXCLUDED.received_at,"
+            "quality_status='healthy',quality_reasons=EXCLUDED.quality_reasons,"
+            "stream_watermark=EXCLUDED.stream_watermark,last_event_id=EXCLUDED.last_event_id",
+            (
+                bid_price,
+                observed_at,
+                observed_at,
+                Jsonb(list(market_quality_reasons)),
+                Jsonb(watermark),
+                market_event_id,
+            ),
+        )
+    return market_event_id, observed_at
+
+
 def _assert_blocked_only(authorization_id: str, reason_code: str) -> None:
     with psycopg.connect(DATABASE_URL) as connection:
         assert connection.execute(
@@ -685,6 +797,423 @@ def test_authorized_order_and_cancel_are_atomic_v2_and_idempotent(postgres: None
         )
         for _, payload in events:
             _validate_phase7_event(payload)
+
+
+def test_authorized_order_recorded_book_partial_fill_then_cancel_is_atomic_and_idempotent(
+    postgres: None,
+) -> None:
+    authorization_id, _ = _seed_authorization(
+        "recorded-book-partial-cancel", healthy_reconciliation=True
+    )
+    store = PostgresPaperStore(PAPER_WRITER_URL)
+    created = store.attempt_phase7_authorization(authorization_id)
+    assert created.response["result"] == "CONSUMED_ORDER_CREATED"
+    order_id = str(created.response["order_id"])
+
+    stale_digest_event_id, _ = _record_current_public_book(
+        "recorded-book-reconciliation-hold", sequence=9001
+    )
+    reconciliation_hold = store.apply_phase7_recorded_book(order_id, stale_digest_event_id)
+    assert reconciliation_hold.created is False
+    assert reconciliation_hold.response == {
+        "result": "RECORDED_BOOK_HOLD",
+        "reason_code": "PAPER_RECONCILIATION_HOLD",
+        "market_event_id": stale_digest_event_id,
+        "order_id": order_id,
+    }
+    with psycopg.connect(DATABASE_URL) as connection:
+        assert connection.execute(
+            "SELECT count(*) FROM paper_observation_effects WHERE order_id=%s", (order_id,)
+        ).fetchone() == (0,)
+        assert connection.execute(
+            "SELECT count(*) FROM paper_fills WHERE order_id=%s", (order_id,)
+        ).fetchone() == (0,)
+
+    opening_checkpoint = store.reconcile(
+        ACCOUNT_ID,
+        checkpoint_id="phase7-recorded-book-open",
+        created_at=datetime.now(UTC),
+    )
+    assert opening_checkpoint.status == "HEALTHY"
+
+    with psycopg.connect(DATABASE_URL) as connection:
+        connection.execute("SELECT pg_sleep(5.2)")
+
+    expired_hold = store.apply_phase7_recorded_book(order_id, stale_digest_event_id)
+    assert expired_hold.response["reason_code"] == "INVALID_RECORDED_BOOK_INPUT"
+    with psycopg.connect(DATABASE_URL) as connection:
+        assert connection.execute(
+            "SELECT count(*) FROM paper_observation_effects WHERE order_id=%s", (order_id,)
+        ).fetchone() == (0,)
+
+    market_event_id, book_at = _record_current_public_book(
+        "recorded-book-partial-cancel", sequence=9002
+    )
+
+    with pytest.raises(RuntimeError, match="INJECTED_PAPER_FAILURE:outbox"):
+        store.apply_phase7_recorded_book(
+            order_id, market_event_id, _fail_after=PersistenceStage.OUTBOX
+        )
+    with psycopg.connect(DATABASE_URL) as connection:
+        assert connection.execute(
+            "SELECT status,filled_quantity,version FROM paper_orders WHERE order_id=%s",
+            (order_id,),
+        ).fetchone() == ("OPEN", Decimal(0), 1)
+        assert connection.execute(
+            "SELECT count(*) FROM paper_broker_inputs WHERE source_key=%s",
+            (f"{market_event_id}:ASK",),
+        ).fetchone() == (0,)
+        assert connection.execute(
+            "SELECT count(*) FROM paper_fills WHERE order_id=%s", (order_id,)
+        ).fetchone() == (0,)
+
+    worker = DurableRecordedBookWorker(store)
+    applied = worker.run_once()
+    assert applied is not None and applied.created is True
+    assert applied.response == {
+        "result": "OBSERVATION_APPLIED",
+        "market_event_id": market_event_id,
+        "order_id": order_id,
+        "status": "PARTIALLY_FILLED",
+        "fill_id": applied.response["fill_id"],
+    }
+    replay = PostgresPaperStore(PAPER_WRITER_URL).apply_phase7_recorded_book(
+        order_id, market_event_id
+    )
+    assert replay.created is False
+    assert replay.response == applied.response
+    assert DurableRecordedBookWorker(PostgresPaperStore(PAPER_WRITER_URL)).run_once() is None
+
+    partial_checkpoint = store.reconcile(
+        ACCOUNT_ID,
+        checkpoint_id="phase7-recorded-book-partial",
+        created_at=datetime.now(UTC),
+    )
+    assert partial_checkpoint.status == "HEALTHY"
+    cancel_key = "phase7-cancel-recorded-book-partial"
+    cancel_hash = canonical_hash(
+        {
+            "idempotency_key": cancel_key,
+            "order_id": order_id,
+            "expected_version": 2,
+            "reason": "operator cancelled remaining partial quantity",
+        }
+    )
+    cancelled = store.cancel_phase7_order(
+        order_id,
+        2,
+        cancel_key,
+        cancel_hash,
+        "operator cancelled remaining partial quantity",
+    )
+    assert cancelled.response == {
+        "result": "ORDER_CANCELLED",
+        "order_id": order_id,
+        "status": "CANCELLED",
+        "version": 3,
+    }
+    post_cancel_replay = PostgresPaperStore(PAPER_WRITER_URL).apply_phase7_recorded_book(
+        order_id, market_event_id
+    )
+    assert post_cancel_replay.created is False
+    assert post_cancel_replay.response == applied.response
+    cancelled_race_event_id, _ = _record_current_public_book(
+        "recorded-book-cancel-race", sequence=9003
+    )
+    cancelled_race_hold = store.apply_phase7_recorded_book(order_id, cancelled_race_event_id)
+    assert cancelled_race_hold.response == {
+        "result": "RECORDED_BOOK_HOLD",
+        "reason_code": "ORDER_NOT_FILLABLE",
+        "market_event_id": cancelled_race_event_id,
+        "order_id": order_id,
+    }
+    final_checkpoint = store.reconcile(
+        ACCOUNT_ID,
+        checkpoint_id="phase7-recorded-book-cancelled",
+        created_at=datetime.now(UTC),
+    )
+    assert final_checkpoint.status == "HEALTHY"
+
+    with psycopg.connect(DATABASE_URL) as connection:
+        assert connection.execute(
+            "SELECT status,filled_quantity,held_amount,version FROM paper_orders WHERE order_id=%s",
+            (order_id,),
+        ).fetchone() == ("CANCELLED", Decimal("0.00001"), Decimal(0), 3)
+        assert connection.execute(
+            "SELECT available,held,version FROM paper_asset_balances "
+            "WHERE account_id=%s AND asset='USDT'",
+            (ACCOUNT_ID,),
+        ).fetchone() == (Decimal("9999.8999"), Decimal(0), 3)
+        assert connection.execute(
+            "SELECT available,held,version FROM paper_asset_balances "
+            "WHERE account_id=%s AND asset='BTC'",
+            (ACCOUNT_ID,),
+        ).fetchone() == (Decimal("0.00001"), Decimal(0), 1)
+        assert connection.execute(
+            "SELECT count(*),sum(quantity),sum(fee_amount) FROM paper_fills WHERE order_id=%s",
+            (order_id,),
+        ).fetchone() == (1, Decimal("0.00001"), Decimal("0.0001"))
+        assert connection.execute(
+            "SELECT fill.created_at,event.occurred_at,event.source_key,lot.acquired_at "
+            "FROM paper_fills fill JOIN paper_order_events event "
+            "ON event.order_id=fill.order_id AND event.source_key=fill.source_key "
+            "AND event.event_type='paper.order.partially-filled.v1' "
+            "JOIN paper_inventory_lots lot ON lot.source_fill_id=fill.fill_id "
+            "WHERE fill.order_id=%s",
+            (order_id,),
+        ).fetchone() == (book_at, book_at, f"{market_event_id}:ASK", book_at)
+        assert connection.execute(
+            "SELECT count(*) FROM paper_observation_effects WHERE order_id=%s",
+            (order_id,),
+        ).fetchone() == (1,)
+        assert connection.execute(
+            "SELECT count(*) FROM paper_broker_inputs WHERE source_key=%s",
+            (f"{market_event_id}:ASK",),
+        ).fetchone() == (1,)
+        assert connection.execute(
+            "SELECT event_type FROM paper_order_events WHERE order_id=%s ORDER BY order_version",
+            (order_id,),
+        ).fetchall() == [
+            ("paper.order.accepted.v2",),
+            ("paper.order.partially-filled.v1",),
+            ("paper.order.cancelled.v2",),
+        ]
+        fill_journals = connection.execute(
+            "SELECT journal_kind FROM paper_ledger_transactions WHERE account_id=%s "
+            "AND business_event_type='paper.fill' ORDER BY journal_kind",
+            (ACCOUNT_ID,),
+        ).fetchall()
+        assert fill_journals == [("PHYSICAL",), ("VALUATION",)]
+        assert (
+            connection.execute(
+                "SELECT count(*) FROM paper_reconciliation_checkpoints WHERE account_id=%s "
+                "AND status='HEALTHY'",
+                (ACCOUNT_ID,),
+            ).fetchone()[0]
+            >= 4
+        )
+
+
+def test_recorded_book_revalidates_current_stream_health_and_defers_stale_event(
+    postgres: None,
+) -> None:
+    authorization_id, _ = _seed_authorization(
+        "recorded-book-current-health", healthy_reconciliation=True
+    )
+    store = PostgresPaperStore(PAPER_WRITER_URL)
+    created = store.attempt_phase7_authorization(authorization_id)
+    order_id = str(created.response["order_id"])
+    assert (
+        store.reconcile(
+            ACCOUNT_ID,
+            checkpoint_id="phase7-recorded-book-health-open",
+            created_at=datetime.now(UTC),
+        ).status
+        == "HEALTHY"
+    )
+
+    invalid_history_event_id, _ = _record_current_public_book(
+        "recorded-book-nonempty-normalized-reasons",
+        sequence=9100,
+        normalized_quality_reasons=("sequence_gap",),
+    )
+    valid_event_id, _ = _record_current_public_book(
+        "recorded-book-current-health-valid", sequence=9101
+    )
+    worker = DurableRecordedBookWorker(store)
+
+    def recorded_book_is_current(event_id: str) -> tuple[bool]:
+        with psycopg.connect(PAPER_WRITER_URL) as paper_connection:
+            row = paper_connection.execute(
+                "SELECT paper_recorded_book_market_is_current_v1(%s)", (event_id,)
+            ).fetchone()
+            assert row is not None
+            return row
+
+    with psycopg.connect(PAPER_WRITER_URL) as paper_connection:
+        assert paper_connection.execute(
+            "SELECT paper_recorded_book_market_is_current_v1(%s)",
+            (invalid_history_event_id,),
+        ).fetchone() == (False,)
+        assert paper_connection.execute(
+            "SELECT paper_recorded_book_market_is_current_v1(%s)", (valid_event_id,)
+        ).fetchone() == (True,)
+
+    freshness_blocker = psycopg.connect(DATABASE_URL)
+    try:
+        freshness_blocker.execute(
+            "SELECT 1 FROM stream_watermark_projections "
+            "WHERE collector_session_id='00000000-0000-7000-8000-000000000777' "
+            "FOR UPDATE"
+        )
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            delayed_validation = executor.submit(recorded_book_is_current, valid_event_id)
+            freshness_blocker.execute("SELECT pg_sleep(5.2)")
+            freshness_blocker.commit()
+            assert delayed_validation.result(timeout=5) == (False,)
+    finally:
+        freshness_blocker.close()
+    valid_event_id, _ = _record_current_public_book(
+        "recorded-book-current-health-refreshed", sequence=9102
+    )
+
+    session_inserter = psycopg.connect(DATABASE_URL)
+    try:
+        session_inserter.execute(
+            "INSERT INTO collector_sessions"
+            "(id,source,connection_id,allowlist_version,status,started_at,ended_at) "
+            "VALUES ('00000000-0000-7000-8000-000000000779','binance_spot_public',"
+            "'phase7-concurrent-session',"
+            "'binance-spot-public.v1@29c227d84058dd2be3fe3b42ab368d1d1ce910e5',"
+            "'degraded',clock_timestamp(),NULL)"
+        )
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            concurrent_poll = executor.submit(worker.run_once)
+            assert concurrent_poll.result(timeout=5) is None
+    finally:
+        session_inserter.rollback()
+        session_inserter.close()
+    with psycopg.connect(DATABASE_URL) as connection:
+        assert connection.execute(
+            "SELECT count(*) FROM paper_observation_effects WHERE order_id=%s", (order_id,)
+        ).fetchone() == (0,)
+
+    with psycopg.connect(DATABASE_URL) as connection:
+        connection.execute(
+            "INSERT INTO collector_sessions"
+            "(id,source,connection_id,allowlist_version,status,started_at,ended_at) "
+            "VALUES ('00000000-0000-7000-8000-000000000778','binance_spot_public',"
+            "'phase7-newer-session',"
+            "'binance-spot-public.v1@29c227d84058dd2be3fe3b42ab368d1d1ce910e5',"
+            "'degraded',clock_timestamp(),NULL)"
+        )
+    with psycopg.connect(PAPER_WRITER_URL) as paper_connection:
+        assert paper_connection.execute(
+            "SELECT paper_recorded_book_market_is_current_v1(%s)", (valid_event_id,)
+        ).fetchone() == (False,)
+    assert worker.run_once() is None
+    with psycopg.connect(DATABASE_URL) as connection:
+        assert connection.execute(
+            "SELECT count(*) FROM paper_observation_effects WHERE order_id=%s", (order_id,)
+        ).fetchone() == (0,)
+        connection.execute(
+            "UPDATE collector_sessions SET ended_at=clock_timestamp() "
+            "WHERE id='00000000-0000-7000-8000-000000000778'"
+        )
+
+    quality_writer = psycopg.connect(DATABASE_URL)
+    validation_started = Event()
+
+    def validate_during_quality_transition() -> tuple[bool]:
+        validation_started.set()
+        return recorded_book_is_current(valid_event_id)
+
+    try:
+        quality_writer.execute(
+            "UPDATE stream_watermark_projections SET quality_status='stale' "
+            "WHERE collector_session_id='00000000-0000-7000-8000-000000000777'"
+        )
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            validation = executor.submit(validate_during_quality_transition)
+            assert validation_started.wait(timeout=5)
+            quality_writer.execute("SELECT pg_sleep(0.1)")
+            assert not validation.done()
+            quality_writer.execute(
+                "UPDATE market_status_projections SET quality_status='healthy',"
+                "quality_reasons='[\"sequence_gap\"]'::jsonb WHERE symbol='BTCUSDT'"
+            )
+            quality_writer.execute(
+                "UPDATE collector_sessions SET status='reconnecting' "
+                "WHERE id='00000000-0000-7000-8000-000000000777'"
+            )
+            quality_writer.commit()
+            assert validation.result(timeout=5) == (False,)
+    finally:
+        quality_writer.close()
+    assert worker.run_once() is None
+    with psycopg.connect(DATABASE_URL) as connection:
+        assert connection.execute(
+            "SELECT count(*) FROM paper_observation_effects WHERE order_id=%s", (order_id,)
+        ).fetchone() == (0,)
+        assert connection.execute(
+            "SELECT count(*) FROM paper_fills WHERE order_id=%s", (order_id,)
+        ).fetchone() == (0,)
+        connection.execute(
+            "UPDATE collector_sessions SET status='healthy' "
+            "WHERE id='00000000-0000-7000-8000-000000000777'"
+        )
+        connection.execute(
+            "UPDATE stream_watermark_projections SET quality_status='healthy' "
+            "WHERE collector_session_id='00000000-0000-7000-8000-000000000777'"
+        )
+
+    with psycopg.connect(PAPER_WRITER_URL) as paper_connection:
+        assert paper_connection.execute(
+            "SELECT paper_recorded_book_market_is_current_v1(%s)", (valid_event_id,)
+        ).fetchone() == (False,)
+    with psycopg.connect(DATABASE_URL) as connection:
+        connection.execute(
+            "UPDATE market_status_projections SET quality_reasons='[]'::jsonb "
+            "WHERE symbol='BTCUSDT'"
+        )
+    with psycopg.connect(PAPER_WRITER_URL) as paper_connection:
+        assert paper_connection.execute(
+            "SELECT paper_recorded_book_market_is_current_v1(%s)", (valid_event_id,)
+        ).fetchone() == (True,)
+
+    applied = worker.run_once()
+    assert applied is not None
+    assert applied.response["result"] == "OBSERVATION_APPLIED"
+    assert applied.response["market_event_id"] == valid_event_id
+
+
+def test_recorded_book_kill_barrier_holds_without_any_paper_effect(postgres: None) -> None:
+    authorization_id, _ = _seed_authorization(
+        "recorded-book-kill-hold", healthy_reconciliation=True
+    )
+    store = PostgresPaperStore(PAPER_WRITER_URL)
+    created = store.attempt_phase7_authorization(authorization_id)
+    order_id = str(created.response["order_id"])
+    assert (
+        store.reconcile(
+            ACCOUNT_ID,
+            checkpoint_id="phase7-recorded-book-kill-open",
+            created_at=datetime.now(UTC),
+        ).status
+        == "HEALTHY"
+    )
+    market_event_id, _ = _record_current_public_book("recorded-book-kill-hold", sequence=9200)
+    PostgresKillSwitch(DATABASE_URL).activate(
+        KillActivation(
+            request_id="phase7-recorded-book-kill-hold",
+            expected_version=0,
+            trigger_kind="MANUAL",
+            actor_id="operator:phase7-recorded-book",
+            reason_code="MANUAL_SAFETY_STOP",
+            reason="prove recorded books cannot bypass the Kill barrier",
+            observed_at=datetime.now(UTC),
+            context_digest=canonical_hash({"recorded-book-kill": order_id}),
+        )
+    )
+
+    held = store.apply_phase7_recorded_book(order_id, market_event_id)
+    assert held.response == {
+        "result": "RECORDED_BOOK_HOLD",
+        "reason_code": "PAPER_KILL_SWITCH_ACTIVE",
+        "market_event_id": market_event_id,
+        "order_id": order_id,
+    }
+    with psycopg.connect(DATABASE_URL) as connection:
+        assert connection.execute(
+            "SELECT status,filled_quantity,version FROM paper_orders WHERE order_id=%s",
+            (order_id,),
+        ).fetchone() == ("OPEN", Decimal(0), 1)
+        assert connection.execute(
+            "SELECT count(*) FROM paper_observation_effects WHERE order_id=%s", (order_id,)
+        ).fetchone() == (0,)
+        assert connection.execute(
+            "SELECT count(*) FROM paper_fills WHERE order_id=%s", (order_id,)
+        ).fetchone() == (0,)
 
 
 @pytest.mark.parametrize(

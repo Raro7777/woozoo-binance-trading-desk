@@ -79,9 +79,26 @@ attempt, order, holds/ledger and outbox atomically. Guard failure writes a
 blocked attempt, rejected receipt and outbox atomically with no order, hold,
 fill or ledger effect.
 
+The same inbound-less Paper runtime may consume only append-only, healthy Binance
+Spot public `book_ticker` rows received after an order was accepted. It selects
+the canonical order and recorded book in a deterministic sequence, revalidates
+Kill and reconciliation under the Paper account lock, then calls a DB-owned,
+least-privilege verifier that binds the row to the newest active collector
+session, exact allowlist, raw hash, healthy stream watermark and healthy current
+market projection. Concurrent session changes, stale timestamps, quality reasons,
+Kill, cancellation and reconciliation drift return a no-effect HOLD; unknown
+conditions remain fatal. BUY/SELL book sides have independent canonical order and
+liquidity budgets. A successful transaction atomically records the observation,
+partial/full fill, recorded `received_at` provenance, balance versions, lots,
+journals, order event and outbox. The Paper role can execute the verifier but
+cannot read its source market tables directly. The browser and AI cannot supply
+price, liquidity, fill or ledger values.
+
 ## Acceptance
 
 All canonical quality commands, including real HTTPS browser E2E, must pass.
 E2E covers golden flow, stale-data block, idempotent retry/reload, Kill
-cancellation/recovery, desktop/mobile keyboard flow, and zero serious/critical
-accessibility findings. Missing commands or unverified evidence are not PASS.
+cancellation/recovery, a post-acceptance public recorded-book partial fill followed
+by an operator cancellation, desktop/mobile keyboard flow, and zero
+serious/critical accessibility findings. Missing commands or unverified evidence
+are not PASS.

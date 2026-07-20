@@ -252,7 +252,7 @@ def bootstrap_public_data() -> int:
     return 0
 
 
-def refresh_evidence(symbol: str) -> int:
+def refresh_evidence(symbol: str, non_crossing_buy_symbol: str | None = None) -> int:
     """Refresh both authoritative books, then materialize immutable Evidence."""
     from evidence_worker.runner import materialize_evidence_command
     from market_data_worker.persistence import PostgresMarketStore
@@ -277,6 +277,15 @@ def refresh_evidence(symbol: str) -> int:
         trade_sequence = (pipeline.last_sequence("trade", refresh_symbol) or 0) + 1
         book_sequence = (pipeline.last_sequence("book_ticker", refresh_symbol) or 0) + 1
         lower = refresh_symbol.lower()
+        public_price = prices[refresh_symbol]
+        best_bid = public_price
+        best_ask = "60000.01" if refresh_symbol == "BTCUSDT" else "3000.01"
+        if refresh_symbol == non_crossing_buy_symbol:
+            # Preserve the outstanding BUY used by the later Kill journey while
+            # still recording a fresh, healthy, real public-book observation.
+            public_price = "61000.00" if refresh_symbol == "BTCUSDT" else "3100.00"
+            best_bid = public_price
+            best_ask = "61000.01" if refresh_symbol == "BTCUSDT" else "3100.01"
         trade = pipeline.ingest(
             snapshot.session_id,
             f"{lower}@trade",
@@ -285,7 +294,7 @@ def refresh_evidence(symbol: str) -> int:
                 "E": event_ms,
                 "s": refresh_symbol,
                 "t": trade_sequence,
-                "p": prices[refresh_symbol],
+                "p": public_price,
                 "q": "0.01000000",
                 "T": event_ms,
                 "m": False,
@@ -299,9 +308,9 @@ def refresh_evidence(symbol: str) -> int:
             {
                 "u": book_sequence,
                 "s": refresh_symbol,
-                "b": prices[refresh_symbol],
+                "b": best_bid,
                 "B": "10.00000000",
-                "a": "60000.01" if refresh_symbol == "BTCUSDT" else "3000.01",
+                "a": best_ask,
                 "A": "10.00000000",
             },
             now,
@@ -378,6 +387,43 @@ def refresh_evidence(symbol: str) -> int:
     return 0
 
 
+def record_partial_book(symbol: str) -> int:
+    """Append a post-order public book for the real Paper worker to consume."""
+    from market_data_worker.persistence import PostgresMarketStore
+    from market_data_worker.pipeline import CollectorPipeline
+    from market_data_worker.recovery import PostgresRestartRepository
+
+    market_url = _required_environment("MARKET_DATABASE_URL")
+    snapshot = PostgresRestartRepository(market_url).load()
+    pipeline = CollectorPipeline(PostgresMarketStore(market_url))
+    pipeline.bootstrap_continuity(
+        snapshot.session_id,
+        snapshot.watermarks,
+        snapshot.last_sequences,
+        snapshot.stream_statuses,
+        snapshot.closed_kline_opens,
+    )
+    observed_at = datetime.now(UTC)
+    sequence = (pipeline.last_sequence("book_ticker", symbol) or 0) + 1
+    price = "60000.00" if symbol == "BTCUSDT" else "3000.00"
+    result = pipeline.ingest(
+        snapshot.session_id,
+        f"{symbol.lower()}@bookTicker",
+        {
+            "u": sequence,
+            "s": symbol,
+            "b": price,
+            "B": "0.00100000",
+            "a": "60000.01" if symbol == "BTCUSDT" else "3000.01",
+            "A": "0.00100000",
+        },
+        observed_at,
+    )
+    if not result.accepted:
+        raise RuntimeError(f"E2E_PARTIAL_BOOK_REJECTED:{symbol}:{result.reason}")
+    return 0
+
+
 def create_live_app() -> FastAPI:
     if _required_environment("TRADING_MODE") != "paper":
         raise RuntimeError("Phase 7 E2E requires TRADING_MODE=paper")
@@ -403,6 +449,8 @@ def main() -> int:
     parser.add_argument("--reconcile-once", action="store_true")
     parser.add_argument("--bootstrap-public-data", action="store_true")
     parser.add_argument("--refresh-evidence", choices=("BTCUSDT", "ETHUSDT"))
+    parser.add_argument("--non-crossing-buy-book", choices=("BTCUSDT", "ETHUSDT"))
+    parser.add_argument("--record-partial-book", choices=("BTCUSDT", "ETHUSDT"))
     args = parser.parse_args()
     if args.worker_once:
         return run_worker_once()
@@ -411,7 +459,9 @@ def main() -> int:
     if args.bootstrap_public_data:
         return bootstrap_public_data()
     if args.refresh_evidence:
-        return refresh_evidence(args.refresh_evidence)
+        return refresh_evidence(args.refresh_evidence, args.non_crossing_buy_book)
+    if args.record_partial_book:
+        return record_partial_book(args.record_partial_book)
     uvicorn.run(
         create_live_app(),
         host="127.0.0.1",

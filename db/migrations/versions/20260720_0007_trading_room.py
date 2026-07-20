@@ -1273,6 +1273,100 @@ def upgrade() -> None:
     op.execute(
         "REVOKE ALL ON FUNCTION paper_validate_kill_activation_v1(varchar,varchar) FROM PUBLIC"
     )
+    op.execute(r"""
+        CREATE FUNCTION paper_recorded_book_market_is_current_v1(p_market_event_id varchar)
+        RETURNS boolean AS $$
+        DECLARE
+          source_identity record;
+          current_state record;
+          observed_now timestamptz;
+        BEGIN
+          SELECT raw.collector_session_id,raw.stream,normalized.symbol
+          INTO source_identity
+          FROM normalized_market_events normalized
+          JOIN raw_market_events raw ON raw.id=normalized.raw_event_id
+          WHERE normalized.id=p_market_event_id;
+          IF NOT FOUND THEN RETURN false; END IF;
+
+          -- Match the market writer's watermark -> market -> collector row order.
+          -- The table lock comes afterwards and the final query rechecks latest-session
+          -- identity, closing an insert race without inverting the quality-writer order.
+          PERFORM 1 FROM stream_watermark_projections watermark
+          WHERE watermark.collector_session_id=source_identity.collector_session_id
+            AND watermark.stream=source_identity.stream FOR SHARE;
+          IF NOT FOUND THEN RETURN false; END IF;
+          PERFORM 1 FROM market_status_projections market
+          WHERE market.symbol=source_identity.symbol FOR SHARE;
+          IF NOT FOUND THEN RETURN false; END IF;
+          PERFORM 1 FROM collector_sessions collector
+          WHERE collector.id=source_identity.collector_session_id FOR SHARE;
+          IF NOT FOUND THEN RETURN false; END IF;
+          -- Fail closed instead of waiting behind a concurrent session insert: that
+          -- inserter may next need the watermark/market rows already held above.
+          LOCK TABLE collector_sessions IN SHARE MODE NOWAIT;
+          observed_now := clock_timestamp();
+
+          SELECT (
+            normalized.source='binance_spot_public'
+            AND normalized.event_type='book_ticker'
+            AND normalized.quality_status='healthy'
+            AND normalized.quality_reasons='[]'::jsonb
+            AND raw.source=normalized.source
+            AND raw.symbol=normalized.symbol
+            AND raw.record_kind='stream_message'
+            AND raw.payload_hash=normalized.raw_payload_hash
+            AND raw.collector_session_id::text=normalized.correlation_id
+            AND raw.collector_session_id::text=normalized.stream_watermark->>'session_id'
+            AND raw.stream=normalized.stream_watermark->>'stream'
+            AND raw.sequence=normalized.sequence
+            AND raw.received_at=normalized.received_at
+            AND normalized.stream_watermark->>'last_sequence'=normalized.sequence::text
+            AND collector.source='binance_spot_public'
+            AND collector.allowlist_version=
+                'binance-spot-public.v1@29c227d84058dd2be3fe3b42ab368d1d1ce910e5'
+            AND collector.status IN ('healthy','degraded')
+            AND collector.ended_at IS NULL
+            AND collector.started_at<=normalized.received_at
+            AND collector.id=(
+              SELECT latest.id FROM collector_sessions latest
+              WHERE latest.source='binance_spot_public' AND latest.ended_at IS NULL
+              ORDER BY latest.started_at DESC,latest.id DESC LIMIT 1)
+            AND watermark.quality_status='healthy'
+            AND watermark.last_sequence>=normalized.sequence
+            AND watermark.observed_at>=normalized.received_at
+            AND watermark.observed_at<=observed_now
+            AND observed_now-watermark.observed_at<=interval '5 seconds'
+            AND market.quality_status='healthy'
+            AND market.quality_reasons='[]'::jsonb
+            AND market.stream_watermark->>'session_id'=raw.collector_session_id::text
+            AND market.stream_watermark ?& array[
+              'session_id','stream','last_sequence','observed_at']
+            AND (market.stream_watermark->>'observed_at')::timestamptz<=observed_now
+            AND observed_now-(market.stream_watermark->>'observed_at')::timestamptz
+                <=interval '5 seconds'
+            AND normalized.event_time<=observed_now
+            AND normalized.received_at<=observed_now
+            AND observed_now-normalized.event_time<=interval '5 seconds'
+            AND observed_now-normalized.received_at<=interval '5 seconds'
+          ) AS is_healthy
+          INTO current_state
+          FROM normalized_market_events normalized
+          JOIN raw_market_events raw ON raw.id=normalized.raw_event_id
+          JOIN collector_sessions collector ON collector.id=raw.collector_session_id
+          JOIN stream_watermark_projections watermark
+            ON watermark.collector_session_id=raw.collector_session_id
+           AND watermark.stream=raw.stream
+          JOIN market_status_projections market ON market.symbol=normalized.symbol
+          WHERE normalized.id=p_market_event_id;
+          RETURN COALESCE(current_state.is_healthy,false);
+        EXCEPTION WHEN OTHERS THEN
+          RETURN false;
+        END;
+        $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public
+    """)
+    op.execute(
+        "REVOKE ALL ON FUNCTION paper_recorded_book_market_is_current_v1(varchar) FROM PUBLIC"
+    )
     op.execute("""
         CREATE FUNCTION enforce_phase7_attempt_binding() RETURNS trigger AS $$
         DECLARE authorized_row record;
@@ -1403,6 +1497,12 @@ def upgrade() -> None:
             replaced,
             'event\.order_version\s*=\s*1\s+AND\s*\(\s*event\.event_type\s*<>\s*''paper\.order\.accepted\.v1''\s+OR\s+input\.source_kind\s+IS DISTINCT FROM\s+''TEST_COMMAND''\s+OR\s+input\.broker_seq\s+IS DISTINCT FROM\s+paper_order\.accepted_broker_seq\s*\)',
             'event.order_version=1 AND (event.event_type NOT IN (''paper.order.accepted.v1'',''paper.order.accepted.v2'') OR (event.event_type=''paper.order.accepted.v1'' AND input.source_kind IS DISTINCT FROM ''TEST_COMMAND'') OR (event.event_type=''paper.order.accepted.v2'' AND input.source_kind IS DISTINCT FROM ''PAPER_AUTHORIZATION'') OR input.broker_seq IS DISTINCT FROM paper_order.accepted_broker_seq)'
+          );
+          replaced := regexp_replace(
+            replaced,
+            'candidate\.symbol\s*=\s*paper_order\.symbol',
+            'candidate.symbol=paper_order.symbol AND candidate.side=paper_order.side',
+            'g'
           );
           replaced := replace(
             replaced,
@@ -2807,6 +2907,10 @@ def upgrade() -> None:
         "GRANT EXECUTE ON FUNCTION paper_validate_kill_activation_v1(varchar,varchar) "
         "TO woozoo_paper_engine"
     )
+    op.execute(
+        "GRANT EXECUTE ON FUNCTION paper_recorded_book_market_is_current_v1(varchar) "
+        "TO woozoo_paper_engine"
+    )
     op.execute("GRANT SELECT ON paper_pending_authorizations_v1 TO woozoo_paper_engine")
     op.execute("GRANT SELECT ON paper_pending_kill_activations_v1 TO woozoo_paper_engine")
     op.execute("GRANT SELECT, INSERT ON paper_authorization_worker_state TO woozoo_paper_engine")
@@ -2848,6 +2952,7 @@ def downgrade() -> None:
     )
     op.execute("DROP FUNCTION paper_lock_execution_authorization_v1(varchar)")
     op.execute("DROP FUNCTION paper_validate_kill_activation_v1(varchar,varchar)")
+    op.execute("DROP FUNCTION paper_recorded_book_market_is_current_v1(varchar)")
     op.execute(
         "DROP FUNCTION issue_paper_approval_v1(varchar,varchar,varchar,varchar,bigint,"
         "varchar,varchar,varchar,varchar,varchar,varchar,varchar,timestamptz)"

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import nullcontext
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import ROUND_UP, Decimal
@@ -9,7 +10,7 @@ from enum import StrEnum
 import hashlib
 import json
 from collections.abc import Callable
-from typing import cast
+from typing import Any, cast
 
 import psycopg
 from psycopg.types.json import Jsonb
@@ -1081,6 +1082,511 @@ class PostgresPaperStore:
             response,
             self.semantic_digest(account_id, connection=connection),
         )
+
+    def apply_next_phase7_recorded_book(self) -> CommitResult | None:
+        """Apply the oldest unconsumed post-acceptance public book deterministically."""
+        with psycopg.connect(self.database_url) as connection:
+            candidate = connection.execute(
+                "SELECT orders.order_id,event.id FROM normalized_market_events event "
+                "JOIN paper_orders orders ON orders.symbol=event.symbol "
+                "JOIN paper_accounts account ON account.account_id=orders.account_id "
+                "JOIN paper_execution_authorizations authz "
+                "ON authz.authorization_id=orders.authorization_id "
+                "JOIN paper_order_events accepted ON accepted.order_id=orders.order_id "
+                "AND accepted.order_version=1 AND accepted.event_type='paper.order.accepted.v2' "
+                "LEFT JOIN paper_observation_effects effect ON effect.order_id=orders.order_id "
+                "AND effect.source_key=event.id||CASE orders.side WHEN 'BUY' THEN ':ASK' "
+                "ELSE ':BID' END "
+                "WHERE account.namespace='paper' AND authz.namespace='paper' "
+                "AND orders.status IN ('OPEN','PARTIALLY_FILLED') "
+                "AND event.source='binance_spot_public' AND event.event_type='book_ticker' "
+                "AND event.quality_status='healthy' "
+                "AND event.event_time>accepted.occurred_at "
+                "AND event.received_at>accepted.occurred_at "
+                "AND event.event_time<=CURRENT_TIMESTAMP AND event.received_at<=CURRENT_TIMESTAMP "
+                "AND CURRENT_TIMESTAMP-event.event_time<=interval '5 seconds' "
+                "AND CURRENT_TIMESTAMP-event.received_at<=interval '5 seconds' "
+                "AND event.payload ?& ARRAY['bid_price','bid_quantity','ask_price','ask_quantity'] "
+                "AND paper_recorded_book_market_is_current_v1(event.id) "
+                "AND effect.order_id IS NULL "
+                "ORDER BY event.received_at,event.event_time,event.id,"
+                "orders.accepted_broker_seq,orders.client_order_id,orders.order_id LIMIT 1"
+            ).fetchone()
+        if candidate is None:
+            return None
+        return self.apply_phase7_recorded_book(candidate[0], candidate[1])
+
+    def _phase7_recorded_book_hold(
+        self,
+        connection: psycopg.Connection[object],
+        account_id: str,
+        order_id: str,
+        market_event_id: str,
+        reason_code: str,
+    ) -> CommitResult:
+        return CommitResult(
+            False,
+            {
+                "result": "RECORDED_BOOK_HOLD",
+                "reason_code": reason_code,
+                "market_event_id": market_event_id,
+                "order_id": order_id,
+            },
+            self.semantic_digest(account_id, connection=connection),
+        )
+
+    def apply_phase7_recorded_book(
+        self,
+        order_id: str,
+        market_event_id: str,
+        *,
+        _fail_after: PersistenceStage | None = None,
+    ) -> CommitResult:
+        """Apply one DB-owned public book to one production Paper order atomically.
+
+        Only identities cross this boundary. Prices, displayed liquidity, balances,
+        fills, fees, order state, journals and outbox records are re-derived from
+        append-only PostgreSQL rows and the deterministic Paper engine.
+        """
+        for value, error in (
+            (order_id, "INVALID_PAPER_ORDER_ID"),
+            (market_event_id, "INVALID_MARKET_EVENT_ID"),
+        ):
+            if len(value) != 64 or any(character not in "0123456789abcdef" for character in value):
+                raise ValueError(error)
+
+        with psycopg.connect(self.database_url) as connection:
+            identity = connection.execute(
+                "SELECT orders.account_id,orders.symbol,orders.side FROM paper_orders orders "
+                "JOIN paper_accounts account ON account.account_id=orders.account_id "
+                "JOIN paper_execution_authorizations authz "
+                "ON authz.authorization_id=orders.authorization_id "
+                "WHERE orders.order_id=%s AND account.namespace='paper' AND authz.namespace='paper'",
+                (order_id,),
+            ).fetchone()
+            if identity is None:
+                raise KeyError("PAPER_ORDER_NOT_FOUND")
+            account_id, symbol, side = identity
+            liquidity_side = "ASK" if side == "BUY" else "BID"
+            source_key = f"{market_event_id}:{liquidity_side}"
+            for lock_key in (f"paper-account:{account_id}", f"observation:{source_key}"):
+                connection.execute(
+                    "SELECT pg_advisory_xact_lock(hashtextextended(%s,0))", (lock_key,)
+                )
+
+            prior_effect = connection.execute(
+                "SELECT effect.effect_kind,effect.fill_id,CASE "
+                "WHEN event.event_type='paper.order.filled.v1' THEN 'FILLED' "
+                "WHEN event.event_type='paper.order.partially-filled.v1' "
+                "THEN 'PARTIALLY_FILLED' ELSE orders.status END FROM "
+                "paper_observation_effects effect JOIN paper_orders orders "
+                "ON orders.order_id=effect.order_id LEFT JOIN paper_order_events event "
+                "ON event.order_id=effect.order_id AND event.source_key=effect.source_key "
+                "AND event.event_type IN "
+                "('paper.order.filled.v1','paper.order.partially-filled.v1') "
+                "WHERE effect.order_id=%s AND effect.source_key=%s",
+                (order_id, source_key),
+            ).fetchone()
+            if prior_effect is not None:
+                response: dict[str, object] = {
+                    "result": "OBSERVATION_APPLIED",
+                    "market_event_id": market_event_id,
+                    "order_id": order_id,
+                    "status": prior_effect[2],
+                    "fill_id": prior_effect[1],
+                }
+                return CommitResult(
+                    False,
+                    response,
+                    self.semantic_digest(account_id, connection=connection),
+                )
+
+            barrier = connection.execute(
+                "SELECT active,version FROM paper_lock_kill_barrier()"
+            ).fetchone()
+            if barrier is None:
+                raise RuntimeError("PAPER_KILL_BARRIER_MISSING")
+            if barrier[0]:
+                return self._phase7_recorded_book_hold(
+                    connection,
+                    account_id,
+                    order_id,
+                    market_event_id,
+                    "PAPER_KILL_SWITCH_ACTIVE",
+                )
+
+            order_row = connection.execute(
+                "SELECT status,version FROM paper_orders WHERE order_id=%s FOR UPDATE",
+                (order_id,),
+            ).fetchone()
+            if order_row is None:
+                raise KeyError("PAPER_ORDER_NOT_FOUND")
+            if order_row[0] not in {"OPEN", "PARTIALLY_FILLED"}:
+                return self._phase7_recorded_book_hold(
+                    connection,
+                    account_id,
+                    order_id,
+                    market_event_id,
+                    "ORDER_NOT_FILLABLE",
+                )
+            accepted = connection.execute(
+                "SELECT occurred_at FROM paper_order_events WHERE order_id=%s "
+                "AND order_version=1 AND event_type='paper.order.accepted.v2'",
+                (order_id,),
+            ).fetchone()
+            if accepted is None:
+                raise RuntimeError("PHASE7_ORDER_ACCEPTANCE_MISSING")
+            market = connection.execute(
+                "SELECT source,symbol,event_time,received_at,quality_status,payload "
+                "FROM normalized_market_events WHERE id=%s",
+                (market_event_id,),
+            ).fetchone()
+            if market is None:
+                raise KeyError("RECORDED_BOOK_NOT_FOUND")
+            source, event_symbol, event_time, received_at, quality, payload = market
+            now_row = connection.execute("SELECT clock_timestamp()").fetchone()
+            assert now_row is not None
+            database_now = now_row[0]
+            if (
+                source != "binance_spot_public"
+                or event_symbol != symbol
+                or quality != "healthy"
+                or event_time <= accepted[0]
+                or received_at <= accepted[0]
+                or event_time > database_now
+                or received_at > database_now
+                or database_now - event_time > timedelta(seconds=5)
+                or database_now - received_at > timedelta(seconds=5)
+                or not isinstance(payload, dict)
+                or not {"bid_price", "bid_quantity", "ask_price", "ask_quantity"}.issubset(payload)
+            ):
+                return self._phase7_recorded_book_hold(
+                    connection,
+                    account_id,
+                    order_id,
+                    market_event_id,
+                    "INVALID_RECORDED_BOOK_INPUT",
+                )
+            try:
+                bid = decimal_input(str(payload["bid_price"]), positive=True)
+                ask = decimal_input(str(payload["ask_price"]), positive=True)
+                displayed = decimal_input(
+                    str(payload["ask_quantity"] if side == "BUY" else payload["bid_quantity"]),
+                    positive=True,
+                )
+            except (TypeError, ValueError):
+                return self._phase7_recorded_book_hold(
+                    connection,
+                    account_id,
+                    order_id,
+                    market_event_id,
+                    "INVALID_RECORDED_BOOK_INPUT",
+                )
+            if bid > ask:
+                return self._phase7_recorded_book_hold(
+                    connection,
+                    account_id,
+                    order_id,
+                    market_event_id,
+                    "INVALID_RECORDED_BOOK_INPUT",
+                )
+            current_market_state = connection.execute(
+                "SELECT paper_recorded_book_market_is_current_v1(%s)", (market_event_id,)
+            ).fetchone()
+            if current_market_state != (True,):
+                return self._phase7_recorded_book_hold(
+                    connection,
+                    account_id,
+                    order_id,
+                    market_event_id,
+                    "CURRENT_MARKET_STATE_UNHEALTHY",
+                )
+            observation_hash = _engine_id(
+                "observation", symbol, canonical(bid), canonical(ask), canonical(displayed)
+            )
+
+            current_digest = self.semantic_digest(account_id, connection=connection)
+            checkpoint = connection.execute(
+                "SELECT input_digest,status FROM paper_reconciliation_checkpoints "
+                "WHERE account_id=%s ORDER BY created_at DESC,checkpoint_id DESC LIMIT 1",
+                (account_id,),
+            ).fetchone()
+            if checkpoint != (current_digest, "HEALTHY"):
+                return self._phase7_recorded_book_hold(
+                    connection,
+                    account_id,
+                    order_id,
+                    market_event_id,
+                    "PAPER_RECONCILIATION_HOLD",
+                )
+
+            persisted_input = connection.execute(
+                "SELECT broker_seq,account_id,source_kind,payload_hash,available_quantity,"
+                "symbol,best_bid,best_ask FROM paper_broker_inputs WHERE source_key=%s",
+                (source_key,),
+            ).fetchone()
+            engine = self.hydrate_engine(account_id, connection=connection)
+            before_order = engine.orders[order_id]
+            before_balances = connection.execute(
+                "SELECT asset,available,held,version FROM paper_asset_balances "
+                "WHERE account_id=%s FOR UPDATE",
+                (account_id,),
+            ).fetchall()
+            balance_state = {row[0]: (row[1], row[2], row[3]) for row in before_balances}
+            before_fill_ids = set(engine.fills)
+            before_lot_ids = {item.lot_id for item in engine.lots}
+            before_consumption_ids = {item.consumption_id for item in engine.consumptions}
+            before_journal_ids = {item.journal_id for item in engine.journals.values()}
+            fill = engine.apply_book_observation(
+                order_id=order_id,
+                observation_id=source_key,
+                best_bid_text=canonical(bid),
+                best_ask_text=canonical(ask),
+                displayed_quantity_text=canonical(displayed),
+            )
+            broker_seq = engine.observation_sequences[source_key]
+            expected_input = (
+                broker_seq,
+                account_id,
+                "RECORDED_BOOK",
+                observation_hash,
+                displayed,
+                symbol,
+                bid,
+                ask,
+            )
+            if persisted_input is not None and persisted_input != expected_input:
+                raise ValueError("BROKER_INPUT_CONFLICT")
+
+            connection.execute("SET CONSTRAINTS ALL DEFERRED")
+            if persisted_input is None:
+                connection.execute(
+                    "INSERT INTO paper_broker_inputs"
+                    "(broker_seq,account_id,source_kind,source_key,payload_hash,observed_at,"
+                    "available_quantity,symbol,best_bid,best_ask) VALUES "
+                    "(%s,%s,'RECORDED_BOOK',%s,%s,%s,%s,%s,%s,%s)",
+                    (
+                        broker_seq,
+                        account_id,
+                        source_key,
+                        observation_hash,
+                        received_at,
+                        displayed,
+                        symbol,
+                        bid,
+                        ask,
+                    ),
+                )
+
+            updated_order = engine.orders[order_id]
+            if updated_order != before_order:
+                updated = connection.execute(
+                    "UPDATE paper_orders SET filled_quantity=%s,held_amount=%s,status=%s,"
+                    "version=%s WHERE order_id=%s AND version=%s",
+                    (
+                        updated_order.filled_quantity,
+                        updated_order.held_amount,
+                        updated_order.status.value,
+                        updated_order.version,
+                        order_id,
+                        before_order.version,
+                    ),
+                )
+                if updated.rowcount != 1:
+                    raise RuntimeError("PAPER_FILL_ORDER_VERSION_CONFLICT")
+            changed_assets = sorted(
+                asset
+                for asset in set(engine.available) | set(engine.held) | set(balance_state)
+                if (
+                    engine.available.get(asset, Decimal(0)),
+                    engine.held.get(asset, Decimal(0)),
+                )
+                != (
+                    balance_state.get(asset, (Decimal(0), Decimal(0), 0))[0],
+                    balance_state.get(asset, (Decimal(0), Decimal(0), 0))[1],
+                )
+            )
+            for asset in changed_assets:
+                available = engine.available.get(asset, Decimal(0))
+                held = engine.held.get(asset, Decimal(0))
+                prior_balance = balance_state.get(asset)
+                if prior_balance is None:
+                    connection.execute(
+                        "INSERT INTO paper_asset_balances"
+                        "(account_id,asset,available,held,version) VALUES (%s,%s,%s,%s,1)",
+                        (account_id, asset, available, held),
+                    )
+                else:
+                    balance_update = connection.execute(
+                        "UPDATE paper_asset_balances SET available=%s,held=%s,version=%s "
+                        "WHERE account_id=%s AND asset=%s AND version=%s",
+                        (
+                            available,
+                            held,
+                            prior_balance[2] + 1,
+                            account_id,
+                            asset,
+                            prior_balance[2],
+                        ),
+                    )
+                    if balance_update.rowcount != 1:
+                        raise RuntimeError("PAPER_FILL_BALANCE_VERSION_CONFLICT")
+
+            new_fills = tuple(
+                item for key, item in engine.fills.items() if key not in before_fill_ids
+            )
+            new_lots = tuple(item for item in engine.lots if item.lot_id not in before_lot_ids)
+            new_consumptions = tuple(
+                item
+                for item in engine.consumptions
+                if item.consumption_id not in before_consumption_ids
+            )
+            new_journals = tuple(
+                item
+                for item in engine.journals.values()
+                if item.journal_id not in before_journal_ids
+            )
+            for fill_item in new_fills:
+                connection.execute(
+                    "INSERT INTO paper_fills"
+                    "(fill_id,order_id,source_key,broker_seq,quantity,price,fee_asset,fee_rate,"
+                    "fee_amount,fee_policy_version,symbol_rule_version,created_at) VALUES "
+                    "(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                    (
+                        fill_item.fill_id,
+                        fill_item.order_id,
+                        fill_item.observation_id,
+                        fill_item.broker_seq,
+                        fill_item.quantity,
+                        fill_item.price,
+                        fill_item.fee_asset,
+                        fill_item.fee_rate,
+                        fill_item.fee_amount,
+                        fill_item.fee_policy_version,
+                        fill_item.symbol_rule_version,
+                        received_at,
+                    ),
+                )
+            connection.execute(
+                "INSERT INTO paper_observation_effects"
+                "(account_id,source_key,order_id,effect_kind,fill_id,applied_at) "
+                "VALUES (%s,%s,%s,%s,%s,%s)",
+                (
+                    account_id,
+                    source_key,
+                    order_id,
+                    "FILL" if fill is not None else "NO_FILL",
+                    fill.fill_id if fill is not None else None,
+                    received_at,
+                ),
+            )
+            if fill is not None:
+                event_type = (
+                    "paper.order.filled.v1"
+                    if updated_order.status == OrderStatus.FILLED
+                    else "paper.order.partially-filled.v1"
+                )
+                outbox = _paper_outbox(
+                    event_type,
+                    "paper_order",
+                    order_id,
+                    updated_order.version,
+                    {"order_id": order_id, "fill_id": fill.fill_id},
+                    received_at,
+                )
+                connection.execute(
+                    "INSERT INTO paper_order_events"
+                    "(event_id,order_id,order_version,event_type,source_key,payload_hash,"
+                    "occurred_at) VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                    (
+                        outbox.event_id,
+                        order_id,
+                        updated_order.version,
+                        event_type,
+                        source_key,
+                        outbox.payload_hash,
+                        received_at,
+                    ),
+                )
+            self._fail(PersistenceStage.DOMAIN, _fail_after)
+            for lot_item in new_lots:
+                connection.execute(
+                    "INSERT INTO paper_inventory_lots"
+                    "(lot_id,account_id,asset,acquired_quantity,quote_cost,source_fill_id,"
+                    "acquired_at) VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                    (
+                        lot_item.lot_id,
+                        account_id,
+                        lot_item.asset,
+                        lot_item.acquired_quantity,
+                        lot_item.quote_cost,
+                        lot_item.source_fill_id,
+                        received_at,
+                    ),
+                )
+            for consumption_item in new_consumptions:
+                connection.execute(
+                    "INSERT INTO paper_lot_consumptions"
+                    "(consumption_id,lot_id,source_fill_id,quantity,quote_basis) "
+                    "VALUES (%s,%s,%s,%s,%s)",
+                    (
+                        consumption_item.consumption_id,
+                        consumption_item.lot_id,
+                        consumption_item.source_fill_id,
+                        consumption_item.quantity,
+                        consumption_item.quote_basis,
+                    ),
+                )
+            self._fail(PersistenceStage.LOT, _fail_after)
+            for journal in new_journals:
+                connection.execute(
+                    "INSERT INTO paper_ledger_transactions"
+                    "(transaction_id,account_id,business_event_type,business_event_id,"
+                    "journal_kind,reversal_of,replacement_for,posted_at) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
+                    (
+                        journal.journal_id,
+                        account_id,
+                        journal.business_event_type,
+                        journal.business_event_id,
+                        journal.journal_kind,
+                        journal.reversal_of,
+                        journal.replacement_for,
+                        received_at,
+                    ),
+                )
+            self._fail(PersistenceStage.LEDGER_HEADER, _fail_after)
+            for journal in new_journals:
+                for line_no, entry in enumerate(journal.entries):
+                    connection.execute(
+                        "INSERT INTO paper_ledger_entries"
+                        "(transaction_id,line_no,account_code,commodity,debit,credit) "
+                        "VALUES (%s,%s,%s,%s,%s,%s)",
+                        (
+                            journal.journal_id,
+                            line_no,
+                            entry.account,
+                            entry.commodity,
+                            entry.debit,
+                            entry.credit,
+                        ),
+                    )
+            self._fail(PersistenceStage.LEDGER_ENTRY, _fail_after)
+            if fill is not None:
+                self._append_outbox(connection, account_id, outbox)
+            self._fail(PersistenceStage.OUTBOX, _fail_after)
+            response = {
+                "result": "OBSERVATION_APPLIED",
+                "market_event_id": market_event_id,
+                "order_id": order_id,
+                "status": updated_order.status.value,
+                "fill_id": fill.fill_id if fill is not None else None,
+            }
+            return CommitResult(
+                True,
+                response,
+                self.semantic_digest(account_id, connection=connection),
+            )
 
     def cancel_phase7_order(
         self,
@@ -2188,10 +2694,20 @@ class PostgresPaperStore:
             if own_connection:
                 active.close()
 
-    def hydrate_engine(self, account_id: str) -> PaperEngine:
+    def hydrate_engine(
+        self,
+        account_id: str,
+        *,
+        connection: psycopg.Connection[object] | None = None,
+    ) -> PaperEngine:
         """Rebuild the deterministic aggregate from authoritative durable rows."""
+        if connection is None:
+            with psycopg.connect(self.database_url) as owned_connection:
+                return self.hydrate_engine(account_id, connection=owned_connection)
+
         engine = PaperEngine()
-        with psycopg.connect(self.database_url) as connection:
+        typed_connection = cast(psycopg.Connection[tuple[Any, ...]], connection)
+        with nullcontext(typed_connection) as connection:
             if connection.execute(
                 "SELECT count(*) FROM paper_accounts WHERE account_id=%s", (account_id,)
             ).fetchone() != (1,):
