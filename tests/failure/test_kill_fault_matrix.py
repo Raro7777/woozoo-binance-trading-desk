@@ -7,14 +7,13 @@ import os
 from pathlib import Path
 import subprocess
 import sys
-import tempfile
-import time
 from threading import Event
 from typing import Iterator
 
 import psycopg
 import pytest
 
+from docker_infrastructure_lock import docker_infrastructure_lock
 from paper_engine.persistence import KillCancelStage, PostgresPaperStore
 from risk_engine import KillActivation, PostgresKillSwitch
 from test_kill_switch_atomicity import OPEN_ORDER_COUNT, open_order_write
@@ -43,42 +42,13 @@ def run(*command: str) -> None:
 
 @contextmanager
 def isolated_postgres() -> Iterator[None]:
-    lock_path = Path(tempfile.gettempdir()) / "woozoo-docker-integration.lock"
-    with lock_path.open("a+b") as lock:
-        lock.seek(0)
-        lock.write(b"0")
-        lock.flush()
-        deadline = time.monotonic() + 60
-        while True:
-            try:
-                if os.name == "nt":
-                    import msvcrt
-
-                    lock.seek(0)
-                    msvcrt.locking(lock.fileno(), msvcrt.LK_NBLCK, 1)
-                else:
-                    import fcntl
-
-                    fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-                break
-            except OSError:
-                if time.monotonic() >= deadline:
-                    raise TimeoutError("could not acquire infrastructure lock")
-                time.sleep(0.1)
+    with docker_infrastructure_lock():
         try:
             run("docker", "compose", "up", "-d", "--wait", "postgres")
             run(sys.executable, "-m", "alembic", "upgrade", "head")
             yield
         finally:
             run("docker", "compose", "down", "-v")
-            if os.name == "nt":
-                lock.seek(0)
-                try:
-                    msvcrt.locking(lock.fileno(), msvcrt.LK_UNLCK, 1)
-                except PermissionError:
-                    pass
-            else:
-                fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
 
 
 def activation(fault: str) -> KillActivation:

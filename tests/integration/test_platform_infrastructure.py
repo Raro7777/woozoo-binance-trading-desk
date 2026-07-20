@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-from contextlib import contextmanager
 from dataclasses import replace
 import hashlib
 import json
@@ -9,8 +8,6 @@ import os
 from pathlib import Path
 import subprocess
 import sys
-import tempfile
-import time
 from typing import Iterator
 from uuid import uuid4
 from datetime import UTC, datetime, timedelta
@@ -23,6 +20,7 @@ import pytest
 
 from control_api.app import create_app
 from control_api.evidence_projection import PostgresEvidenceProjection
+from docker_infrastructure_lock import docker_infrastructure_lock
 from evidence_worker.builder import EvidenceBuildError
 from evidence_worker.persistence import PostgresEvidenceStore
 import evidence_worker.persistence as evidence_persistence
@@ -70,43 +68,9 @@ def get_health_response(app: object) -> httpx.Response:
     return asyncio.run(request())
 
 
-@contextmanager
-def integration_infrastructure_lock() -> Iterator[None]:
-    path = Path(tempfile.gettempdir()) / "woozoo-docker-integration.lock"
-    with path.open("a+b") as lock:
-        lock.seek(0)
-        lock.write(b"0")
-        lock.flush()
-        deadline = time.monotonic() + 60
-        while True:
-            try:
-                if os.name == "nt":
-                    import msvcrt
-
-                    lock.seek(0)
-                    msvcrt.locking(lock.fileno(), msvcrt.LK_NBLCK, 1)
-                else:
-                    import fcntl
-
-                    fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-                break
-            except OSError:
-                if time.monotonic() >= deadline:
-                    raise TimeoutError("could not acquire the Phase 1 infrastructure lock")
-                time.sleep(0.1)
-        try:
-            yield
-        finally:
-            if os.name == "nt":
-                lock.seek(0)
-                msvcrt.locking(lock.fileno(), msvcrt.LK_UNLCK, 1)
-            else:
-                fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
-
-
 @pytest.fixture(scope="module", autouse=True)
 def platform_services() -> Iterator[None]:
-    with integration_infrastructure_lock():
+    with docker_infrastructure_lock():
         run("docker", "compose", "up", "-d", "--wait", "postgres", "redis")
         try:
             run(sys.executable, "-m", "alembic", "upgrade", "head")

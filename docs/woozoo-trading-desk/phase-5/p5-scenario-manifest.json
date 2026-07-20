@@ -208,7 +208,7 @@
         "tests/failure/test_kill_cancel_identity.py::test_kill_cancel_id_binds_full_activation_and_order_ids"
       ],
       "source_sha256": [
-        "4bed2c0a014bc22672d8f05f9eff854f7a353f4857063f62f628638217f5e599",
+        "07afdb6fbb2b058f53b9e123c16dda43f3c5bc18a0026e26f61fb83fb5f25a81",
         "d52c59ec96c32ca1b66508c404f726f08646a0ac0f20183d1c3e48c983a8e277"
       ],
       "fault_cases": {
@@ -237,7 +237,7 @@
         "tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_attempt_keeps_postgres_active[redis_expiry]",
         "tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_attempt_keeps_postgres_active[unauthenticated_actor]"
       ],
-      "source_sha256": ["84e38ad23d1bdd54d093ea28c159d12a6187ea681293ff2d871a26e47e5f36ba"],
+      "source_sha256": ["970dc13a6a3651ed0dfe318822d77a2a4b7fa6dfdad9e80963ed7245fcb4d2ad"],
       "attempt_cases": {
         "timer": "tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_attempt_keeps_postgres_active[timer]",
         "ai": "tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_attempt_keeps_postgres_active[ai]",
@@ -268,13 +268,16 @@
         "tests/integration/test_risk_postgres_persistence.py::test_risk_writer_cannot_reset_or_decrease_the_kill_barrier",
         "tests/integration/test_risk_migration_contract.py::test_risk_migration_001_closes_authority_and_barrier_boundaries",
         "tests/integration/test_risk_migration_contract.py::test_phase_four_to_five_to_four_to_five_migration_cycle_is_recoverable",
+        "tests/integration/test_risk_migration_contract.py::test_preexisting_risk_login_and_direct_grants_survive_empty_downgrade",
         "tests/integration/test_risk_migration_contract.py::test_phase_five_downgrade_fails_closed_when_immutable_history_exists",
+        "tests/unit/test_docker_infrastructure_lock.py::test_shared_docker_lock_serializes_two_spawned_processes",
         "tests/integration/test_reconciliation_kill_handler.py::test_critical_reconciliation_mismatch_activates_kill_once_and_retries_idempotently"
       ],
       "source_sha256": [
-        "1b7ee764fa19f7788683d02d0b2ca3c411e5bfc699e4c72ebd8674cca85eea9a",
-        "fb4e94b8e3e8b0378687b6510c1d5545592187b32d7a649bc41f3940f362e632",
-        "5739ee58008b4808c879edd162825c2e3cb30b37cded1822e7d0a4dc66eb8b59"
+        "7900b119e9df6d9860e8037ce0b7ef4e2a35e77bdfbfd8d8e6137230a3dcd49b",
+        "58b728055ecd0abf03afacde2b83e24e76823cb3daa4910809fa01b7279140a4",
+        "aea6da965cec619e5b21f6be0292b6c70b4ebd96455c05094ca3f78b64c9c1e0",
+        "2b535782632937f52998dae8451f73e9fe32901efb2a8ac1ff7d1a41cf5203a0"
       ],
       "oracle": "Unique immutable Risk input authority, least privilege, critical reconciliation Kill, barrier locking and atomic outbox are preserved; empty P5 rolls back exactly while data-bearing downgrade fails before mutation."
     },

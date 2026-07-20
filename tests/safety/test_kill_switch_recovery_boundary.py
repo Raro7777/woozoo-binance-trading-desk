@@ -1,16 +1,15 @@
-from contextlib import contextmanager
 from datetime import UTC, datetime
 import os
 from pathlib import Path
 import subprocess
 import sys
-import tempfile
 import time
 from typing import Iterator
 
 import psycopg
 import pytest
 
+from docker_infrastructure_lock import docker_infrastructure_lock
 from risk_engine import KillActivation, PostgresKillSwitch
 
 
@@ -24,39 +23,9 @@ def run(*command: str) -> None:
     subprocess.run(command, cwd=ROOT, check=True, env={**os.environ, **ENVIRONMENT})
 
 
-@contextmanager
-def infrastructure_lock() -> Iterator[None]:
-    path = Path(tempfile.gettempdir()) / "woozoo-docker-integration.lock"
-    with path.open("a+b") as lock:
-        lock.seek(0)
-        lock.write(b"0")
-        lock.flush()
-        if os.name == "nt":
-            import msvcrt
-
-            msvcrt.locking(lock.fileno(), msvcrt.LK_LOCK, 1)
-        else:
-            import fcntl
-
-            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
-        try:
-            yield
-        finally:
-            if os.name == "nt":
-                lock.seek(0)
-                try:
-                    msvcrt.locking(lock.fileno(), msvcrt.LK_UNLCK, 1)
-                except PermissionError:
-                    # The Windows lock is already released if a restarted child
-                    # process briefly inherited and closed the shared handle.
-                    pass
-            else:
-                fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
-
-
 @pytest.fixture(scope="module")
 def active_kill() -> Iterator[tuple[str, int]]:
-    with infrastructure_lock():
+    with docker_infrastructure_lock():
         run("docker", "compose", "up", "-d", "--wait", "postgres", "redis")
         run(sys.executable, "-m", "alembic", "upgrade", "head")
         result = PostgresKillSwitch(DATABASE_URL).activate(

@@ -1,18 +1,15 @@
 from __future__ import annotations
 
-from contextlib import contextmanager
 from datetime import datetime, timezone
 import hashlib
 import os
 from pathlib import Path
 import subprocess
 import sys
-import tempfile
-import time
-from typing import Iterator
 
 import psycopg
 
+from docker_infrastructure_lock import docker_infrastructure_lock
 from paper_engine.persistence import PostgresPaperStore
 from risk_engine import KillActivation, PostgresKillSwitch
 from test_paper_postgres_persistence import complete_write
@@ -44,40 +41,6 @@ def normalized_phase4_function_digests(
         hashlib.sha256(" ".join(definition.split()).encode()).hexdigest()
         for definition in definitions
     )
-
-
-@contextmanager
-def infrastructure_lock() -> Iterator[None]:
-    path = Path(tempfile.gettempdir()) / "woozoo-docker-integration.lock"
-    with path.open("a+b") as lock:
-        lock.seek(0)
-        lock.write(b"0")
-        lock.flush()
-        deadline = time.monotonic() + 60
-        while True:
-            try:
-                if os.name == "nt":
-                    import msvcrt
-
-                    lock.seek(0)
-                    msvcrt.locking(lock.fileno(), msvcrt.LK_NBLCK, 1)
-                else:
-                    import fcntl
-
-                    fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-                break
-            except OSError:
-                if time.monotonic() >= deadline:
-                    raise TimeoutError("could not acquire infrastructure lock")
-                time.sleep(0.1)
-        try:
-            yield
-        finally:
-            if os.name == "nt":
-                lock.seek(0)
-                msvcrt.locking(lock.fileno(), msvcrt.LK_UNLCK, 1)
-            else:
-                fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
 
 
 def test_risk_migration_001_closes_authority_and_barrier_boundaries() -> None:
@@ -115,7 +78,7 @@ def test_risk_migration_001_closes_authority_and_barrier_boundaries() -> None:
 
 
 def test_phase_four_to_five_to_four_to_five_migration_cycle_is_recoverable() -> None:
-    with infrastructure_lock():
+    with docker_infrastructure_lock():
         run("docker", "compose", "down", "-v")
         run("docker", "compose", "up", "-d", "--wait", "postgres")
         try:
@@ -267,8 +230,36 @@ def test_phase_four_to_five_to_four_to_five_migration_cycle_is_recoverable() -> 
             run("docker", "compose", "down", "-v")
 
 
+def test_preexisting_risk_login_and_direct_grants_survive_empty_downgrade() -> None:
+    with docker_infrastructure_lock():
+        run("docker", "compose", "down", "-v")
+        run("docker", "compose", "up", "-d", "--wait", "postgres")
+        try:
+            run(sys.executable, "-m", "alembic", "upgrade", "20260719_0004")
+            with psycopg.connect(DATABASE_URL) as connection:
+                connection.execute("CREATE ROLE woozoo_risk_engine LOGIN CONNECTION LIMIT 7")
+                connection.execute("GRANT USAGE ON SCHEMA public TO woozoo_risk_engine")
+                connection.execute("GRANT SELECT ON outbox_events TO woozoo_risk_engine")
+            run(sys.executable, "-m", "alembic", "upgrade", "20260719_0005")
+            run(sys.executable, "-m", "alembic", "downgrade", "20260719_0004")
+            with psycopg.connect(DATABASE_URL) as connection:
+                assert connection.execute(
+                    "SELECT rolcanlogin,rolconnlimit FROM pg_roles "
+                    "WHERE rolname='woozoo_risk_engine'"
+                ).fetchone() == (True, 7)
+                assert connection.execute(
+                    "SELECT has_schema_privilege('woozoo_risk_engine','public','USAGE'),"
+                    "has_table_privilege('woozoo_risk_engine','outbox_events','SELECT'),"
+                    "has_table_privilege('woozoo_risk_engine','outbox_events','INSERT'),"
+                    "has_table_privilege('woozoo_risk_engine',"
+                    "'paper_reconciliation_checkpoints','SELECT')"
+                ).fetchone() == (True, True, False, False)
+        finally:
+            run("docker", "compose", "down", "-v")
+
+
 def test_phase_five_downgrade_fails_closed_when_immutable_history_exists() -> None:
-    with infrastructure_lock():
+    with docker_infrastructure_lock():
         run("docker", "compose", "down", "-v")
         run("docker", "compose", "up", "-d", "--wait", "postgres")
         try:

@@ -346,7 +346,9 @@ const actions = {
       "tests/integration/test_risk_postgres_persistence.py::test_risk_writer_cannot_reset_or_decrease_the_kill_barrier",
       "tests/integration/test_risk_migration_contract.py::test_risk_migration_001_closes_authority_and_barrier_boundaries",
       "tests/integration/test_risk_migration_contract.py::test_phase_four_to_five_to_four_to_five_migration_cycle_is_recoverable",
+      "tests/integration/test_risk_migration_contract.py::test_preexisting_risk_login_and_direct_grants_survive_empty_downgrade",
       "tests/integration/test_risk_migration_contract.py::test_phase_five_downgrade_fails_closed_when_immutable_history_exists",
+      "tests/unit/test_docker_infrastructure_lock.py::test_shared_docker_lock_serializes_two_spawned_processes",
       "tests/integration/test_reconciliation_kill_handler.py::test_critical_reconciliation_mismatch_activates_kill_once_and_retries_idempotently",
     ]);
   },

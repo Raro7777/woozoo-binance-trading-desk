@@ -29,6 +29,15 @@ def upgrade() -> None:
         $$ LANGUAGE plpgsql
     """)
     op.create_table(
+        "risk_migration_metadata",
+        sa.Column("migration_revision", sa.String(32), primary_key=True),
+        sa.Column("writer_role_created", sa.Boolean(), nullable=False),
+        sa.Column("schema_usage_preexisting", sa.Boolean(), nullable=False),
+        sa.Column("outbox_select_preexisting", sa.Boolean(), nullable=False),
+        sa.Column("outbox_insert_preexisting", sa.Boolean(), nullable=False),
+        sa.Column("reconciliation_select_preexisting", sa.Boolean(), nullable=False),
+    )
+    op.create_table(
         "risk_policy_versions",
         sa.Column("policy_version", sa.String(64), primary_key=True),
         sa.Column("policy_hash", sa.String(64), nullable=False, unique=True),
@@ -663,10 +672,55 @@ def upgrade() -> None:
     """)
 
     op.execute("""
-        DO $$ BEGIN
+        DO $$
+        DECLARE
+          role_created boolean := false;
+          role_oid oid;
+          schema_usage boolean := false;
+          outbox_select boolean := false;
+          outbox_insert boolean := false;
+          reconciliation_select boolean := false;
+        BEGIN
           IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='woozoo_risk_engine') THEN
             CREATE ROLE woozoo_risk_engine LOGIN;
+            role_created := true;
+          ELSE
+            SELECT oid INTO role_oid FROM pg_roles WHERE rolname='woozoo_risk_engine';
+            SELECT EXISTS (
+              SELECT 1 FROM pg_namespace namespace,
+                LATERAL aclexplode(COALESCE(
+                  namespace.nspacl,acldefault('n',namespace.nspowner))) acl
+              WHERE namespace.nspname='public' AND acl.grantee=role_oid
+                AND acl.privilege_type='USAGE'
+            ) INTO schema_usage;
+            SELECT EXISTS (
+              SELECT 1 FROM pg_class relation,
+                LATERAL aclexplode(COALESCE(
+                  relation.relacl,acldefault('r',relation.relowner))) acl
+              WHERE relation.oid='outbox_events'::regclass AND acl.grantee=role_oid
+                AND acl.privilege_type='SELECT'
+            ) INTO outbox_select;
+            SELECT EXISTS (
+              SELECT 1 FROM pg_class relation,
+                LATERAL aclexplode(COALESCE(
+                  relation.relacl,acldefault('r',relation.relowner))) acl
+              WHERE relation.oid='outbox_events'::regclass AND acl.grantee=role_oid
+                AND acl.privilege_type='INSERT'
+            ) INTO outbox_insert;
+            SELECT EXISTS (
+              SELECT 1 FROM pg_class relation,
+                LATERAL aclexplode(COALESCE(
+                  relation.relacl,acldefault('r',relation.relowner))) acl
+              WHERE relation.oid='paper_reconciliation_checkpoints'::regclass
+                AND acl.grantee=role_oid AND acl.privilege_type='SELECT'
+            ) INTO reconciliation_select;
           END IF;
+          INSERT INTO risk_migration_metadata(
+            migration_revision,writer_role_created,schema_usage_preexisting,
+            outbox_select_preexisting,outbox_insert_preexisting,
+            reconciliation_select_preexisting)
+          VALUES ('20260719_0005',role_created,schema_usage,outbox_select,
+                  outbox_insert,reconciliation_select);
         END $$
     """)
     op.execute("GRANT USAGE ON SCHEMA public TO woozoo_risk_engine")
@@ -716,6 +770,13 @@ def downgrade() -> None:
         "SELECT event_id FROM risk_outbox_links UNION "
         "SELECT event_id FROM outbox_events WHERE payload->>'producer'='risk-engine'"
     )
+    op.execute("""
+        CREATE TEMP TABLE phase5_role_cleanup AS
+        SELECT writer_role_created,schema_usage_preexisting,
+               outbox_select_preexisting,outbox_insert_preexisting,
+               reconciliation_select_preexisting
+        FROM risk_migration_metadata WHERE migration_revision='20260719_0005'
+    """)
     op.execute(r"""
         DO $$
         DECLARE saved record;
@@ -728,10 +789,27 @@ def downgrade() -> None:
         END $$
     """)
     op.drop_table("phase5_p4_function_backup")
-    op.execute("REVOKE ALL ON outbox_events FROM woozoo_risk_engine")
-    op.execute(
-        "REVOKE SELECT ON paper_reconciliation_checkpoints FROM woozoo_risk_engine"
-    )
+    op.execute("""
+        DO $$ BEGIN
+          IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='woozoo_risk_engine') THEN
+            IF NOT EXISTS (
+              SELECT 1 FROM phase5_role_cleanup WHERE outbox_select_preexisting
+            ) THEN
+              REVOKE SELECT ON outbox_events FROM woozoo_risk_engine;
+            END IF;
+            IF NOT EXISTS (
+              SELECT 1 FROM phase5_role_cleanup WHERE outbox_insert_preexisting
+            ) THEN
+              REVOKE INSERT ON outbox_events FROM woozoo_risk_engine;
+            END IF;
+            IF NOT EXISTS (
+              SELECT 1 FROM phase5_role_cleanup WHERE reconciliation_select_preexisting
+            ) THEN
+              REVOKE SELECT ON paper_reconciliation_checkpoints FROM woozoo_risk_engine;
+            END IF;
+          END IF;
+        END $$
+    """)
     op.execute("DROP FUNCTION IF EXISTS paper_lock_kill_barrier()")
     for table in (
         "paper_kill_cancel_items",
@@ -743,6 +821,7 @@ def downgrade() -> None:
         "kill_switch_events",
         "risk_decisions",
         "risk_policy_versions",
+        "risk_migration_metadata",
     ):
         op.drop_table(table)
     op.execute(
@@ -760,8 +839,13 @@ def downgrade() -> None:
     op.execute("DROP FUNCTION reject_risk_history_mutation()")
     op.execute("""
         DO $$ BEGIN
-          IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='woozoo_risk_engine') THEN
+          IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='woozoo_risk_engine')
+             AND NOT EXISTS (
+               SELECT 1 FROM phase5_role_cleanup WHERE schema_usage_preexisting
+             ) THEN
             REVOKE USAGE ON SCHEMA public FROM woozoo_risk_engine;
+          END IF;
+          IF EXISTS (SELECT 1 FROM phase5_role_cleanup WHERE writer_role_created) THEN
             DROP ROLE woozoo_risk_engine;
           END IF;
         END $$
