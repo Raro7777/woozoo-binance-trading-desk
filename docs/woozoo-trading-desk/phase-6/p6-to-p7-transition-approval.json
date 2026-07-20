@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "approval_id": "P6-TO-P7-20260720-01",
+  "from_phase": 6,
+  "to_phase": 7,
+  "approval_status": "approved",
+  "evidence_manifest": "docs/woozoo-trading-desk/phase-6/p6-acceptance-evidence-manifest.json",
+  "acceptance_evidence_digest": "6a1472efd1277f90656979dd6d73984468c20b7affdfad39dcc9941a848ef794",
+  "approval_prompt": "Phase 7 transition approval: approve P6 acceptance digest 6a1472efd1277f90656979dd6d73984468c20b7affdfad39dcc9941a848ef794",
+  "user_response": "P6 acceptance digest 6a1472efd1277f90656979dd6d73984468c20b7affdfad39dcc9941a848ef794 승인",
+  "binding_interpretation": "The user explicitly approved the exact Phase 6 acceptance evidence digest. This envelope authorizes only the Phase 6 to Phase 7 transition and does not authorize Phase 8, Testnet, private exchange, live trading, or other prohibited capabilities.",
+  "approved_by": "user",
+  "approved_at": "2026-07-20T04:22:42Z",
+  "recorded_by": "codex-orchestrator",
+  "recorded_at": "2026-07-20T04:22:42Z"
+}
