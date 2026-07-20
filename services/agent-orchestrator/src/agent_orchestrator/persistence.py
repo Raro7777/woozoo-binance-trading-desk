@@ -15,6 +15,7 @@ from platform_core.generated_contracts import (
     AGENT_REPORT_SCHEMA,
     ANALYSIS_AUDIT_SCHEMA,
     ANALYSIS_RUN_SCHEMA,
+    ANALYSIS_RUN_V2_SCHEMA,
     TRADE_PROPOSAL_SCHEMA,
 )
 
@@ -25,6 +26,7 @@ from .models import ROLE_ORDER, EvidenceContext, WorkflowResult
 _REPORT_VALIDATOR = Draft202012Validator(AGENT_REPORT_SCHEMA, format_checker=FormatChecker())
 _PROPOSAL_VALIDATOR = Draft202012Validator(TRADE_PROPOSAL_SCHEMA, format_checker=FormatChecker())
 _RUN_VALIDATOR = Draft202012Validator(ANALYSIS_RUN_SCHEMA, format_checker=FormatChecker())
+_RUN_V2_VALIDATOR = Draft202012Validator(ANALYSIS_RUN_V2_SCHEMA, format_checker=FormatChecker())
 _AUDIT_VALIDATOR = Draft202012Validator(ANALYSIS_AUDIT_SCHEMA, format_checker=FormatChecker())
 
 
@@ -34,6 +36,7 @@ class AgentPersistenceStage(StrEnum):
     PROPOSAL = "proposal"
     AUDIT = "audit"
     OUTBOX = "outbox"
+    RECEIPT = "receipt"
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,6 +45,24 @@ class PersistedAnalysis:
     run_id: str
     proposal_id: str | None
     audit_hash: str
+    outcome: str
+    hold_reason: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class AnalysisCommandReceipt:
+    idempotency_key: str
+    request_hash: str
+    evidence_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class AnalysisCommandReplay:
+    run_id: str
+    proposal_id: str | None
+    audit_hash: str
+    outcome: str
+    hold_reason: str | None
 
 
 def _timestamp(value: object) -> datetime:
@@ -71,6 +92,85 @@ class PostgresAgentStore:
         if stage == requested:
             raise RuntimeError(f"INJECTED_AGENT_FAILURE:{stage.value}")
 
+    @staticmethod
+    def _validate_command_identity(idempotency_key: str, request_hash: str) -> None:
+        if not 1 <= len(idempotency_key) <= 128:
+            raise ValueError("ANALYSIS_IDEMPOTENCY_KEY_INVALID")
+        if len(request_hash) != 64 or any(
+            character not in "0123456789abcdef" for character in request_hash
+        ):
+            raise ValueError("ANALYSIS_REQUEST_HASH_INVALID")
+
+    @staticmethod
+    def _command_replay(
+        requested_hash: str,
+        stored_hash: str,
+        receipt_run_id: str,
+        response: object,
+        run_payload: object,
+    ) -> AnalysisCommandReplay:
+        def valid_hash(value: object) -> bool:
+            return (
+                isinstance(value, str)
+                and len(value) == 64
+                and all(character in "0123456789abcdef" for character in value)
+            )
+
+        if stored_hash != requested_hash:
+            raise ValueError("ANALYSIS_IDEMPOTENCY_CONFLICT")
+        if (
+            not isinstance(response, dict)
+            or set(response) != {"run_id", "proposal_id", "audit_hash", "outcome"}
+            or not isinstance(run_payload, dict)
+            or response.get("run_id") != receipt_run_id
+            or response.get("run_id") != run_payload.get("run_id")
+            or response.get("proposal_id") != run_payload.get("proposal_id")
+            or response.get("audit_hash") != run_payload.get("audit_hash")
+            or response.get("outcome") != run_payload.get("outcome")
+            or response.get("outcome") not in {"COMPLETED", "HOLD"}
+        ):
+            raise ValueError("ANALYSIS_RECEIPT_INVALID")
+        run_id = response["run_id"]
+        proposal_id = response["proposal_id"]
+        audit_hash = response["audit_hash"]
+        outcome = response["outcome"]
+        hold_reason = run_payload.get("hold_reason")
+        if (
+            not valid_hash(run_id)
+            or not valid_hash(audit_hash)
+            or (proposal_id is not None and not valid_hash(proposal_id))
+            or (outcome == "COMPLETED" and (proposal_id is None or hold_reason is not None))
+            or (
+                outcome == "HOLD"
+                and (proposal_id is not None or not isinstance(hold_reason, str) or not hold_reason)
+            )
+        ):
+            raise ValueError("ANALYSIS_RECEIPT_INVALID")
+        return AnalysisCommandReplay(
+            run_id=run_id,
+            proposal_id=proposal_id,
+            audit_hash=audit_hash,
+            outcome=cast(str, outcome),
+            hold_reason=cast(str | None, hold_reason),
+        )
+
+    def lookup_command_receipt(
+        self, idempotency_key: str, request_hash: str
+    ) -> AnalysisCommandReplay | None:
+        """Return an immutable exact replay before consulting mutable Evidence selection."""
+
+        self._validate_command_identity(idempotency_key, request_hash)
+        with psycopg.connect(self.database_url) as connection:
+            prior = connection.execute(
+                "SELECT receipt.request_hash,receipt.run_id,receipt.response,run.payload "
+                "FROM agent_analysis_command_receipts receipt "
+                "JOIN analysis_runs run USING(run_id) WHERE receipt.idempotency_key=%s",
+                (idempotency_key,),
+            ).fetchone()
+        if prior is None:
+            return None
+        return self._command_replay(request_hash, prior[0], prior[1], prior[2], prior[3])
+
     def load_evidence(self, evidence_id: str) -> EvidenceContext | None:
         with psycopg.connect(self.database_url) as connection:
             rows = connection.execute(
@@ -92,7 +192,8 @@ class PostgresAgentStore:
                              'interval',feature.interval,'as_of',feature.as_of,
                              'value_text',feature.value_text,
                              'input_digest',feature.input_digest)::text
-                       END AS quoted_content
+                       END AS quoted_content,
+                       candle.event_time,candle.received_at,feature.as_of AS feature_as_of
                 FROM evidence_reader_v1 reader
                 LEFT JOIN evidence_candle_reader_v1 candle
                   ON candle.evidence_id=reader.evidence_id
@@ -107,6 +208,14 @@ class PostgresAgentStore:
         if not rows or any(row[8] is None for row in rows):
             return None
         first = rows[0]
+        as_of = first[3]
+        knowledge_cutoff = first[4]
+        future_contamination = any(
+            (row[9] is not None and row[9] > as_of)
+            or (row[10] is not None and row[10] > knowledge_cutoff)
+            or (row[11] is not None and row[11] > as_of)
+            for row in rows
+        )
         return EvidenceContext(
             evidence_id=first[0],
             evidence_digest=first[1],
@@ -116,21 +225,49 @@ class PostgresAgentStore:
             quality=first[5],
             item_ids=tuple(row[6] for row in rows),
             quoted_content=tuple(row[8] for row in rows),
+            future_contamination=future_contamination,
         )
+
+    def latest_healthy_evidence_id(self, symbol: str, observed_at: datetime) -> str | None:
+        if symbol not in {"BTCUSDT", "ETHUSDT"}:
+            raise ValueError("SYMBOL_NOT_ALLOWED")
+        if observed_at.tzinfo is None:
+            raise ValueError("OBSERVED_AT_MUST_BE_AWARE")
+        with psycopg.connect(self.database_url) as connection:
+            row = connection.execute(
+                """
+                SELECT evidence_id
+                FROM evidence_reader_v1
+                WHERE symbol=%s AND quality_status='healthy'
+                  AND as_of<=%s AND knowledge_cutoff<=%s
+                  AND as_of>=%s-interval '5 minutes'
+                GROUP BY evidence_id,as_of,knowledge_cutoff
+                ORDER BY as_of DESC,knowledge_cutoff DESC,evidence_id DESC
+                LIMIT 1
+                """,
+                (symbol, observed_at, observed_at, observed_at),
+            ).fetchone()
+        return None if row is None else cast(str, row[0])
 
     @staticmethod
     def _validate_graph(result: WorkflowResult) -> None:
         run = result.run
-        _RUN_VALIDATOR.validate(run)
+        if run.get("namespace") == "test":
+            _RUN_VALIDATOR.validate(run)
+        elif run.get("namespace") == "paper":
+            _RUN_V2_VALIDATOR.validate(run)
+        else:
+            raise ValueError("ANALYSIS_NAMESPACE_INVALID")
         _AUDIT_VALIDATOR.validate(result.audit)
         run_id = cast(str, run["run_id"])
-        expected_run_id = canonical_hash(
-            {
-                "evidence_digest": run["evidence_digest"],
-                "prompt_manifest_hash": run["prompt_manifest_hash"],
-                "workflow_hash": run["workflow_hash"],
-            }
-        )
+        run_identity = {
+            "evidence_digest": run["evidence_digest"],
+            "prompt_manifest_hash": run["prompt_manifest_hash"],
+            "workflow_hash": run["workflow_hash"],
+        }
+        if run["namespace"] == "paper":
+            run_identity["namespace"] = "paper"
+        expected_run_id = canonical_hash(run_identity)
         if run_id != expected_run_id:
             raise ValueError("RUN_ID_MISMATCH")
         expected_report_ids: list[str] = []
@@ -272,13 +409,51 @@ class PostgresAgentStore:
         self,
         result: WorkflowResult,
         *,
+        command_receipt: AnalysisCommandReceipt | None = None,
         _fail_after: AgentPersistenceStage | None = None,
     ) -> PersistedAnalysis:
         run = result.run
         run_id = cast(str, run["run_id"])
         self._validate_graph(result)
+        if command_receipt is not None:
+            self._validate_command_identity(
+                command_receipt.idempotency_key, command_receipt.request_hash
+            )
+            if command_receipt.evidence_id != run["evidence_id"]:
+                raise ValueError("ANALYSIS_RECEIPT_EVIDENCE_MISMATCH")
         with psycopg.connect(self.database_url) as connection:
             with connection.transaction():
+                if command_receipt is not None:
+                    connection.execute(
+                        "SELECT pg_advisory_xact_lock(hashtextextended(%s,0))",
+                        (f"paper-analysis-command:{command_receipt.idempotency_key}",),
+                    )
+                    prior = connection.execute(
+                        "SELECT receipt.request_hash,receipt.run_id,receipt.response,run.payload "
+                        "FROM agent_analysis_command_receipts receipt "
+                        "JOIN analysis_runs run USING(run_id) WHERE receipt.idempotency_key=%s",
+                        (command_receipt.idempotency_key,),
+                    ).fetchone()
+                    if prior is not None:
+                        replay = self._command_replay(
+                            command_receipt.request_hash,
+                            prior[0],
+                            prior[1],
+                            prior[2],
+                            prior[3],
+                        )
+                        return PersistedAnalysis(
+                            created=False,
+                            run_id=replay.run_id,
+                            proposal_id=replay.proposal_id,
+                            audit_hash=replay.audit_hash,
+                            outcome=replay.outcome,
+                            hold_reason=replay.hold_reason,
+                        )
+                connection.execute(
+                    "SELECT pg_advisory_xact_lock(hashtextextended(%s,0))",
+                    (f"paper-analysis-evidence:{run['evidence_id']}",),
+                )
                 evidence_rows = connection.execute(
                     """
                     SELECT evidence_digest,symbol,as_of,knowledge_cutoff,quality_status,item_id
@@ -301,7 +476,9 @@ class PostgresAgentStore:
                     _timestamp(run["as_of"]),
                     _timestamp(run["knowledge_cutoff"]),
                 )
-                if authoritative != supplied or first[4] != "healthy":
+                if authoritative != supplied or (
+                    result.proposal is not None and first[4] != "healthy"
+                ):
                     raise ValueError("AUTHORITATIVE_EVIDENCE_MISMATCH")
                 member_ids = {row[5] for row in evidence_rows}
                 cited_ids = {
@@ -317,12 +494,37 @@ class PostgresAgentStore:
                 if existing is not None:
                     if existing[0] != run:
                         raise ValueError("ANALYSIS_RUN_IDEMPOTENCY_CONFLICT")
-                    return PersistedAnalysis(
+                    persisted = PersistedAnalysis(
                         created=False,
                         run_id=run_id,
                         proposal_id=cast(str | None, run["proposal_id"]),
                         audit_hash=cast(str, run["audit_hash"]),
+                        outcome=cast(str, run["outcome"]),
+                        hold_reason=cast(str | None, run["hold_reason"]),
                     )
+                    if command_receipt is not None:
+                        connection.execute(
+                            "INSERT INTO agent_analysis_command_receipts("
+                            "idempotency_key,request_hash,evidence_id,run_id,response,created_at) "
+                            "VALUES (%s,%s,%s,%s,%s,%s)",
+                            (
+                                command_receipt.idempotency_key,
+                                command_receipt.request_hash,
+                                command_receipt.evidence_id,
+                                run_id,
+                                Jsonb(
+                                    {
+                                        "run_id": run_id,
+                                        "proposal_id": run["proposal_id"],
+                                        "audit_hash": run["audit_hash"],
+                                        "outcome": run["outcome"],
+                                    }
+                                ),
+                                _timestamp(result.audit["audited_at"]),
+                            ),
+                        )
+                        self._fail(AgentPersistenceStage.RECEIPT, _fail_after)
+                    return persisted
                 created_at = _timestamp(result.audit["audited_at"])
                 connection.execute(
                     """
@@ -461,9 +663,33 @@ class PostgresAgentStore:
                         (event["event_id"], run_id),
                     )
                 self._fail(AgentPersistenceStage.OUTBOX, _fail_after)
+                if command_receipt is not None:
+                    connection.execute(
+                        "INSERT INTO agent_analysis_command_receipts("
+                        "idempotency_key,request_hash,evidence_id,run_id,response,created_at) "
+                        "VALUES (%s,%s,%s,%s,%s,%s)",
+                        (
+                            command_receipt.idempotency_key,
+                            command_receipt.request_hash,
+                            command_receipt.evidence_id,
+                            run_id,
+                            Jsonb(
+                                {
+                                    "run_id": run_id,
+                                    "proposal_id": proposal_id,
+                                    "audit_hash": result.audit["audit_hash"],
+                                    "outcome": run["outcome"],
+                                }
+                            ),
+                            created_at,
+                        ),
+                    )
+                    self._fail(AgentPersistenceStage.RECEIPT, _fail_after)
         return PersistedAnalysis(
             created=True,
             run_id=run_id,
             proposal_id=proposal_id,
             audit_hash=cast(str, result.audit["audit_hash"]),
+            outcome=cast(str, run["outcome"]),
+            hold_reason=cast(str | None, run["hold_reason"]),
         )

@@ -31,10 +31,11 @@ def test_sec_002_agent_has_no_execution_or_exchange_capability() -> None:
     assert '"tool_allowlist": []' in (SERVICE / "prompts.py").read_text("utf-8")
 
 
-def test_sec_002_active_api_has_no_agent_or_proposal_route() -> None:
+def test_sec_002_phase7_api_exposes_analysis_command_without_ai_execution_capability() -> None:
     openapi = (ROOT / "packages/contracts/spec/openapi.v1.json").read_text("utf-8").lower()
     app = (ROOT / "services/control-api/src/control_api/app.py").read_text("utf-8").lower()
-    for token in ("analysis-runs", "trade-proposals", "agent-orchestrator"):
+    assert '"/api/v1/analysis-runs"' in openapi
+    for token in ("trade-proposals", "agent-orchestrator", "/internal/"):
         assert token not in openapi
         assert token not in app
 

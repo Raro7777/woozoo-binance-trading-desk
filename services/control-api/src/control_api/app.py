@@ -7,7 +7,8 @@ from datetime import datetime
 import os
 from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from platform_core.config import PlatformSettings
@@ -16,6 +17,12 @@ from platform_core.primitives import new_request_id, utc_now
 from platform_core.redaction import redact
 
 from .dependencies import DependencySnapshot, HealthProbe, PlatformHealthProbe
+from .command_ports import (
+    PostgresAgentAnalysisPort,
+    PostgresPaperCommandPort,
+    PostgresRiskCommandPort,
+    PostgresRiskEvaluationPort,
+)
 from .evidence_projection import (
     EVIDENCE_ID_PATTERN,
     EvidenceProjection,
@@ -27,6 +34,9 @@ from .market_projection import (
     MarketStatusProjection,
     PostgresMarketStatusProjection,
 )
+from .security import LocalOperatorSecurity
+from .trading_room import PostgresTradingRoom, TradingRoom
+from .trading_room_routes import load_local_security, register_trading_room_routes
 
 
 class ContractBoundFastAPI(FastAPI):
@@ -81,6 +91,8 @@ def create_app(
     probe: HealthProbe | None = None,
     market_projection: MarketStatusProjection | None = None,
     evidence_projection: EvidenceProjection | None = None,
+    operator_security: LocalOperatorSecurity | None = None,
+    trading_room: TradingRoom | None = None,
 ) -> FastAPI:
     values = os.environ if environment is None else environment
     settings = PlatformSettings.from_mapping(values).require_service_dependencies()
@@ -89,6 +101,21 @@ def create_app(
     market_status = market_projection or PostgresMarketStatusProjection(settings.database_url)
     evidence_reader = evidence_projection or PostgresEvidenceProjection(settings.database_url)
     app = ContractBoundFastAPI(docs_url=None, openapi_url=None, redoc_url=None)
+
+    @app.exception_handler(RequestValidationError)
+    async def sanitized_request_validation_error(
+        request: Request, error: RequestValidationError
+    ) -> JSONResponse:
+        del request, error
+        return JSONResponse(
+            {
+                "error": {
+                    "code": "REQUEST_VALIDATION_FAILED",
+                    "message": "request validation failed",
+                }
+            },
+            status_code=422,
+        )
 
     @app.get(HEALTH_PATH)
     def get_platform_health() -> JSONResponse:
@@ -216,5 +243,38 @@ def create_app(
         }
         envelope["meta"] = {"resource_version": None, "next_cursor": None}
         return JSONResponse(redact(envelope))
+
+    local_security = operator_security or load_local_security(values)
+    if local_security is not None:
+        room = trading_room
+        if room is None:
+            control_database_url = values.get("CONTROL_DATABASE_URL", "").strip()
+            if not control_database_url:
+                raise RuntimeError(
+                    "CONTROL_DATABASE_URL is required for the Postgres Trading Room authority"
+                )
+            risk_database_url = values.get("RISK_DATABASE_URL", "").strip()
+            paper_database_url = values.get("PAPER_DATABASE_URL", "").strip()
+            agent_database_url = values.get("AGENT_DATABASE_URL", "").strip()
+            room = PostgresTradingRoom(
+                control_database_url,
+                risk_commands=(
+                    PostgresRiskCommandPort(risk_database_url) if risk_database_url else None
+                ),
+                paper_commands=(
+                    PostgresPaperCommandPort(paper_database_url) if paper_database_url else None
+                ),
+                agent_analysis=(
+                    PostgresAgentAnalysisPort(agent_database_url) if agent_database_url else None
+                ),
+                risk_evaluation=(
+                    PostgresRiskEvaluationPort(risk_database_url) if risk_database_url else None
+                ),
+            )
+        register_trading_room_routes(
+            app,
+            local_security,
+            room,
+        )
 
     return app

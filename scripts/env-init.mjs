@@ -11,15 +11,18 @@ const validate = (text) => {
     .split(/\r?\n/)
     .filter(Boolean)
     .map((line) => line.split("=", 1)[0]);
-  const expected = ["TRADING_MODE", "DATABASE_URL", "MARKET_DATABASE_URL", "EVIDENCE_DATABASE_URL", "PAPER_DATABASE_URL", "REDIS_URL", "MARKET_DATA_SOURCE"];
+  const expected = ["TRADING_MODE", "DATABASE_URL", "CONTROL_DATABASE_URL", "MARKET_DATABASE_URL", "EVIDENCE_DATABASE_URL", "AGENT_DATABASE_URL", "RISK_DATABASE_URL", "PAPER_DATABASE_URL", "PAPER_AUTHORIZATION_POLL_INTERVAL_MS", "PAPER_RECONCILIATION_INTERVAL_MS", "REDIS_URL", "MARKET_DATA_SOURCE", "LLM_PROVIDER", "LOCAL_OPERATOR_ORIGIN", "LOCAL_OPERATOR_VERIFIER_FILE"];
   if (keys.length !== expected.length || keys.some((key, index) => key !== expected[index])) {
-    throw new Error("environment schema must contain only the approved Phase 4 keys");
+    throw new Error("environment schema must contain only the approved Phase 7 keys");
   }
   if (!text.startsWith("TRADING_MODE=paper\n")) {
     throw new Error("environment schema must explicitly select paper mode");
   }
-  if (!text.endsWith("MARKET_DATA_SOURCE=recorded\n")) {
+  if (!text.includes("\nMARKET_DATA_SOURCE=recorded\n")) {
     throw new Error("environment schema must default public collection to recorded input");
+  }
+  if (!text.endsWith("LOCAL_OPERATOR_VERIFIER_FILE=.secrets/operator.argon2id\n")) {
+    throw new Error("operator bootstrap must use the local verifier file boundary");
   }
 };
 

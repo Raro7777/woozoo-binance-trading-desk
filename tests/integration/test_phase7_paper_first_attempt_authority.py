@@ -1,0 +1,1047 @@
+from __future__ import annotations
+
+import asyncio
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
+import os
+from pathlib import Path
+import subprocess
+import sys
+from threading import Event
+from typing import Iterator
+
+import psycopg
+from psycopg.types.json import Jsonb
+import pytest
+from jsonschema import Draft202012Validator, FormatChecker
+from referencing import Registry, Resource
+
+from agent_orchestrator import (
+    AgentWorkflow,
+    EvidenceContext,
+    MockLlmProvider,
+    bind_paper_risk_input,
+)
+from docker_infrastructure_lock import docker_infrastructure_lock
+from paper_engine.persistence import Phase7AuthorizationWorker, PostgresPaperStore
+from platform_core import canonical_hash
+from platform_core.generated_contracts import (
+    PAPER_DOMAIN_EVENTS_V2_SCHEMA,
+    PAPER_ORDER_V2_SCHEMA,
+)
+from risk_engine import KillActivation, PostgresKillSwitch, evaluate_risk
+from test_risk_engine import risk_input as base_risk_input
+
+
+ROOT = Path(__file__).parents[2]
+DATABASE_URL = "postgresql://postgres@127.0.0.1:5433/woozoo"
+PAPER_WRITER_URL = "postgresql://woozoo_paper_engine@127.0.0.1:5433/woozoo"
+ACCOUNT_ID = "c71f45a74649ecfbc2f897ed1ced77309accd4dbbc069c9cd425754204c09b3e"
+ENVIRONMENT = {"TRADING_MODE": "paper", "DATABASE_URL": DATABASE_URL}
+
+
+def _validate_phase7_event(payload: object) -> None:
+    registry = Registry().with_resource(
+        "woozoo.paper-domain-events/paper-order.v2.json",
+        Resource.from_contents(PAPER_ORDER_V2_SCHEMA),
+    )
+    Draft202012Validator(
+        PAPER_DOMAIN_EVENTS_V2_SCHEMA,
+        registry=registry,
+        format_checker=FormatChecker(),
+    ).validate(payload)
+
+
+def _seed_operator_csrf(suffix: str, observed_at: datetime) -> tuple[str, str]:
+    session_digest = canonical_hash({"operator-session": suffix})
+    csrf_digest = canonical_hash({"operator-csrf": suffix})
+    with psycopg.connect(DATABASE_URL) as connection:
+        connection.execute(
+            "INSERT INTO local_operators(actor_id,argon2id_phc,created_at) "
+            "VALUES ('operator-local-1',%s,%s)",
+            ("$argon2id$" + "x" * 40, observed_at - timedelta(minutes=2)),
+        )
+        connection.execute(
+            "INSERT INTO operator_sessions"
+            "(session_digest,actor_id,issued_at,last_seen_at,idle_expires_at,"
+            "absolute_expires_at,revoked_at) VALUES "
+            "(%s,'operator-local-1',%s,%s,%s,%s,NULL)",
+            (
+                session_digest,
+                observed_at - timedelta(minutes=2),
+                observed_at - timedelta(minutes=1),
+                observed_at + timedelta(minutes=9),
+                observed_at + timedelta(hours=1),
+            ),
+        )
+        connection.execute(
+            "INSERT INTO session_csrf_tokens"
+            "(csrf_token_digest,session_digest,issued_at,expires_at,consumed_at) "
+            "VALUES (%s,%s,%s,%s,%s)",
+            (
+                csrf_digest,
+                session_digest,
+                observed_at - timedelta(minutes=1),
+                observed_at + timedelta(minutes=9),
+                observed_at - timedelta(seconds=1),
+            ),
+        )
+    return session_digest, csrf_digest
+
+
+def run(*command: str) -> None:
+    subprocess.run(command, cwd=ROOT, check=True, env={**os.environ, **ENVIRONMENT})
+
+
+@pytest.fixture()
+def postgres() -> Iterator[None]:
+    with docker_infrastructure_lock():
+        run("docker", "compose", "down", "-v")
+        run("docker", "compose", "up", "-d", "--wait", "postgres")
+        try:
+            run(sys.executable, "-m", "alembic", "upgrade", "head")
+            yield
+        finally:
+            run("docker", "compose", "down", "-v")
+
+
+def _seed_authorization(
+    suffix: str, *, healthy_reconciliation: bool, book_age_seconds: int = 0
+) -> tuple[str, str]:
+    store = PostgresPaperStore(PAPER_WRITER_URL)
+    checkpoint_id = f"phase7-{suffix}"
+    if healthy_reconciliation:
+        checkpoint_input = store.semantic_digest(ACCOUNT_ID)
+        with psycopg.connect(PAPER_WRITER_URL) as connection:
+            connection.execute(
+                "INSERT INTO paper_reconciliation_checkpoints"
+                "(checkpoint_id,account_id,input_digest,output_digest,status,mismatch_codes,"
+                "created_at) VALUES (%s,%s,%s,%s,'HEALTHY','[]'::jsonb,%s)",
+                (
+                    checkpoint_id,
+                    ACCOUNT_ID,
+                    checkpoint_input,
+                    canonical_hash({"input": checkpoint_input, "mismatches": []}),
+                    datetime.now(UTC),
+                ),
+            )
+        reconciliation_hash = canonical_hash(
+            {"checkpoint_id": checkpoint_id, "health": "HEALTHY", "mismatch_codes": []}
+        )
+    else:
+        # Risk binds a structurally healthy checkpoint reference, while the
+        # execution-time authority check proves the referenced row is absent.
+        reconciliation_hash = canonical_hash(
+            {"checkpoint_id": checkpoint_id, "health": "HEALTHY", "mismatch_codes": []}
+        )
+    ledger_snapshot_hash = store.semantic_digest(ACCOUNT_ID)
+    now = datetime.now(UTC)
+    expires_at = now + timedelta(minutes=5)
+    authorization_id = canonical_hash({"authorization": suffix})
+    request_hash = canonical_hash({"authorization_input": suffix})
+    approval_id = canonical_hash({"approval": suffix})
+    approval_hash = canonical_hash({"approval_payload": suffix})
+    preview_without_hash: dict[str, object] = {
+        "symbol": "BTCUSDT",
+        "side": "BUY",
+        "order_type": "LIMIT",
+        "time_in_force": "GTC",
+        "quantity": "0.001000000000000000",
+        "limit_price": "10000.000000000000000000",
+        "worst_case_fee": "0.010000000000000000",
+        "worst_case_hold": "10.010000000000000000",
+        "worst_case_notional": "10.010000000000000000",
+        "best_bid": "9999.000000000000000000",
+        "best_ask": "10000.000000000000000000",
+        "expected_slippage_inputs": {"method": "limit-vs-book-v1"},
+    }
+    preview_hash = canonical_hash(preview_without_hash)
+    preview = {**preview_without_hash, "paper_order_preview_hash": preview_hash}
+    evidence_id = canonical_hash({"evidence": suffix})
+    evidence_hash = canonical_hash({"evidence_payload": suffix})
+    authorized_data: dict[str, object] = {
+        "evidence_id": evidence_id,
+        "evidence_hash": evidence_hash,
+        "as_of": now.isoformat().replace("+00:00", "Z"),
+        "knowledge_cutoff": now.isoformat().replace("+00:00", "Z"),
+        "freshness": "FRESH",
+        "quality": "HEALTHY",
+        "future_contamination": False,
+        "watermark_complete": True,
+    }
+    evidence_time = now.isoformat().replace("+00:00", "Z")
+    workflow = asyncio.run(
+        AgentWorkflow(MockLlmProvider(), clock=lambda: evidence_time, namespace="paper").run(
+            EvidenceContext(
+                evidence_id=evidence_id,
+                evidence_digest=evidence_hash,
+                symbol="BTCUSDT",
+                as_of=evidence_time,
+                knowledge_cutoff=evidence_time,
+                quality="healthy",
+                item_ids=(canonical_hash({"evidence-item": suffix}),),
+                quoted_content=("immutable public market observation",),
+            )
+        )
+    )
+    assert workflow.proposal is not None
+    proposal = workflow.proposal
+    proposal_id = str(proposal["proposal_id"])
+    proposal_hash = str(proposal["proposal_hash"])
+    risk_base = base_risk_input()
+    risk_base["data"] = authorized_data
+    risk_base["order_preview"] = preview
+    portfolio = risk_base["portfolio"]
+    assert isinstance(portfolio, dict)
+    positions = portfolio["positions"]
+    assert isinstance(positions, dict)
+    positions["BTCUSDT"] = {"available": "0", "held": "0", "midpoint": "9999.5"}
+    positions["ETHUSDT"] = {"available": "0", "held": "0", "midpoint": "2000"}
+    risk_base["market_books"] = {
+        "BTCUSDT": {"best_bid": "9999", "best_ask": "10000"},
+        "ETHUSDT": {"best_bid": "1999", "best_ask": "2001"},
+    }
+    portfolio["snapshot_hash"] = canonical_hash(
+        {key: value for key, value in portfolio.items() if key != "snapshot_hash"}
+    )
+    reconciliation = risk_base["reconciliation"]
+    assert isinstance(reconciliation, dict)
+    reconciliation.update(
+        {
+            "checkpoint_id": checkpoint_id,
+            "health": "HEALTHY",
+            "mismatch_codes": [],
+        }
+    )
+    reconciliation["checkpoint_hash"] = reconciliation_hash
+    clock = risk_base["decision_clock"]
+    assert isinstance(clock, dict)
+    clock["decision_as_of"] = evidence_time
+    risk_input = bind_paper_risk_input(risk_base, proposal)
+    risk_decision = evaluate_risk(risk_input)
+    assert risk_decision.verdict == "ALLOWED"
+    risk_input_digest = risk_decision.risk_input_digest
+    risk_hash = risk_decision.decision_hash
+    risk_id = canonical_hash(["risk-decision", risk_hash])
+    data_state_hash = canonical_hash(authorized_data)
+    bound_portfolio = risk_input["portfolio"]
+    assert isinstance(bound_portfolio, dict)
+    portfolio_snapshot_hash = str(bound_portfolio["snapshot_hash"])
+    book_observed_at = now - timedelta(seconds=book_age_seconds)
+    with psycopg.connect(DATABASE_URL) as connection:
+        connection.execute("SET session_replication_role='replica'")
+        connection.execute(
+            "INSERT INTO evidence_snapshots"
+            "(evidence_id,evidence_digest,symbol,as_of,knowledge_cutoff,recipe_version,"
+            "input_digest,quality_status,quality_reasons,collector_session_id,"
+            "watermark_digest,created_at) VALUES (%s,%s,'BTCUSDT',%s,%s,"
+            "'woozoo.evidence.closed-candles-approved-features/v1',%s,'healthy',"
+            "'[]'::jsonb,'00000000-0000-0000-0000-000000000001',%s,%s)",
+            (
+                evidence_id,
+                evidence_hash,
+                now,
+                now,
+                canonical_hash({"evidence_input": suffix}),
+                canonical_hash({"watermark": suffix}),
+                now,
+            ),
+        )
+        connection.execute(
+            "INSERT INTO evidence_snapshots"
+            "(evidence_id,evidence_digest,symbol,as_of,knowledge_cutoff,recipe_version,"
+            "input_digest,quality_status,quality_reasons,collector_session_id,"
+            "watermark_digest,created_at) VALUES (%s,%s,'ETHUSDT',%s,%s,"
+            "'woozoo.evidence.closed-candles-approved-features/v1',%s,'healthy',"
+            "'[]'::jsonb,'00000000-0000-0000-0000-000000000001',%s,%s)",
+            (
+                canonical_hash({"eth-evidence": suffix}),
+                canonical_hash({"eth-evidence-payload": suffix}),
+                now,
+                now,
+                canonical_hash({"eth-evidence-input": suffix}),
+                canonical_hash({"eth-watermark": suffix}),
+                now,
+            ),
+        )
+        for index, (book_symbol, bid, ask) in enumerate(
+            (("BTCUSDT", "9999", "10000"), ("ETHUSDT", "1999", "2001")), start=1
+        ):
+            connection.execute(
+                "INSERT INTO normalized_market_events"
+                "(id,raw_event_id,event_type,schema_version,source,symbol,event_time,received_at,"
+                "sequence,raw_payload_hash,correlation_id,quality_status,quality_reasons,"
+                "stream_watermark,payload) VALUES (%s,%s,'book_ticker',"
+                "'woozoo.market-event/v1','binance_spot_public',%s,%s,%s,%s,%s,%s,"
+                "'healthy','[]'::jsonb,%s,%s)",
+                (
+                    canonical_hash({"book": suffix, "symbol": book_symbol}),
+                    canonical_hash({"raw": suffix, "symbol": book_symbol}),
+                    book_symbol,
+                    book_observed_at,
+                    book_observed_at,
+                    index,
+                    canonical_hash({"raw_hash": suffix, "symbol": book_symbol}),
+                    f"phase7-{suffix}-{book_symbol}",
+                    Jsonb({"last_sequence": index}),
+                    Jsonb({"bid_price": bid, "ask_price": ask}),
+                ),
+            )
+        connection.execute(
+            "INSERT INTO risk_decisions"
+            "(decision_id,risk_input_digest,risk_input,decision_hash,verdict,primary_reason,"
+            "ordered_reason_codes,policy_version,proposal_hash,portfolio_snapshot_hash,"
+            "data_state_hash,paper_order_preview_hash,reconciliation_checkpoint_hash,"
+            "kill_switch_version,decision_as_of,recorded_at,proposal_id) VALUES "
+            "(%s,%s,%s,%s,'ALLOWED','RISK_ALLOWED',%s,'woozoo.risk-policy/v1',%s,%s,%s,"
+            "%s,%s,0,%s,%s,%s)",
+            (
+                risk_id,
+                risk_input_digest,
+                Jsonb(risk_input),
+                risk_hash,
+                Jsonb(["RISK_ALLOWED"]),
+                proposal_hash,
+                portfolio_snapshot_hash,
+                data_state_hash,
+                preview_hash,
+                reconciliation_hash,
+                now,
+                now,
+                proposal_id,
+            ),
+        )
+        risk_event_data = {
+            "decision_schema_version": risk_decision.decision_schema_version,
+            "decision_id": risk_id,
+            "risk_input_digest": risk_input_digest,
+            "decision_hash": risk_hash,
+            "verdict": risk_decision.verdict,
+            "primary_reason": risk_decision.primary_reason_code,
+            "ordered_reason_codes": list(risk_decision.ordered_reason_codes),
+            "policy_version": "woozoo.risk-policy/v1",
+            "proposal_hash": proposal_hash,
+            "portfolio_snapshot_hash": portfolio_snapshot_hash,
+            "data_state_hash": data_state_hash,
+            "paper_order_preview_hash": preview_hash,
+            "reconciliation_checkpoint_hash": reconciliation_hash,
+            "kill_switch_version": 0,
+            "decision_as_of": now.isoformat(),
+        }
+        risk_event_id = canonical_hash(["event", "risk.decision.recorded.v2", risk_id, "1"])
+        risk_event_payload_hash = canonical_hash(risk_event_data)
+        connection.execute(
+            "INSERT INTO outbox_events"
+            "(event_id,event_type,payload,payload_hash,occurred_at,aggregate_type,"
+            "aggregate_id,aggregate_version) VALUES "
+            "(%s,'risk.decision.recorded.v2',%s,%s,%s,'risk_decision',%s,1)",
+            (
+                risk_event_id,
+                Jsonb(
+                    {
+                        "spec_version": "woozoo.event/v1",
+                        "event_id": risk_event_id,
+                        "event_type": "risk.decision.recorded.v2",
+                        "event_version": 2,
+                        "occurred_at": now.isoformat(),
+                        "producer": "risk-engine",
+                        "activation_phase": 7,
+                        "aggregate_id": risk_id,
+                        "aggregate_version": 1,
+                        "payload_hash": risk_event_payload_hash,
+                        "data": risk_event_data,
+                    }
+                ),
+                risk_event_payload_hash,
+                now,
+                risk_id,
+            ),
+        )
+        connection.execute(
+            "INSERT INTO risk_outbox_links(event_id,aggregate_kind,aggregate_id) "
+            "VALUES (%s,'risk-decision',%s)",
+            (risk_event_id, risk_id),
+        )
+        connection.execute(
+            "INSERT INTO paper_approvals"
+            "(approval_id,proposal_id,proposal_hash,risk_decision_id,risk_decision_hash,"
+            "risk_input_digest,risk_policy_version,paper_order_preview,"
+            "paper_order_preview_hash,actor_id,session_digest,csrf_token_digest,origin_hash,"
+            "decision,approval_nonce,expected_kill_switch_version,expected_portfolio_version,"
+            "expected_ledger_version,decided_at,expires_at,payload_hash) VALUES "
+            "(%s,%s,%s,%s,%s,%s,'woozoo.risk-policy/v1',%s,%s,'operator-local-1',%s,%s,%s,"
+            "'APPROVED',%s,0,0,0,%s,%s,%s)",
+            (
+                approval_id,
+                proposal_id,
+                proposal_hash,
+                risk_id,
+                risk_hash,
+                risk_input_digest,
+                Jsonb(preview),
+                preview_hash,
+                canonical_hash({"session": suffix}),
+                canonical_hash({"csrf": suffix}),
+                canonical_hash({"origin": suffix}),
+                f"approval-nonce-{suffix}-0000000000000000",
+                now,
+                expires_at,
+                approval_hash,
+            ),
+        )
+        connection.execute(
+            "INSERT INTO paper_execution_authorizations"
+            "(authorization_id,namespace,approval_id,approval_hash,approval_nonce_hash,"
+            "authorization_nonce,proposal_id,proposal_hash,risk_decision_id,risk_decision_hash,"
+            "risk_input_digest,risk_policy_version,paper_order_preview_hash,"
+            "authorization_input_digest,current_data_state_hash,current_data_as_of,"
+            "current_knowledge_cutoff,kill_switch_version,reconciliation_checkpoint_hash,"
+            "ledger_snapshot_hash,paper_account_id,issued_at,expires_at) VALUES "
+            "(%s,'paper',%s,%s,%s,%s,%s,%s,%s,%s,%s,'woozoo.risk-policy/v1',%s,%s,%s,%s,%s,"
+            "0,%s,%s,%s,%s,%s)",
+            (
+                authorization_id,
+                approval_id,
+                approval_hash,
+                canonical_hash({"approval_nonce": suffix}),
+                f"authorization-nonce-{suffix}-000000000000",
+                proposal_id,
+                proposal_hash,
+                risk_id,
+                risk_hash,
+                risk_input_digest,
+                preview_hash,
+                request_hash,
+                data_state_hash,
+                now,
+                now,
+                reconciliation_hash,
+                ledger_snapshot_hash,
+                ACCOUNT_ID,
+                now,
+                expires_at,
+            ),
+        )
+        approval_event_id = canonical_hash(
+            ["event", "paper.approval.recorded.v1", approval_id, "1"]
+        )
+        approval_data = {"approval_id": approval_id, "payload_hash": approval_hash}
+        approval_payload_hash = canonical_hash(approval_data)
+        connection.execute(
+            "INSERT INTO outbox_events"
+            "(event_id,event_type,payload,payload_hash,occurred_at,aggregate_type,"
+            "aggregate_id,aggregate_version) VALUES "
+            "(%s,'paper.approval.recorded.v1',%s,%s,%s,'paper_approval',%s,1)",
+            (
+                approval_event_id,
+                Jsonb(
+                    {
+                        "spec_version": "woozoo.event/v1",
+                        "event_id": approval_event_id,
+                        "event_type": "paper.approval.recorded.v1",
+                        "event_version": 2,
+                        "occurred_at": now.isoformat(),
+                        "producer": "risk-engine",
+                        "activation_phase": 7,
+                        "aggregate_id": approval_id,
+                        "aggregate_version": 1,
+                        "payload_hash": approval_payload_hash,
+                        "data": approval_data,
+                    }
+                ),
+                approval_payload_hash,
+                now,
+                approval_id,
+            ),
+        )
+        connection.execute(
+            "INSERT INTO risk_outbox_links(event_id,aggregate_kind,aggregate_id) "
+            "VALUES (%s,'paper-approval',%s)",
+            (approval_event_id, approval_id),
+        )
+        issued_event_id = canonical_hash(
+            ["event", "paper.authorization.issued.v1", authorization_id, "1"]
+        )
+        issued_data = {
+            "authorization_id": authorization_id,
+            "authorization_input_digest": request_hash,
+        }
+        issued_payload_hash = canonical_hash(issued_data)
+        connection.execute(
+            "INSERT INTO outbox_events"
+            "(event_id,event_type,payload,payload_hash,occurred_at,aggregate_type,"
+            "aggregate_id,aggregate_version) VALUES "
+            "(%s,'paper.authorization.issued.v1',%s,%s,%s,'paper_authorization',%s,1)",
+            (
+                issued_event_id,
+                Jsonb(
+                    {
+                        "spec_version": "woozoo.event/v1",
+                        "event_id": issued_event_id,
+                        "event_type": "paper.authorization.issued.v1",
+                        "event_version": 2,
+                        "occurred_at": now.isoformat(),
+                        "producer": "risk-engine",
+                        "activation_phase": 7,
+                        "aggregate_id": authorization_id,
+                        "aggregate_version": 1,
+                        "payload_hash": issued_payload_hash,
+                        "data": issued_data,
+                    }
+                ),
+                issued_payload_hash,
+                now,
+                authorization_id,
+            ),
+        )
+        connection.execute(
+            "INSERT INTO risk_outbox_links(event_id,aggregate_kind,aggregate_id) "
+            "VALUES (%s,'paper-authorization',%s)",
+            (issued_event_id, authorization_id),
+        )
+        connection.execute("SET session_replication_role='origin'")
+    return authorization_id, request_hash
+
+
+def _assert_blocked_only(authorization_id: str, reason_code: str) -> None:
+    with psycopg.connect(DATABASE_URL) as connection:
+        assert connection.execute(
+            "SELECT outcome,reason_code FROM paper_authorization_attempts "
+            "WHERE authorization_id=%s",
+            (authorization_id,),
+        ).fetchone() == ("BLOCKED", reason_code)
+        assert connection.execute(
+            "SELECT outcome,paper_order_id,response->>'reason_code' "
+            "FROM paper_command_receipts WHERE authorization_id=%s",
+            (authorization_id,),
+        ).fetchone() == ("REJECTED", None, reason_code)
+        assert connection.execute("SELECT count(*) FROM paper_orders").fetchone() == (0,)
+        assert connection.execute("SELECT count(*) FROM paper_fills").fetchone() == (0,)
+        assert connection.execute(
+            "SELECT asset,available,held,version FROM paper_asset_balances "
+            "WHERE account_id=%s ORDER BY asset",
+            (ACCOUNT_ID,),
+        ).fetchall() == [
+            ("USDT", 10000, 0, 0),
+        ]
+        assert connection.execute(
+            "SELECT count(*) FROM paper_ledger_transactions WHERE account_id=%s",
+            (ACCOUNT_ID,),
+        ).fetchone() == (1,)
+        events = connection.execute(
+            "SELECT event_type,payload FROM paper_outbox_events_v1 "
+            "WHERE account_id=%s ORDER BY event_type",
+            (ACCOUNT_ID,),
+        ).fetchall()
+        assert [(event_type, payload["data"]["outcome"]) for event_type, payload in events] == [
+            ("paper.authorization.blocked.v2", "BLOCKED")
+        ]
+        for _, payload in events:
+            _validate_phase7_event(payload)
+
+
+def test_kill_first_attempt_stays_blocked_after_recovery_and_retry(
+    postgres: None,
+) -> None:
+    authorization_id, _request_hash = _seed_authorization(
+        "kill-first-attempt", healthy_reconciliation=True
+    )
+    PostgresKillSwitch(DATABASE_URL).activate(
+        KillActivation(
+            request_id="phase7-kill-first-attempt",
+            expected_version=0,
+            trigger_kind="MANUAL",
+            actor_id="operator:phase7-test",
+            reason_code="MANUAL_SAFETY_STOP",
+            reason="prove first-attempt authority is terminal",
+            observed_at=datetime.now(UTC),
+            context_digest=canonical_hash({"test": "phase7-first-attempt"}),
+        )
+    )
+    store = PostgresPaperStore(PAPER_WRITER_URL)
+    first = store.attempt_phase7_authorization(authorization_id)
+    assert first.created is True
+    assert first.response["reason_code"] == "KILL_SWITCH_ACTIVE"
+    _assert_blocked_only(authorization_id, "KILL_SWITCH_ACTIVE")
+
+    with psycopg.connect(DATABASE_URL) as connection:
+        connection.execute("SET session_replication_role='replica'")
+        connection.execute(
+            "UPDATE kill_switch_state SET active=false,version=2,last_recovery_event_id=%s "
+            "WHERE scope='paper-global'",
+            (canonical_hash({"recovery": "phase7-first-attempt"}),),
+        )
+        connection.execute("SET session_replication_role='origin'")
+    replay = store.attempt_phase7_authorization(authorization_id)
+    assert replay.created is False
+    assert replay.response == first.response
+    _assert_blocked_only(authorization_id, "KILL_SWITCH_ACTIVE")
+
+
+def test_missing_reconciliation_consumes_authorization_without_financial_effects(
+    postgres: None,
+) -> None:
+    authorization_id, _request_hash = _seed_authorization(
+        "missing-reconciliation", healthy_reconciliation=False
+    )
+    worker = Phase7AuthorizationWorker(PostgresPaperStore(PAPER_WRITER_URL))
+    result = worker.run_once()
+    assert result is not None
+    assert result.created is True
+    assert result.response["reason_code"] == "RECONCILIATION_MISSING"
+    _assert_blocked_only(authorization_id, "RECONCILIATION_MISSING")
+    assert worker.run_once() is None
+
+
+def test_authorized_order_and_cancel_are_atomic_v2_and_idempotent(postgres: None) -> None:
+    authorization_id, _ = _seed_authorization("create-cancel", healthy_reconciliation=True)
+    store = PostgresPaperStore(PAPER_WRITER_URL)
+    created = store.attempt_phase7_authorization(authorization_id)
+    assert created.created is True
+    order_id = str(created.response["order_id"])
+    cancel_hash = canonical_hash(
+        {
+            "idempotency_key": "phase7-cancel-create-cancel",
+            "order_id": order_id,
+            "expected_version": 1,
+            "reason": "operator requested cancellation",
+        }
+    )
+    cancelled = store.cancel_phase7_order(
+        order_id,
+        1,
+        "phase7-cancel-create-cancel",
+        cancel_hash,
+        "operator requested cancellation",
+    )
+    assert cancelled.created is True
+    assert cancelled.response["status"] == "CANCELLED"
+    replay = store.cancel_phase7_order(
+        order_id,
+        1,
+        "phase7-cancel-create-cancel",
+        cancel_hash,
+        "operator requested cancellation",
+    )
+    assert replay.created is False
+    assert replay.response == cancelled.response
+    with psycopg.connect(DATABASE_URL) as connection:
+        assert connection.execute(
+            "SELECT status,held_amount,version FROM paper_orders WHERE order_id=%s", (order_id,)
+        ).fetchone() == ("CANCELLED", 0, 2)
+        assert connection.execute(
+            "SELECT available,held,version FROM paper_asset_balances "
+            "WHERE account_id=%s AND asset='USDT'",
+            (ACCOUNT_ID,),
+        ).fetchone() == (10000, 0, 2)
+        release = connection.execute(
+            "SELECT transaction_id,journal_kind FROM paper_ledger_transactions "
+            "WHERE account_id=%s AND business_event_type='paper.hold-release' "
+            "AND business_event_id=%s",
+            (ACCOUNT_ID, order_id),
+        ).fetchone()
+        assert release is not None
+        release_id, journal_kind = release
+        assert journal_kind == "PHYSICAL"
+        assert connection.execute(
+            "SELECT account_code,commodity,debit,credit FROM paper_ledger_entries "
+            "WHERE transaction_id=%s ORDER BY line_no",
+            (release_id,),
+        ).fetchall() == [
+            ("paper.available", "USDT", Decimal("10.01"), Decimal(0)),
+            ("paper.held", "USDT", Decimal(0), Decimal("10.01")),
+        ]
+        assert connection.execute(
+            "SELECT count(*),min(response->>'status') FROM paper_cancel_command_receipts "
+            "WHERE idempotency_key='phase7-cancel-create-cancel'"
+        ).fetchone() == (1, "CANCELLED")
+        events = connection.execute(
+            "SELECT event_type,payload FROM paper_outbox_events_v1 WHERE account_id=%s "
+            "ORDER BY occurred_at,event_id",
+            (ACCOUNT_ID,),
+        ).fetchall()
+        assert len(events) == 5
+        assert sorted(event_type for event_type, _ in events) == [
+            "ledger.transaction.posted.v2",
+            "ledger.transaction.posted.v2",
+            "paper.authorization.consumed.v2",
+            "paper.order.accepted.v2",
+            "paper.order.cancelled.v2",
+        ]
+        cancellation = next(
+            payload for event_type, payload in events if event_type == "paper.order.cancelled.v2"
+        )
+        assert set(cancellation["data"]) == {"order", "request_hash", "reason"}
+        assert cancellation["data"]["request_hash"] == cancel_hash
+        assert cancellation["data"]["reason"] == "operator requested cancellation"
+        assert cancellation["data"]["order"]["order_id"] == order_id
+        assert cancellation["data"]["order"]["status"] == "CANCELLED"
+        assert cancellation["data"]["order"]["version"] == 2
+        assert any(
+            payload["data"] == {"transaction_id": release_id, "authorization_id": authorization_id}
+            for event_type, payload in events
+            if event_type == "ledger.transaction.posted.v2"
+        )
+        for _, payload in events:
+            _validate_phase7_event(payload)
+
+
+@pytest.mark.parametrize(
+    ("changed_symbol", "changed_bid", "changed_ask"),
+    [("BTCUSDT", "10001", "10002"), ("ETHUSDT", "2999", "3001")],
+)
+def test_newer_changed_book_blocks_and_audit_projection_removes_nonce(
+    postgres: None, changed_symbol: str, changed_bid: str, changed_ask: str
+) -> None:
+    suffix = f"book-drift-audit-{changed_symbol.lower()}"
+    authorization_id, _ = _seed_authorization(suffix, healthy_reconciliation=True)
+    observed_at = datetime.now(UTC)
+    with psycopg.connect(DATABASE_URL) as connection:
+        connection.execute("SET session_replication_role='replica'")
+        connection.execute(
+            "INSERT INTO normalized_market_events"
+            "(id,raw_event_id,event_type,schema_version,source,symbol,event_time,received_at,"
+            "sequence,raw_payload_hash,correlation_id,quality_status,quality_reasons,"
+            "stream_watermark,payload) VALUES (%s,%s,'book_ticker',"
+            "'woozoo.market-event/v1','binance_spot_public',%s,%s,%s,99,%s,"
+            "'phase7-book-drift','healthy','[]'::jsonb,%s,%s)",
+            (
+                canonical_hash({"newer-book": authorization_id}),
+                canonical_hash({"newer-raw": authorization_id}),
+                changed_symbol,
+                observed_at,
+                observed_at,
+                canonical_hash({"newer-raw-hash": authorization_id}),
+                Jsonb({"last_sequence": 99}),
+                Jsonb({"bid_price": changed_bid, "ask_price": changed_ask}),
+            ),
+        )
+        connection.execute("SET session_replication_role='origin'")
+
+    result = PostgresPaperStore(PAPER_WRITER_URL).attempt_phase7_authorization(authorization_id)
+    assert result.response["reason_code"] == "HASH_MISMATCH"
+    _assert_blocked_only(authorization_id, "HASH_MISMATCH")
+    with psycopg.connect(DATABASE_URL) as connection:
+        raw, projected = connection.execute(
+            "SELECT event.payload::text,audit.data::text FROM outbox_events event "
+            "JOIN trading_room_audit_reader_v1 audit USING(event_id) "
+            "WHERE event.event_type='paper.authorization.blocked.v2'"
+        ).fetchone()
+        assert "authorization_nonce" in raw
+        assert "authorization_nonce" not in projected
+        assert connection.execute(
+            "SELECT producer,actor_id FROM trading_room_audit_reader_v1 "
+            "WHERE event_type='paper.authorization.blocked.v2'"
+        ).fetchone() == ("paper-engine", None)
+
+
+def test_six_second_old_books_terminally_block_first_attempt(postgres: None) -> None:
+    authorization_id, _ = _seed_authorization(
+        "six-second-stale-books", healthy_reconciliation=True, book_age_seconds=6
+    )
+    result = PostgresPaperStore(PAPER_WRITER_URL).attempt_phase7_authorization(authorization_id)
+    assert result.response["reason_code"] == "DATA_STALE"
+    _assert_blocked_only(authorization_id, "DATA_STALE")
+
+
+def test_non_target_same_midpoint_book_drift_terminally_blocks_first_attempt(
+    postgres: None,
+) -> None:
+    authorization_id, _ = _seed_authorization(
+        "same-midpoint-non-target-drift", healthy_reconciliation=True
+    )
+    observed_at = datetime.now(UTC)
+    with psycopg.connect(DATABASE_URL) as connection:
+        connection.execute("SET session_replication_role='replica'")
+        connection.execute(
+            "INSERT INTO normalized_market_events"
+            "(id,raw_event_id,event_type,schema_version,source,symbol,event_time,received_at,"
+            "sequence,raw_payload_hash,correlation_id,quality_status,quality_reasons,"
+            "stream_watermark,payload) VALUES (%s,%s,'book_ticker',"
+            "'woozoo.market-event/v1','binance_spot_public','ETHUSDT',%s,%s,100,%s,"
+            "'phase7-same-midpoint-drift','healthy','[]'::jsonb,%s,%s)",
+            (
+                canonical_hash({"same-midpoint-book": authorization_id}),
+                canonical_hash({"same-midpoint-raw": authorization_id}),
+                observed_at,
+                observed_at,
+                canonical_hash({"same-midpoint-raw-hash": authorization_id}),
+                Jsonb({"last_sequence": 100}),
+                Jsonb({"bid_price": "1998", "ask_price": "2002"}),
+            ),
+        )
+        connection.execute("SET session_replication_role='origin'")
+
+    result = PostgresPaperStore(PAPER_WRITER_URL).attempt_phase7_authorization(authorization_id)
+    assert result.response["reason_code"] == "HASH_MISMATCH"
+    _assert_blocked_only(authorization_id, "HASH_MISMATCH")
+
+
+def test_reconciliation_serializes_on_the_paper_account_authority_lock(postgres: None) -> None:
+    store = PostgresPaperStore(PAPER_WRITER_URL)
+    expected_digest = store.semantic_digest(ACCOUNT_ID)
+    ready = Event()
+
+    def reconcile() -> object:
+        ready.set()
+        return store.reconcile(
+            ACCOUNT_ID,
+            checkpoint_id="phase7-reconciliation-lock",
+            created_at=datetime.now(UTC),
+        )
+
+    blocker = psycopg.connect(DATABASE_URL)
+    blocker.execute(
+        "SELECT pg_advisory_xact_lock(hashtextextended(%s,0))",
+        (f"paper-account:{ACCOUNT_ID}",),
+    )
+    try:
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(reconcile)
+            assert ready.wait(timeout=5)
+            with pytest.raises(FutureTimeoutError):
+                future.result(timeout=0.25)
+            blocker.commit()
+            result = future.result(timeout=10)
+    finally:
+        blocker.close()
+
+    assert getattr(result, "status") == "HEALTHY"
+    assert getattr(result, "input_digest") == expected_digest
+
+
+def test_revocation_and_first_attempt_serialize_without_revoked_order(postgres: None) -> None:
+    authorization_id, _ = _seed_authorization("revocation-race", healthy_reconciliation=True)
+    observed_at = datetime.now(UTC)
+    session_digest, csrf_digest = _seed_operator_csrf("revocation-race", observed_at)
+    with psycopg.connect(DATABASE_URL) as connection:
+        approval_id = connection.execute(
+            "SELECT approval_id FROM paper_execution_authorizations WHERE authorization_id=%s",
+            (authorization_id,),
+        ).fetchone()[0]
+
+    blocker = psycopg.connect(DATABASE_URL)
+    blocker.execute(
+        "SELECT pg_advisory_xact_lock(hashtextextended(%s,0))",
+        (f"paper-approval:{approval_id}",),
+    )
+    blocker.execute(
+        "SELECT pg_advisory_xact_lock(hashtextextended(%s,0))",
+        (f"paper-authorization:{authorization_id}",),
+    )
+    attempt_ready = Event()
+    revoke_ready = Event()
+
+    def attempt() -> tuple[str, object]:
+        attempt_ready.set()
+        try:
+            return (
+                "ok",
+                PostgresPaperStore(PAPER_WRITER_URL).attempt_phase7_authorization(authorization_id),
+            )
+        except Exception as error:  # pragma: no cover - asserted through the tagged result
+            return ("error", error)
+
+    def revoke() -> tuple[str, object]:
+        revoke_ready.set()
+        try:
+            with psycopg.connect(DATABASE_URL) as connection:
+                row = connection.execute(
+                    "SELECT created,response FROM revoke_paper_approval_v1("
+                    "%s,%s,%s,1,%s,'operator-local-1',%s,%s,%s,%s,%s)",
+                    (
+                        "phase7-revocation-race",
+                        canonical_hash({"revoke": authorization_id}),
+                        approval_id,
+                        "race serialization proof",
+                        session_digest,
+                        csrf_digest,
+                        canonical_hash({"origin": "revocation-race"}),
+                        "revocation-nonce-race-0000000000000000",
+                        observed_at,
+                    ),
+                ).fetchone()
+            return ("ok", row)
+        except Exception as error:  # pragma: no cover - asserted through the tagged result
+            return ("error", error)
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            attempt_future = executor.submit(attempt)
+            revoke_future = executor.submit(revoke)
+            assert attempt_ready.wait(timeout=5) and revoke_ready.wait(timeout=5)
+            blocker.commit()
+            attempt_result = attempt_future.result(timeout=10)
+            revoke_result = revoke_future.result(timeout=10)
+    finally:
+        blocker.close()
+
+    with psycopg.connect(DATABASE_URL) as connection:
+        revoked = connection.execute(
+            "SELECT EXISTS(SELECT 1 FROM paper_approval_revocations WHERE approval_id=%s)",
+            (approval_id,),
+        ).fetchone()[0]
+        order_count = connection.execute(
+            "SELECT count(*) FROM paper_orders WHERE authorization_id=%s", (authorization_id,)
+        ).fetchone()[0]
+        attempt_row = connection.execute(
+            "SELECT outcome,reason_code FROM paper_authorization_attempts "
+            "WHERE authorization_id=%s",
+            (authorization_id,),
+        ).fetchone()
+    assert not (revoked and order_count)
+    if revoked:
+        assert revoke_result[0] == "ok"
+        assert attempt_row == ("BLOCKED", "AUTHORIZATION_REVOKED")
+    else:
+        assert attempt_result[0] == "ok"
+        assert order_count == 1
+        assert revoke_result[0] == "error"
+        assert "APPROVAL_NOT_REVOCABLE" in str(revoke_result[1])
+
+
+def test_recovery_races_consumer_but_requires_completion_and_later_checkpoint(
+    postgres: None,
+) -> None:
+    authorization_id, _ = _seed_authorization("recovery-race", healthy_reconciliation=True)
+    store = PostgresPaperStore(PAPER_WRITER_URL)
+    created = store.attempt_phase7_authorization(authorization_id)
+    assert created.response["result"] == "CONSUMED_ORDER_CREATED"
+    activated = PostgresKillSwitch(DATABASE_URL).activate(
+        KillActivation(
+            request_id="phase7-recovery-race",
+            expected_version=0,
+            trigger_kind="MANUAL",
+            actor_id="operator:phase7-recovery",
+            reason_code="MANUAL_SAFETY_STOP",
+            reason="race recovery against cancellation consumer",
+            observed_at=datetime.now(UTC),
+            context_digest=canonical_hash({"recovery-race": authorization_id}),
+        )
+    )
+    with psycopg.connect(DATABASE_URL) as connection:
+        payload_hash = connection.execute(
+            "SELECT payload_hash FROM outbox_events WHERE event_id=%s",
+            (activated.outbox_event_id,),
+        ).fetchone()[0]
+        connection.execute(
+            "INSERT INTO paper_authorization_worker_state"
+            "(worker_name,instance_id,status,started_at,heartbeat_at) VALUES "
+            "('phase7-paper-authorization','recovery-race-worker','RUNNING',%s,%s) "
+            "ON CONFLICT (worker_name) DO UPDATE SET "
+            "instance_id=EXCLUDED.instance_id,status='RUNNING',"
+            "started_at=EXCLUDED.started_at,heartbeat_at=EXCLUDED.heartbeat_at,"
+            "last_progress_at=NULL,last_result=NULL,last_error_code=NULL,stopped_at=NULL",
+            (datetime.now(UTC), datetime.now(UTC)),
+        )
+    observed_at = datetime.now(UTC)
+    session_digest, csrf_digest = _seed_operator_csrf("recovery-race", observed_at)
+    recovery_key = "phase7-recovery-race-command"
+    recovery_hash = canonical_hash({"recovery": activated.activation_event_id})
+    with psycopg.connect(DATABASE_URL) as connection:
+        assert connection.execute(
+            "SELECT cancellation_status,open_order_count,data_status,"
+            "reconciliation_status,ledger_status,recovery_allowed "
+            "FROM kill_switch_recovery_reader_v1"
+        ).fetchone() == ("INCOMPLETE", 1, "HEALTHY", "UNHEALTHY", "BALANCED", False)
+
+    def recover() -> tuple[str, object]:
+        recovery_ready.set()
+        try:
+            with psycopg.connect(DATABASE_URL) as connection:
+                row = connection.execute(
+                    "SELECT created,response FROM recover_kill_switch_v1("
+                    "%s,%s,1,%s,%s,%s,'operator-local-1',%s,%s,%s,%s)",
+                    (
+                        recovery_key,
+                        recovery_hash,
+                        activated.activation_event_id,
+                        "INCIDENT-P7-RACE",
+                        "cancellation and reconciliation reviewed",
+                        session_digest,
+                        csrf_digest,
+                        canonical_hash({"origin": "recovery-race"}),
+                        observed_at,
+                    ),
+                ).fetchone()
+            return ("ok", row)
+        except Exception as error:  # pragma: no cover - asserted through the tagged result
+            return ("error", error)
+
+    def consume() -> object:
+        consumer_ready.set()
+        return store.consume_kill_activation(
+            activated.activation_event_id, payload_hash, received_at=observed_at
+        )
+
+    blocker = psycopg.connect(DATABASE_URL)
+    blocker.execute(
+        "SELECT pg_advisory_xact_lock(hashtextextended(%s,0))",
+        (f"paper-account:{ACCOUNT_ID}",),
+    )
+    recovery_ready = Event()
+    consumer_ready = Event()
+    try:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            recovery_future = executor.submit(recover)
+            consumer_future = executor.submit(consume)
+            assert recovery_ready.wait(timeout=5) and consumer_ready.wait(timeout=5)
+            blocker.commit()
+            recovery_result = recovery_future.result(timeout=10)
+            consumer_result = consumer_future.result(timeout=10)
+    finally:
+        blocker.close()
+
+    assert recovery_result[0] == "error"
+    assert getattr(consumer_result, "completion_created") is True
+    with psycopg.connect(DATABASE_URL) as connection:
+        completion = connection.execute(
+            "SELECT state_digest,completed_at FROM paper_kill_cancel_completions "
+            "WHERE activation_event_id=%s",
+            (activated.activation_event_id,),
+        ).fetchone()
+        assert completion is not None
+        assert connection.execute(
+            "SELECT count(*) FROM paper_orders WHERE status IN ('OPEN','PARTIALLY_FILLED')"
+        ).fetchone() == (0,)
+        assert connection.execute(
+            "SELECT cancellation_status,open_order_count,data_status,"
+            "reconciliation_status,ledger_status,recovery_allowed "
+            "FROM kill_switch_recovery_reader_v1"
+        ).fetchone() == ("COMPLETE", 0, "HEALTHY", "UNHEALTHY", "BALANCED", False)
+
+    checkpoint_time = datetime.now(UTC)
+    checkpoint = store.reconcile(
+        ACCOUNT_ID,
+        checkpoint_id="phase7-post-kill-completion",
+        created_at=checkpoint_time,
+    )
+    assert checkpoint.status == "HEALTHY" and checkpoint.input_digest == completion[0]
+    with psycopg.connect(DATABASE_URL) as connection:
+        assert connection.execute(
+            "SELECT cancellation_status,open_order_count,data_status,"
+            "reconciliation_status,ledger_status,recovery_allowed "
+            "FROM kill_switch_recovery_reader_v1"
+        ).fetchone() == ("COMPLETE", 0, "HEALTHY", "HEALTHY", "BALANCED", True)
+        recovered = connection.execute(
+            "SELECT created,response FROM recover_kill_switch_v1("
+            "%s,%s,1,%s,%s,%s,'operator-local-1',%s,%s,%s,%s)",
+            (
+                recovery_key,
+                recovery_hash,
+                activated.activation_event_id,
+                "INCIDENT-P7-RACE",
+                "cancellation and reconciliation reviewed",
+                session_digest,
+                csrf_digest,
+                canonical_hash({"origin": "recovery-race"}),
+                datetime.now(UTC),
+            ),
+        ).fetchone()
+    assert recovered is not None and recovered[0] is True
+    assert recovered[1]["result"] == "RECOVERED"
+    with psycopg.connect(DATABASE_URL) as connection:
+        assert connection.execute(
+            "SELECT active,cancellation_status,recovery_allowed FROM kill_switch_recovery_reader_v1"
+        ).fetchone() == (False, "NOT_ACTIVE", False)

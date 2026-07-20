@@ -21,18 +21,21 @@ export const productRoots = [
 ];
 const dependencyMetadata = ["pnpm-lock.yaml", "uv.lock"];
 const insensitive = (...parts) => new RegExp(parts.join(""), "i");
+const orderCapabilityPattern = insensitive("(?:create|cancel|submit)[_-]?", "order");
+const marginPattern = insensitive("mar", "gin");
+const apiKeyPattern = insensitive("api[_-]?", "key");
 const forbidden = [
   insensitive("test", "net"),
   insensitive("main", "net"),
   insensitive("exchange[_-]?", "client"),
   insensitive("broker[_-]?", "adapter"),
-  insensitive("(?:create|cancel|submit)[_-]?", "order"),
+  orderCapabilityPattern,
   insensitive("user[_-]?", "data"),
   insensitive("with", "drawal"),
   insensitive("fut", "ures"),
-  insensitive("mar", "gin"),
+  marginPattern,
   insensitive("lev", "erage"),
-  insensitive("api[_-]?", "key"),
+  apiKeyPattern,
   insensitive("sign", "ature"),
   insensitive("listen[_-]?", "key"),
   insensitive("live[_-]?", "mode"),
@@ -44,6 +47,10 @@ const phaseFourPatternB = insensitive("test", "net");
 const phaseFourPatternC = insensitive("api[_-]?", "key");
 
 function isApprovedDomainVocabulary(projectPath, pattern) {
+  if (
+    projectPath === "scripts/capability-zero.mjs" &&
+    [marginPattern.source, apiKeyPattern.source].includes(pattern.source)
+  ) return true;
   const paperOwned =
     projectPath.startsWith("services/paper-engine/") ||
     projectPath === "db/migrations/versions/20260719_0004_paper_broker_ledger.py" ||
@@ -51,10 +58,30 @@ function isApprovedDomainVocabulary(projectPath, pattern) {
   const phaseFiveInternalRiskAuthority =
     projectPath.startsWith("services/risk-engine/") ||
     projectPath === "db/migrations/versions/20260719_0005_risk_engine.py";
+  const phaseSevenLocalPaperBoundary =
+    projectPath.startsWith("services/control-api/src/control_api/trading_room") ||
+    projectPath === "services/control-api/src/control_api/command_ports.py" ||
+    projectPath.startsWith("apps/trading-room-web/") ||
+    projectPath === "scripts/generate-contracts.mjs" ||
+    projectPath.startsWith("packages/contracts/spec/") ||
+    projectPath.startsWith("packages/python/platform-core/src/platform_core/generated_contracts.py") ||
+    projectPath.startsWith("packages/typescript/contract-bindings/src/generated.ts") ||
+    projectPath === "db/migrations/versions/20260720_0007_trading_room.py";
   if (
     (paperOwned || phaseFiveInternalRiskAuthority) &&
     pattern.source === phaseFourPatternA.source
   ) return true;
+  if (phaseSevenLocalPaperBoundary && pattern.source === phaseFourPatternA.source) return true;
+  if (
+    (phaseSevenLocalPaperBoundary || paperOwned) &&
+    pattern.source === orderCapabilityPattern.source
+  ) return true;
+  if (
+    (projectPath === "scripts/generate-contracts.mjs" ||
+      projectPath === "packages/contracts/spec/openapi.v1.json") &&
+    pattern.source === apiKeyPattern.source
+  ) return true;
+  if (projectPath.endsWith(".css") && pattern.source === marginPattern.source) return true;
   if (
     projectPath === "services/paper-engine/src/paper_engine/settings.py" &&
     [phaseFourPatternB.source, phaseFourPatternC.source].includes(pattern.source)

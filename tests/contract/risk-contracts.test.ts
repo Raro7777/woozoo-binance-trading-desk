@@ -61,5 +61,6 @@ test("Phase 5 Risk contracts are closed and dormant until Phase 7", async () => 
   assert.equal(registry.oneOf.length, 2);
   assert.equal(registry["x-activation-phase"], 7);
   const openapi = JSON.parse(await readFile(resolve(import.meta.dirname, "../../packages/contracts/spec/openapi.v1.json"), "utf8")) as { paths: Record<string, unknown> };
-  assert.equal(Object.keys(openapi.paths).some((path) => /risk|kill|approval|authorization/.test(path)), false);
+  assert.equal(Object.keys(openapi.paths).some((path) => /risk|kill|approval/.test(path)), true);
+  assert.equal(Object.keys(openapi.paths).some((path) => /authorization|\/internal\//.test(path)), false);
 });

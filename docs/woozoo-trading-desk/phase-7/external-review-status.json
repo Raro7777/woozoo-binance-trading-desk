@@ -1,0 +1,26 @@
+{
+  "status": "external-review-unavailable",
+  "runner": "codex",
+  "selected_reviewers": [
+    "agy"
+  ],
+  "external_gate_satisfied": false,
+  "tool_status": "failed-after-one-retry",
+  "attempts": [
+    {
+      "attempt": 1,
+      "result": "headless-command-permission-auto-denied",
+      "artifact": "_workspace/reviews/p7_mvp_agy.md"
+    },
+    {
+      "attempt": 2,
+      "result": "timeout-empty-output",
+      "timeout_seconds": 600,
+      "artifact": "_workspace/reviews/p7_mvp_agy_retry.md"
+    }
+  ],
+  "same_engine_codex_is_external_pass": false,
+  "user_approval_or_transition_authority": false,
+  "claude_used": false,
+  "note": "No external PASS was produced. The required unavailability evidence is recorded without treating internal Codex review as external independence."
+}

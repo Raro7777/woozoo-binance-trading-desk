@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "woozoo.risk-domain-events/v2",
+  "title": "Phase 7 Risk, approval, authorization, and recovery event registry",
+  "x-creation-phase": 7,
+  "x-activation-phase": 7,
+  "oneOf": [
+    {"$ref": "#/$defs/riskDecisionRecorded"},
+    {"$ref": "#/$defs/approvalRecorded"},
+    {"$ref": "#/$defs/approvalRevoked"},
+    {"$ref": "#/$defs/authorizationIssued"},
+    {"$ref": "#/$defs/killSwitchRecovered"}
+  ],
+  "$defs": {
+    "base": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["spec_version", "event_id", "event_type", "event_version", "occurred_at", "producer", "activation_phase", "aggregate_id", "aggregate_version", "payload_hash", "data"],
+      "properties": {
+        "spec_version": {"const": "woozoo.event/v1"},
+        "event_id": {"$ref": "#/$defs/hash"},
+        "event_type": {"type": "string"},
+        "event_version": {"const": 2},
+        "occurred_at": {"type": "string", "format": "date-time"},
+        "producer": {"const": "risk-engine"},
+        "activation_phase": {"const": 7},
+        "aggregate_id": {"$ref": "#/$defs/hash"},
+        "aggregate_version": {"type": "integer", "minimum": 1},
+        "payload_hash": {"$ref": "#/$defs/hash"},
+        "data": {"type": "object"}
+      }
+    },
+    "riskDecisionRecorded": {"allOf": [{"$ref": "#/$defs/base"}, {"properties": {"event_type": {"const": "risk.decision.recorded.v2"}, "data": {"$ref": "risk-decision.v1.json"}}}]},
+    "approvalRecorded": {"allOf": [{"$ref": "#/$defs/base"}, {"properties": {"event_type": {"const": "paper.approval.recorded.v1"}, "data": {"$ref": "paper-approval.v1.json"}}}]},
+    "approvalRevoked": {"allOf": [{"$ref": "#/$defs/base"}, {"properties": {"event_type": {"const": "paper.approval.revoked.v1"}, "data": {"$ref": "paper-approval-revocation.v1.json"}}}]},
+    "authorizationIssued": {"allOf": [{"$ref": "#/$defs/base"}, {"properties": {"event_type": {"const": "paper.authorization.issued.v1"}, "data": {"$ref": "paper-execution-authorization.v1.json"}}}]},
+    "killSwitchRecovered": {"allOf": [{"$ref": "#/$defs/base"}, {"properties": {"event_type": {"const": "kill-switch.recovered.v2"}, "data": {"$ref": "#/$defs/killRecoveryData"}}}]},
+    "killRecoveryData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["recovery_event_id", "scope", "active", "prior_version", "version", "actor_id", "session_binding_hash", "csrf_binding_hash", "origin_hash", "incident_reference", "reason", "observed_at", "context_digest", "data_status", "data_state_hash", "reconciliation_status", "reconciliation_checkpoint_hash", "ledger_status", "ledger_snapshot_hash"],
+      "properties": {
+        "recovery_event_id": {"$ref": "#/$defs/hash"},
+        "scope": {"const": "paper-global"},
+        "active": {"const": false},
+        "prior_version": {"type": "integer", "minimum": 1},
+        "version": {"type": "integer", "minimum": 2},
+        "actor_id": {"const": "operator-local-1"},
+        "session_binding_hash": {"$ref": "#/$defs/hash"},
+        "csrf_binding_hash": {"$ref": "#/$defs/hash"},
+        "origin_hash": {"$ref": "#/$defs/hash"},
+        "incident_reference": {"type": "string", "minLength": 1, "maxLength": 128},
+        "reason": {"type": "string", "minLength": 1, "maxLength": 512},
+        "observed_at": {"type": "string", "format": "date-time"},
+        "context_digest": {"$ref": "#/$defs/hash"},
+        "data_status": {"const": "HEALTHY"},
+        "data_state_hash": {"$ref": "#/$defs/hash"},
+        "reconciliation_status": {"const": "PASS"},
+        "reconciliation_checkpoint_hash": {"$ref": "#/$defs/hash"},
+        "ledger_status": {"const": "BALANCED"},
+        "ledger_snapshot_hash": {"$ref": "#/$defs/hash"}
+      }
+    },
+    "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+  }
+}

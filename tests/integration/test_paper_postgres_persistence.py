@@ -2694,6 +2694,14 @@ def test_writer_commit_succeeds_and_unledgered_balance_update_is_rejected() -> N
         ("paper_orders", "held_amount"),
         ("paper_orders", "status"),
         ("paper_orders", "version"),
+        ("paper_authorization_worker_state", "instance_id"),
+        ("paper_authorization_worker_state", "status"),
+        ("paper_authorization_worker_state", "started_at"),
+        ("paper_authorization_worker_state", "heartbeat_at"),
+        ("paper_authorization_worker_state", "last_progress_at"),
+        ("paper_authorization_worker_state", "last_result"),
+        ("paper_authorization_worker_state", "last_error_code"),
+        ("paper_authorization_worker_state", "stopped_at"),
     }
     with pytest.raises(psycopg.errors.InsufficientPrivilege):
         with psycopg.connect(PAPER_WRITER_URL) as connection:

@@ -1197,7 +1197,7 @@ def test_phase_four_postgres_enforces_balance_and_immutable_ledger() -> None:
             )
 
 
-def test_phase_four_schema_has_dormant_test_namespace_and_no_future_fk() -> None:
+def test_phase_seven_preserves_phase_four_test_rows_and_activates_closed_paper_namespace() -> None:
     with psycopg.connect(DATABASE_URL) as connection:
         constraints = connection.execute(
             """
@@ -1215,7 +1215,10 @@ def test_phase_four_schema_has_dormant_test_namespace_and_no_future_fk() -> None
             ORDER BY confrelid::regclass::text
             """
         ).fetchall()
-    assert sum("namespace" in row[0] and "test" in row[0] for row in constraints) == 2
+    namespace_constraints = [row[0] for row in constraints if "namespace" in row[0]]
+    assert len(namespace_constraints) == 3
+    assert all("test" in definition for definition in namespace_constraints)
+    assert all("paper" in definition for definition in namespace_constraints)
     assert [row[0] for row in foreign_targets] == [
         "paper_accounts",
         "paper_authorization_attempts",

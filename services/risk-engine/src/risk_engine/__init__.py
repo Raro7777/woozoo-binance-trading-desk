@@ -12,6 +12,12 @@ from .kill_switch import (
 from .models import RiskDecision
 from .persistence import PersistedRiskDecision, PostgresRiskStore, RiskPersistenceStage
 from .reconciliation_kill import PostgresReconciliationKillHandler, ReconciliationKillResult
+from .service import (
+    RiskDecisionService,
+    RiskEvaluationCommand,
+    RiskEvaluationResult,
+    RiskProposalCommand,
+)
 
 __all__ = [
     "KillActivation",
@@ -22,6 +28,10 @@ __all__ = [
     "PostgresRiskStore",
     "PostgresReconciliationKillHandler",
     "RiskDecision",
+    "RiskDecisionService",
+    "RiskEvaluationCommand",
+    "RiskEvaluationResult",
+    "RiskProposalCommand",
     "RiskPersistenceStage",
     "ReconciliationKillResult",
     "canonical_hash",

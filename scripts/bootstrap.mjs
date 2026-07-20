@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
 const pnpm = "pnpm";
+const skipPnpmInstall = process.argv.includes("--skip-pnpm-install");
 
 function run(command, args) {
   const result = process.platform === "win32" && [pnpm, "corepack"].includes(command)
@@ -25,6 +26,6 @@ if (uvAvailable.status !== 0) {
   if (uvAvailable.status !== 0) process.exit(1);
 }
 
-runPnpm(["install", "--frozen-lockfile"]);
+if (!skipPnpmInstall) runPnpm(["install", "--frozen-lockfile"]);
 run("python", ["-m", "uv", "sync", "--locked", "--group", "dev"]);
 run("node", ["scripts/generate-contracts.mjs", "--check"]);

@@ -2,6 +2,7 @@ _workspace/
 _workspace_*/
 .staging_backup/
 .env.local
+.secrets/
 .venv/
 .next/
 node_modules/

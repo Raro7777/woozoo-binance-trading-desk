@@ -42,7 +42,9 @@ test("Phase 4 Paper contracts are closed and dormant until Phase 7", async () =>
   assert.equal(schema["x-activation-phase"], 7);
   assert.equal(registry.oneOf.length, 7);
   assert.equal(registry["x-activation-phase"], 7);
-  assert.equal(Object.keys(openapi.paths).some((path) => path.includes("paper")), false);
+  assert.equal(Object.keys(openapi.paths).some((path) => path.includes("paper")), true);
+  assert.equal(Object.keys(openapi.paths).some((path) => path.includes("authorizations")), false);
+  assert.equal(Object.keys(openapi.paths).some((path) => path.includes("/internal/")), false);
   const positiveDecimal = new RegExp(schema.$defs.positiveDecimal.pattern);
   assert.equal(positiveDecimal.test("9".repeat(20) + "." + "1".repeat(18)), true);
   assert.equal(positiveDecimal.test("1".repeat(21)), false);

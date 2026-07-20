@@ -9,7 +9,7 @@ MARKET_SOURCE = "binance_spot_public"
 HEALTH_PATH = "/api/v1/health"
 MARKET_STATUS_PATH_TEMPLATE = "/api/v1/markets/{symbol}/status"
 CONTRACT_SOURCE_DIGESTS = {
-    "openapi.v1.json": "6ddb9eab12bcf7e61c1832358ce1d62a6fa65f6c6e0a3bdc032156301c6ff4e3",
+    "openapi.v1.json": "e578e4f8c5b6817fe98619c6474b0e5bb86e0af0bcb3c5c0d784acf8a1974504",
     "event-envelope.v1.json": "a244451fe765951a6e6246d3d03c68d6924876f9a5a3525a36101ec29ba9891b",
     "market-event.v1.json": "6eedfb52b8d28748542a5851df6960b4b495e520f1386a0b4efca933069511dd",
     "market-domain-events.v1.json": "c0e883dc53c6394355c9baa70e4ef642307eb2a0f13ef0fe9cb581f6dcf2dfc4",
@@ -28,6 +28,17 @@ CONTRACT_SOURCE_DIGESTS = {
     "analysis-audit.v1.json": "67d6e8ffcd97ebb065d0b9b1653f1d57dffa8f87fbe763bbcbc11921f0874661",
     "agent-domain-events.v1.json": "0bb08a32ef4f78d3a5b86635887fd4a1ad9dcf64d8b23ab2ee0165feaee89489",
     "risk-input.v2.json": "4fca44bdbb1a8b2e1bdaabfec5cf34f9a34263768c4ca4a803e038b3841e487a",
+    "analysis-run.v2.json": "12882a5e8eb82c86c1cb24860798b42c3688ff44e4e735eb4834a4b10cd32df7",
+    "analysis-run-view.v1.json": "b5eaecaf74a2d0be1db85dec0f0fd4caeb325efb38b6d7586181f34e5e4aa594",
+    "risk-input.v3.json": "2e6019ebd7b38e755716ba1a44ab4f7f5d5504eb8e0339142b490af3a34646a8",
+    "paper-order.v2.json": "3f86334598a10dced3b0d75507420f453c7888551c9b27381d989dd455ac0d84",
+    "paper-approval.v1.json": "57df16b7a8846a7e72cabf31db0278784a7b34a94f3d45f8c153850c232e5a38",
+    "paper-approval-revocation.v1.json": "e019a61bd4350b63c9e605e7b665dfb1a2b505aa81df54355ac7f99582df6654",
+    "paper-execution-authorization.v1.json": "0bed79c7d469e077d7970f964485286ba53509ae9295436a88dd3b5f9e652e20",
+    "approval-view.v1.json": "3c2983feb18e7e9300349bf06213156f3caddfcc55f2e4bb03bde6d5ba4c8b2a",
+    "local-session.v1.json": "6698a0d8be20ae5281a8820f635691adb432945727aa179ac482e2b44c63630e",
+    "risk-domain-events.v2.json": "90aeb936e34084fbae0c54dd72b69ba4005dbf1016f4bbdca903a19dd2fb0b1d",
+    "paper-domain-events.v2.json": "88a581b9e640eddc70d6bacb6c50fbfdcc9ad9a376def37f85f06224f78591ec",
 }
 
 QualityStatusV1 = Literal["healthy", "degraded", "stale", "invalid", "reconnecting"]
@@ -357,3 +368,178 @@ class KillSwitchBindingV1(TypedDict):
     reason: str
     observed_at: str
     context_digest: str
+
+PaperApprovalDecisionBindingV1 = Literal["APPROVED", "REJECTED"]
+ApprovalViewStatusBindingV1 = Literal["PENDING_RISK", "PENDING_APPROVAL", "READY", "APPROVED", "AUTHORIZATION_ISSUED", "BLOCKED", "INVALID"]
+
+
+class AnalysisRunBindingV2(TypedDict):
+    schema_version: Literal["woozoo.analysis-run/v2"]
+    run_id: str
+    namespace: Literal["paper"]
+    evidence_id: str
+    evidence_digest: str
+    symbol: Literal["BTCUSDT", "ETHUSDT"]
+    as_of: str
+    knowledge_cutoff: str
+    workflow_version: Literal["woozoo.agent-workflow/v1"]
+    workflow_hash: str
+    prompt_manifest_hash: str
+    provider: Literal["mock"]
+    model: Literal["woozoo-deterministic-mock/v1"]
+    tool_count: Literal[0]
+    outcome: Literal["COMPLETED", "HOLD"]
+    hold_reason: str | None
+    report_ids: list[str]
+    proposal_id: str | None
+    risk_decision_id: str | None
+    audit_hash: str
+
+
+class AnalysisReportViewBindingV1(TypedDict):
+    summary: str
+    confidence: str
+    hold_reasons: list[str]
+
+
+class AnalysisRunViewBindingV1(TypedDict):
+    schema_version: Literal["woozoo.analysis-run-view/v1"]
+    namespace: Literal["paper"]
+    symbol: Literal["BTCUSDT", "ETHUSDT"]
+    evidence_id: str
+    provider: Literal["mock"]
+    tool_count: Literal[0]
+    run_id: str
+    status: Literal["COMPLETED"]
+    report: AnalysisReportViewBindingV1
+    proposal_id: str
+    risk_decision_id: str
+
+
+class PaperOrderBindingV2(TypedDict):
+    order_id: str
+    client_order_id: str
+    authorization_id: str
+    authorization_namespace: Literal["paper"]
+    authorization_nonce: str
+    approval_id: str
+    proposal_hash: str
+    risk_decision_hash: str
+    paper_order_preview_hash: str
+    symbol: Literal["BTCUSDT", "ETHUSDT"]
+    side: Literal["BUY", "SELL"]
+    order_type: Literal["LIMIT"]
+    time_in_force: Literal["GTC"]
+    quantity: str
+    limit_price: str
+    filled_quantity: str
+    status: Literal["OPEN", "PARTIALLY_FILLED", "FILLED", "CANCELLED"]
+    version: int
+
+
+class PaperApprovalBindingV1(TypedDict):
+    approval_id: str
+    proposal_id: str
+    proposal_hash: str
+    risk_decision_id: str
+    risk_decision_hash: str
+    risk_input_digest: str
+    risk_policy_version: str
+    paper_order_preview: dict[str, object]
+    paper_order_preview_hash: str
+    actor_id: Literal["operator-local-1"]
+    session_binding_hash: str
+    csrf_binding_hash: str
+    origin_hash: str
+    decision: PaperApprovalDecisionBindingV1
+    approval_nonce: str
+    expected_kill_switch_version: int
+    expected_portfolio_version: int
+    expected_ledger_version: int
+    decided_at: str
+    expires_at: str
+    payload_hash: str
+
+
+class PaperApprovalRevocationBindingV1(TypedDict):
+    revocation_id: str
+    approval_id: str
+    approval_hash: str
+    actor_id: Literal["operator-local-1"]
+    session_binding_hash: str
+    csrf_binding_hash: str
+    origin_hash: str
+    revocation_nonce: str
+    reason: str
+    expected_version: int
+    revoked_at: str
+    payload_hash: str
+
+
+class PaperExecutionAuthorizationBindingV1(TypedDict):
+    authorization_id: str
+    namespace: Literal["paper"]
+    approval_id: str
+    approval_hash: str
+    approval_nonce_hash: str
+    authorization_nonce: str
+    proposal_id: str
+    proposal_hash: str
+    risk_decision_id: str
+    risk_decision_hash: str
+    risk_input_digest: str
+    risk_policy_version: str
+    paper_order_preview_hash: str
+    authorization_input_digest: str
+    current_data_state_hash: str
+    current_data_as_of: str
+    current_knowledge_cutoff: str
+    kill_switch_version: int
+    reconciliation_checkpoint_hash: str
+    ledger_snapshot_hash: str
+    paper_account_id: str
+    issued_at: str
+    expires_at: str
+
+
+class LocalSessionBindingV1(TypedDict):
+    actor_id: Literal["operator-local-1"]
+    issued_at: str
+    idle_expires_at: str
+    absolute_expires_at: str
+    csrf_token: str
+    csrf_expires_at: str
+
+
+class KillRecoveryDataBindingV2(TypedDict):
+    recovery_event_id: str
+    scope: Literal["paper-global"]
+    active: Literal[False]
+    prior_version: int
+    version: int
+    actor_id: Literal["operator-local-1"]
+    session_binding_hash: str
+    csrf_binding_hash: str
+    origin_hash: str
+    incident_reference: str
+    reason: str
+    observed_at: str
+    context_digest: str
+    data_status: Literal["HEALTHY"]
+    data_state_hash: str
+    reconciliation_status: Literal["PASS"]
+    reconciliation_checkpoint_hash: str
+    ledger_status: Literal["BALANCED"]
+    ledger_snapshot_hash: str
+
+RISK_INPUT_V3_SCHEMA: dict[str, object] = json.loads("{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"$id\":\"woozoo.risk-input/v3\",\"title\":\"Phase 7 Paper Risk input with authoritative Proposal\",\"type\":\"object\",\"additionalProperties\":false,\"x-creation-phase\":7,\"x-activation-phase\":7,\"required\":[\"risk_input_schema_version\",\"namespace\",\"proposal\",\"portfolio\",\"market_books\",\"data\",\"preview_policy_version\",\"order_preview\",\"policy\",\"kill_switch\",\"reconciliation\",\"decision_clock\",\"duplicate\",\"exposure_snapshot\"],\"properties\":{\"risk_input_schema_version\":{\"const\":\"woozoo.risk-input/v3\"},\"namespace\":{\"const\":\"paper\"},\"proposal\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"producer_contract\",\"schema_version\",\"payload\",\"proposal_hash\"],\"properties\":{\"producer_contract\":{\"const\":\"woozoo.trade-proposal/v1\"},\"schema_version\":{\"const\":\"woozoo.trade-proposal/v1\"},\"payload\":{\"$ref\":\"https://schemas.woozoo.local/trade-proposal/v1\"},\"proposal_hash\":{\"type\":\"string\",\"pattern\":\"^[a-f0-9]{64}$\"}}},\"portfolio\":{\"$ref\":\"https://schemas.woozoo.local/risk-input/v1#/$defs/portfolio\"},\"market_books\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"BTCUSDT\",\"ETHUSDT\"],\"properties\":{\"BTCUSDT\":{\"$ref\":\"#/$defs/market_book\"},\"ETHUSDT\":{\"$ref\":\"#/$defs/market_book\"}}},\"data\":{\"$ref\":\"https://schemas.woozoo.local/risk-input/v1#/$defs/data\"},\"preview_policy_version\":{\"const\":\"woozoo.paper-order-preview-policy/v1\"},\"order_preview\":{\"$ref\":\"https://schemas.woozoo.local/risk-input/v1#/$defs/preview\"},\"policy\":{\"$ref\":\"https://schemas.woozoo.local/risk-input/v1#/$defs/policy\"},\"kill_switch\":{\"$ref\":\"https://schemas.woozoo.local/risk-input/v1#/$defs/kill\"},\"reconciliation\":{\"$ref\":\"https://schemas.woozoo.local/risk-input/v1#/$defs/reconciliation\"},\"decision_clock\":{\"$ref\":\"https://schemas.woozoo.local/risk-input/v1#/$defs/clock\"},\"duplicate\":{\"$ref\":\"https://schemas.woozoo.local/risk-input/v1#/$defs/duplicate\"},\"exposure_snapshot\":{\"$ref\":\"https://schemas.woozoo.local/risk-input/v1#/$defs/exposure\"}},\"$defs\":{\"market_book\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"best_bid\",\"best_ask\"],\"properties\":{\"best_bid\":{\"$ref\":\"https://schemas.woozoo.local/risk-input/v1#/$defs/decimal\"},\"best_ask\":{\"$ref\":\"https://schemas.woozoo.local/risk-input/v1#/$defs/decimal\"}}}}}")
+ANALYSIS_RUN_V2_SCHEMA: dict[str, object] = json.loads("{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"$id\":\"woozoo.analysis-run/v2\",\"title\":\"Phase 7 authoritative Paper analysis run\",\"type\":\"object\",\"additionalProperties\":false,\"x-creation-phase\":7,\"x-activation-phase\":7,\"required\":[\"schema_version\",\"run_id\",\"namespace\",\"evidence_id\",\"evidence_digest\",\"symbol\",\"as_of\",\"knowledge_cutoff\",\"workflow_version\",\"workflow_hash\",\"prompt_manifest_hash\",\"provider\",\"model\",\"tool_count\",\"outcome\",\"hold_reason\",\"report_ids\",\"proposal_id\",\"risk_decision_id\",\"audit_hash\"],\"properties\":{\"schema_version\":{\"const\":\"woozoo.analysis-run/v2\"},\"run_id\":{\"$ref\":\"#/$defs/hash\"},\"namespace\":{\"const\":\"paper\"},\"evidence_id\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":128},\"evidence_digest\":{\"$ref\":\"#/$defs/hash\"},\"symbol\":{\"enum\":[\"BTCUSDT\",\"ETHUSDT\"]},\"as_of\":{\"type\":\"string\",\"format\":\"date-time\"},\"knowledge_cutoff\":{\"type\":\"string\",\"format\":\"date-time\"},\"workflow_version\":{\"const\":\"woozoo.agent-workflow/v1\"},\"workflow_hash\":{\"$ref\":\"#/$defs/hash\"},\"prompt_manifest_hash\":{\"$ref\":\"#/$defs/hash\"},\"provider\":{\"const\":\"mock\"},\"model\":{\"const\":\"woozoo-deterministic-mock/v1\"},\"tool_count\":{\"const\":0},\"outcome\":{\"enum\":[\"COMPLETED\",\"HOLD\"]},\"hold_reason\":{\"oneOf\":[{\"type\":\"null\"},{\"enum\":[\"EVIDENCE_NOT_FOUND\",\"EVIDENCE_DIGEST_MISMATCH\",\"EVIDENCE_UNHEALTHY\",\"EVIDENCE_FUTURE_CONTAMINATION\",\"PROVIDER_TIMEOUT\",\"PROVIDER_FAILURE\",\"MODEL_OUTPUT_MALFORMED\",\"REPORT_SCHEMA_INVALID\",\"REQUIRED_REPORT_MISSING\",\"ORPHAN_EVIDENCE_ITEM\",\"TEMPORAL_BOUNDARY_VIOLATION\",\"PROMPT_INJECTION_DETECTED\",\"TOOL_CALL_FORBIDDEN\",\"AUDIT_REJECTED\"]}]},\"report_ids\":{\"type\":\"array\",\"uniqueItems\":true,\"items\":{\"$ref\":\"#/$defs/hash\"}},\"proposal_id\":{\"oneOf\":[{\"type\":\"null\"},{\"$ref\":\"#/$defs/hash\"}]},\"risk_decision_id\":{\"oneOf\":[{\"type\":\"null\"},{\"$ref\":\"#/$defs/hash\"}]},\"audit_hash\":{\"$ref\":\"#/$defs/hash\"}},\"allOf\":[{\"if\":{\"properties\":{\"outcome\":{\"const\":\"COMPLETED\"}},\"required\":[\"outcome\"]},\"then\":{\"properties\":{\"hold_reason\":{\"type\":\"null\"},\"proposal_id\":{\"$ref\":\"#/$defs/hash\"},\"report_ids\":{\"minItems\":8,\"maxItems\":8}}}},{\"if\":{\"properties\":{\"outcome\":{\"const\":\"HOLD\"}},\"required\":[\"outcome\"]},\"then\":{\"properties\":{\"proposal_id\":{\"type\":\"null\"}}}}],\"$defs\":{\"hash\":{\"type\":\"string\",\"pattern\":\"^[a-f0-9]{64}$\"}}}")
+ANALYSIS_RUN_VIEW_SCHEMA: dict[str, object] = json.loads("{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"$id\":\"woozoo.analysis-run-view/v1\",\"title\":\"Phase 7 browser-safe analysis run projection\",\"type\":\"object\",\"additionalProperties\":false,\"x-creation-phase\":7,\"x-activation-phase\":7,\"required\":[\"schema_version\",\"namespace\",\"symbol\",\"evidence_id\",\"provider\",\"tool_count\",\"run_id\",\"status\",\"report\",\"proposal_id\",\"risk_decision_id\"],\"properties\":{\"schema_version\":{\"const\":\"woozoo.analysis-run-view/v1\"},\"namespace\":{\"const\":\"paper\"},\"symbol\":{\"enum\":[\"BTCUSDT\",\"ETHUSDT\"]},\"evidence_id\":{\"$ref\":\"#/$defs/hash\"},\"provider\":{\"const\":\"mock\"},\"tool_count\":{\"const\":0},\"run_id\":{\"$ref\":\"#/$defs/hash\"},\"status\":{\"const\":\"COMPLETED\"},\"report\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"summary\",\"confidence\",\"hold_reasons\"],\"properties\":{\"summary\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":2048},\"confidence\":{\"type\":\"string\",\"pattern\":\"^(0(?:\\\\.[0-9]+)?|1(?:\\\\.0+)?)$\"},\"hold_reasons\":{\"type\":\"array\",\"items\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":64},\"uniqueItems\":true}}},\"proposal_id\":{\"$ref\":\"#/$defs/hash\"},\"risk_decision_id\":{\"$ref\":\"#/$defs/hash\"}},\"$defs\":{\"hash\":{\"type\":\"string\",\"pattern\":\"^[a-f0-9]{64}$\"}}}")
+PAPER_APPROVAL_SCHEMA: dict[str, object] = json.loads("{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"$id\":\"woozoo.paper-approval/v1\",\"title\":\"Phase 7 immutable human Paper approval decision\",\"type\":\"object\",\"additionalProperties\":false,\"x-creation-phase\":7,\"x-activation-phase\":7,\"required\":[\"approval_id\",\"proposal_id\",\"proposal_hash\",\"risk_decision_id\",\"risk_decision_hash\",\"risk_input_digest\",\"risk_policy_version\",\"paper_order_preview\",\"paper_order_preview_hash\",\"actor_id\",\"session_binding_hash\",\"csrf_binding_hash\",\"origin_hash\",\"decision\",\"approval_nonce\",\"expected_kill_switch_version\",\"expected_portfolio_version\",\"expected_ledger_version\",\"decided_at\",\"expires_at\",\"payload_hash\"],\"properties\":{\"approval_id\":{\"$ref\":\"#/$defs/hash\"},\"proposal_id\":{\"$ref\":\"#/$defs/hash\"},\"proposal_hash\":{\"$ref\":\"#/$defs/hash\"},\"risk_decision_id\":{\"$ref\":\"#/$defs/hash\"},\"risk_decision_hash\":{\"$ref\":\"#/$defs/hash\"},\"risk_input_digest\":{\"$ref\":\"#/$defs/hash\"},\"risk_policy_version\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":64},\"paper_order_preview\":{\"$ref\":\"https://schemas.woozoo.local/risk-input/v1#/$defs/preview\"},\"paper_order_preview_hash\":{\"$ref\":\"#/$defs/hash\"},\"actor_id\":{\"const\":\"operator-local-1\"},\"session_binding_hash\":{\"$ref\":\"#/$defs/hash\"},\"csrf_binding_hash\":{\"$ref\":\"#/$defs/hash\"},\"origin_hash\":{\"$ref\":\"#/$defs/hash\"},\"decision\":{\"enum\":[\"APPROVED\",\"REJECTED\"]},\"approval_nonce\":{\"$ref\":\"#/$defs/nonce\"},\"expected_kill_switch_version\":{\"type\":\"integer\",\"minimum\":0},\"expected_portfolio_version\":{\"type\":\"integer\",\"minimum\":0},\"expected_ledger_version\":{\"type\":\"integer\",\"minimum\":0},\"decided_at\":{\"type\":\"string\",\"format\":\"date-time\"},\"expires_at\":{\"type\":\"string\",\"format\":\"date-time\"},\"payload_hash\":{\"$ref\":\"#/$defs/hash\"}},\"$defs\":{\"hash\":{\"type\":\"string\",\"pattern\":\"^[a-f0-9]{64}$\"},\"nonce\":{\"type\":\"string\",\"pattern\":\"^[A-Za-z0-9][A-Za-z0-9._:/-]{31,127}$\"}}}")
+PAPER_APPROVAL_REVOCATION_SCHEMA: dict[str, object] = json.loads("{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"$id\":\"woozoo.paper-approval-revocation/v1\",\"title\":\"Phase 7 immutable human Paper approval revocation\",\"type\":\"object\",\"additionalProperties\":false,\"x-creation-phase\":7,\"x-activation-phase\":7,\"required\":[\"revocation_id\",\"approval_id\",\"approval_hash\",\"actor_id\",\"session_binding_hash\",\"csrf_binding_hash\",\"origin_hash\",\"revocation_nonce\",\"reason\",\"expected_version\",\"revoked_at\",\"payload_hash\"],\"properties\":{\"revocation_id\":{\"$ref\":\"#/$defs/hash\"},\"approval_id\":{\"$ref\":\"#/$defs/hash\"},\"approval_hash\":{\"$ref\":\"#/$defs/hash\"},\"actor_id\":{\"const\":\"operator-local-1\"},\"session_binding_hash\":{\"$ref\":\"#/$defs/hash\"},\"csrf_binding_hash\":{\"$ref\":\"#/$defs/hash\"},\"origin_hash\":{\"$ref\":\"#/$defs/hash\"},\"revocation_nonce\":{\"$ref\":\"#/$defs/nonce\"},\"reason\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":512},\"expected_version\":{\"type\":\"integer\",\"minimum\":1},\"revoked_at\":{\"type\":\"string\",\"format\":\"date-time\"},\"payload_hash\":{\"$ref\":\"#/$defs/hash\"}},\"$defs\":{\"hash\":{\"type\":\"string\",\"pattern\":\"^[a-f0-9]{64}$\"},\"nonce\":{\"type\":\"string\",\"pattern\":\"^[A-Za-z0-9][A-Za-z0-9._:/-]{31,127}$\"}}}")
+PAPER_EXECUTION_AUTHORIZATION_SCHEMA: dict[str, object] = json.loads("{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"$id\":\"woozoo.paper-execution-authorization/v1\",\"title\":\"Phase 7 one-time Paper execution authorization\",\"type\":\"object\",\"additionalProperties\":false,\"x-creation-phase\":7,\"x-activation-phase\":7,\"required\":[\"authorization_id\",\"namespace\",\"approval_id\",\"approval_hash\",\"approval_nonce_hash\",\"authorization_nonce\",\"proposal_id\",\"proposal_hash\",\"risk_decision_id\",\"risk_decision_hash\",\"risk_input_digest\",\"risk_policy_version\",\"paper_order_preview_hash\",\"authorization_input_digest\",\"current_data_state_hash\",\"current_data_as_of\",\"current_knowledge_cutoff\",\"kill_switch_version\",\"reconciliation_checkpoint_hash\",\"ledger_snapshot_hash\",\"paper_account_id\",\"issued_at\",\"expires_at\"],\"properties\":{\"authorization_id\":{\"$ref\":\"#/$defs/hash\"},\"namespace\":{\"const\":\"paper\"},\"approval_id\":{\"$ref\":\"#/$defs/hash\"},\"approval_hash\":{\"$ref\":\"#/$defs/hash\"},\"approval_nonce_hash\":{\"$ref\":\"#/$defs/hash\"},\"authorization_nonce\":{\"$ref\":\"#/$defs/nonce\"},\"proposal_id\":{\"$ref\":\"#/$defs/hash\"},\"proposal_hash\":{\"$ref\":\"#/$defs/hash\"},\"risk_decision_id\":{\"$ref\":\"#/$defs/hash\"},\"risk_decision_hash\":{\"$ref\":\"#/$defs/hash\"},\"risk_input_digest\":{\"$ref\":\"#/$defs/hash\"},\"risk_policy_version\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":64},\"paper_order_preview_hash\":{\"$ref\":\"#/$defs/hash\"},\"authorization_input_digest\":{\"$ref\":\"#/$defs/hash\"},\"current_data_state_hash\":{\"$ref\":\"#/$defs/hash\"},\"current_data_as_of\":{\"type\":\"string\",\"format\":\"date-time\"},\"current_knowledge_cutoff\":{\"type\":\"string\",\"format\":\"date-time\"},\"kill_switch_version\":{\"type\":\"integer\",\"minimum\":0},\"reconciliation_checkpoint_hash\":{\"$ref\":\"#/$defs/hash\"},\"ledger_snapshot_hash\":{\"$ref\":\"#/$defs/hash\"},\"paper_account_id\":{\"$ref\":\"#/$defs/hash\"},\"issued_at\":{\"type\":\"string\",\"format\":\"date-time\"},\"expires_at\":{\"type\":\"string\",\"format\":\"date-time\"}},\"$defs\":{\"hash\":{\"type\":\"string\",\"pattern\":\"^[a-f0-9]{64}$\"},\"nonce\":{\"type\":\"string\",\"pattern\":\"^[A-Za-z0-9][A-Za-z0-9._:/-]{31,127}$\"}}}")
+PAPER_ORDER_V2_SCHEMA: dict[str, object] = json.loads("{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"$id\":\"woozoo.paper-order/v2\",\"title\":\"Phase 7 authorized Paper LIMIT order\",\"type\":\"object\",\"additionalProperties\":false,\"x-creation-phase\":7,\"x-activation-phase\":7,\"required\":[\"order_id\",\"client_order_id\",\"authorization_id\",\"authorization_namespace\",\"authorization_nonce\",\"approval_id\",\"proposal_hash\",\"risk_decision_hash\",\"paper_order_preview_hash\",\"symbol\",\"side\",\"order_type\",\"time_in_force\",\"quantity\",\"limit_price\",\"filled_quantity\",\"status\",\"version\"],\"properties\":{\"order_id\":{\"$ref\":\"#/$defs/hash\"},\"client_order_id\":{\"$ref\":\"#/$defs/opaque128\"},\"authorization_id\":{\"$ref\":\"#/$defs/hash\"},\"authorization_namespace\":{\"const\":\"paper\"},\"authorization_nonce\":{\"$ref\":\"#/$defs/opaque128\"},\"approval_id\":{\"$ref\":\"#/$defs/hash\"},\"proposal_hash\":{\"$ref\":\"#/$defs/hash\"},\"risk_decision_hash\":{\"$ref\":\"#/$defs/hash\"},\"paper_order_preview_hash\":{\"$ref\":\"#/$defs/hash\"},\"symbol\":{\"enum\":[\"BTCUSDT\",\"ETHUSDT\"]},\"side\":{\"enum\":[\"BUY\",\"SELL\"]},\"order_type\":{\"const\":\"LIMIT\"},\"time_in_force\":{\"const\":\"GTC\"},\"quantity\":{\"$ref\":\"#/$defs/positiveDecimal\"},\"limit_price\":{\"$ref\":\"#/$defs/positiveDecimal\"},\"filled_quantity\":{\"$ref\":\"#/$defs/nonNegativeDecimal\"},\"status\":{\"enum\":[\"OPEN\",\"PARTIALLY_FILLED\",\"FILLED\",\"CANCELLED\"]},\"version\":{\"type\":\"integer\",\"minimum\":1}},\"$defs\":{\"hash\":{\"type\":\"string\",\"pattern\":\"^[a-f0-9]{64}$\"},\"opaque128\":{\"type\":\"string\",\"pattern\":\"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$\"},\"nonNegativeDecimal\":{\"type\":\"string\",\"pattern\":\"^(0|[1-9][0-9]{0,19})(\\\\.[0-9]{1,18})?$\"},\"positiveDecimal\":{\"type\":\"string\",\"pattern\":\"^(?!0(?:\\\\.0{1,18})?$)(0|[1-9][0-9]{0,19})(\\\\.[0-9]{1,18})?$\"}}}")
+APPROVAL_VIEW_SCHEMA: dict[str, object] = json.loads("{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"$id\":\"woozoo.approval-view/v1\",\"title\":\"Phase 7 deterministic Paper approval projection\",\"type\":\"object\",\"additionalProperties\":false,\"x-creation-phase\":7,\"x-activation-phase\":7,\"required\":[\"proposal_id\",\"proposal_hash\",\"status\",\"reason_codes\",\"risk_decision_id\",\"risk_decision_hash\",\"risk_input_digest\",\"risk_policy_version\",\"risk_verdict\",\"paper_order_preview\",\"paper_order_preview_hash\",\"approval_id\",\"approval_status\",\"approval_expires_at\",\"approval_ttl_seconds\",\"approval_action_allowed\",\"authorization_id\",\"authorization_status\",\"view_version\",\"served_at\"],\"properties\":{\"proposal_id\":{\"$ref\":\"#/$defs/hash\"},\"proposal_hash\":{\"$ref\":\"#/$defs/hash\"},\"status\":{\"enum\":[\"PENDING_RISK\",\"PENDING_APPROVAL\",\"READY\",\"APPROVED\",\"AUTHORIZATION_ISSUED\",\"BLOCKED\",\"INVALID\"]},\"reason_codes\":{\"type\":\"array\",\"items\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":64},\"uniqueItems\":true},\"risk_decision_id\":{\"$ref\":\"#/$defs/nullableHash\"},\"risk_decision_hash\":{\"$ref\":\"#/$defs/nullableHash\"},\"risk_input_digest\":{\"$ref\":\"#/$defs/nullableHash\"},\"risk_policy_version\":{\"type\":[\"string\",\"null\"],\"maxLength\":64},\"risk_verdict\":{\"enum\":[\"ALLOWED\",\"DENIED\",\"ERROR\",null]},\"paper_order_preview\":{\"anyOf\":[{\"$ref\":\"#/$defs/preview\"},{\"type\":\"null\"}]},\"paper_order_preview_hash\":{\"$ref\":\"#/$defs/nullableHash\"},\"approval_id\":{\"$ref\":\"#/$defs/nullableHash\"},\"approval_status\":{\"enum\":[\"APPROVED\",\"REJECTED\",\"EXPIRED\",\"REVOKED\",null]},\"approval_expires_at\":{\"type\":[\"string\",\"null\"],\"format\":\"date-time\"},\"approval_ttl_seconds\":{\"const\":300},\"approval_action_allowed\":{\"type\":\"boolean\"},\"authorization_id\":{\"$ref\":\"#/$defs/nullableHash\"},\"authorization_status\":{\"enum\":[\"ISSUED\",\"BLOCKED\",\"CONSUMED\",\"EXPIRED\",\"REVOKED\",\"INVALIDATED\",null]},\"view_version\":{\"type\":\"integer\",\"minimum\":1},\"served_at\":{\"type\":\"string\",\"format\":\"date-time\"}},\"allOf\":[{\"if\":{\"properties\":{\"status\":{\"const\":\"READY\"}},\"required\":[\"status\"]},\"then\":{\"properties\":{\"approval_action_allowed\":{\"const\":true}}}},{\"if\":{\"properties\":{\"status\":{\"enum\":[\"PENDING_RISK\",\"PENDING_APPROVAL\",\"APPROVED\",\"AUTHORIZATION_ISSUED\",\"BLOCKED\",\"INVALID\"]}},\"required\":[\"status\"]},\"then\":{\"properties\":{\"approval_action_allowed\":{\"const\":false}}}}],\"$defs\":{\"hash\":{\"type\":\"string\",\"pattern\":\"^[a-f0-9]{64}$\"},\"nullableHash\":{\"type\":[\"string\",\"null\"],\"pattern\":\"^[a-f0-9]{64}$\"},\"decimal\":{\"type\":\"string\",\"pattern\":\"^(0|[1-9][0-9]{0,19})(\\\\.[0-9]{1,18})?$\"},\"preview\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"symbol\",\"side\",\"order_type\",\"time_in_force\",\"quantity\",\"limit_price\",\"worst_case_fee\",\"worst_case_hold\",\"worst_case_notional\",\"best_bid\",\"best_ask\",\"expected_slippage_inputs\",\"paper_order_preview_hash\"],\"properties\":{\"symbol\":{\"enum\":[\"BTCUSDT\",\"ETHUSDT\"]},\"side\":{\"enum\":[\"BUY\",\"SELL\"]},\"order_type\":{\"const\":\"LIMIT\"},\"time_in_force\":{\"const\":\"GTC\"},\"quantity\":{\"$ref\":\"#/$defs/decimal\"},\"limit_price\":{\"$ref\":\"#/$defs/decimal\"},\"worst_case_fee\":{\"$ref\":\"#/$defs/decimal\"},\"worst_case_hold\":{\"$ref\":\"#/$defs/decimal\"},\"worst_case_notional\":{\"$ref\":\"#/$defs/decimal\"},\"best_bid\":{\"$ref\":\"#/$defs/decimal\"},\"best_ask\":{\"$ref\":\"#/$defs/decimal\"},\"expected_slippage_inputs\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"method\"],\"properties\":{\"method\":{\"const\":\"limit-vs-book-v1\"}}},\"paper_order_preview_hash\":{\"$ref\":\"#/$defs/hash\"}}}}}")
+LOCAL_SESSION_SCHEMA: dict[str, object] = json.loads("{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"$id\":\"woozoo.local-session/v1\",\"title\":\"Phase 7 local operator session response\",\"type\":\"object\",\"additionalProperties\":false,\"x-creation-phase\":7,\"x-activation-phase\":7,\"required\":[\"actor_id\",\"issued_at\",\"idle_expires_at\",\"absolute_expires_at\",\"csrf_token\",\"csrf_expires_at\"],\"properties\":{\"actor_id\":{\"const\":\"operator-local-1\"},\"issued_at\":{\"type\":\"string\",\"format\":\"date-time\"},\"idle_expires_at\":{\"type\":\"string\",\"format\":\"date-time\"},\"absolute_expires_at\":{\"type\":\"string\",\"format\":\"date-time\"},\"csrf_token\":{\"type\":\"string\",\"minLength\":32,\"maxLength\":256},\"csrf_expires_at\":{\"type\":\"string\",\"format\":\"date-time\"}}}")
+RISK_DOMAIN_EVENTS_V2_SCHEMA: dict[str, object] = json.loads("{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"$id\":\"woozoo.risk-domain-events/v2\",\"title\":\"Phase 7 Risk, approval, authorization, and recovery event registry\",\"x-creation-phase\":7,\"x-activation-phase\":7,\"oneOf\":[{\"$ref\":\"#/$defs/riskDecisionRecorded\"},{\"$ref\":\"#/$defs/approvalRecorded\"},{\"$ref\":\"#/$defs/approvalRevoked\"},{\"$ref\":\"#/$defs/authorizationIssued\"},{\"$ref\":\"#/$defs/killSwitchRecovered\"}],\"$defs\":{\"base\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"spec_version\",\"event_id\",\"event_type\",\"event_version\",\"occurred_at\",\"producer\",\"activation_phase\",\"aggregate_id\",\"aggregate_version\",\"payload_hash\",\"data\"],\"properties\":{\"spec_version\":{\"const\":\"woozoo.event/v1\"},\"event_id\":{\"$ref\":\"#/$defs/hash\"},\"event_type\":{\"type\":\"string\"},\"event_version\":{\"const\":2},\"occurred_at\":{\"type\":\"string\",\"format\":\"date-time\"},\"producer\":{\"const\":\"risk-engine\"},\"activation_phase\":{\"const\":7},\"aggregate_id\":{\"$ref\":\"#/$defs/hash\"},\"aggregate_version\":{\"type\":\"integer\",\"minimum\":1},\"payload_hash\":{\"$ref\":\"#/$defs/hash\"},\"data\":{\"type\":\"object\"}}},\"riskDecisionRecorded\":{\"allOf\":[{\"$ref\":\"#/$defs/base\"},{\"properties\":{\"event_type\":{\"const\":\"risk.decision.recorded.v2\"},\"data\":{\"$ref\":\"risk-decision.v1.json\"}}}]},\"approvalRecorded\":{\"allOf\":[{\"$ref\":\"#/$defs/base\"},{\"properties\":{\"event_type\":{\"const\":\"paper.approval.recorded.v1\"},\"data\":{\"$ref\":\"paper-approval.v1.json\"}}}]},\"approvalRevoked\":{\"allOf\":[{\"$ref\":\"#/$defs/base\"},{\"properties\":{\"event_type\":{\"const\":\"paper.approval.revoked.v1\"},\"data\":{\"$ref\":\"paper-approval-revocation.v1.json\"}}}]},\"authorizationIssued\":{\"allOf\":[{\"$ref\":\"#/$defs/base\"},{\"properties\":{\"event_type\":{\"const\":\"paper.authorization.issued.v1\"},\"data\":{\"$ref\":\"paper-execution-authorization.v1.json\"}}}]},\"killSwitchRecovered\":{\"allOf\":[{\"$ref\":\"#/$defs/base\"},{\"properties\":{\"event_type\":{\"const\":\"kill-switch.recovered.v2\"},\"data\":{\"$ref\":\"#/$defs/killRecoveryData\"}}}]},\"killRecoveryData\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"recovery_event_id\",\"scope\",\"active\",\"prior_version\",\"version\",\"actor_id\",\"session_binding_hash\",\"csrf_binding_hash\",\"origin_hash\",\"incident_reference\",\"reason\",\"observed_at\",\"context_digest\",\"data_status\",\"data_state_hash\",\"reconciliation_status\",\"reconciliation_checkpoint_hash\",\"ledger_status\",\"ledger_snapshot_hash\"],\"properties\":{\"recovery_event_id\":{\"$ref\":\"#/$defs/hash\"},\"scope\":{\"const\":\"paper-global\"},\"active\":{\"const\":false},\"prior_version\":{\"type\":\"integer\",\"minimum\":1},\"version\":{\"type\":\"integer\",\"minimum\":2},\"actor_id\":{\"const\":\"operator-local-1\"},\"session_binding_hash\":{\"$ref\":\"#/$defs/hash\"},\"csrf_binding_hash\":{\"$ref\":\"#/$defs/hash\"},\"origin_hash\":{\"$ref\":\"#/$defs/hash\"},\"incident_reference\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":128},\"reason\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":512},\"observed_at\":{\"type\":\"string\",\"format\":\"date-time\"},\"context_digest\":{\"$ref\":\"#/$defs/hash\"},\"data_status\":{\"const\":\"HEALTHY\"},\"data_state_hash\":{\"$ref\":\"#/$defs/hash\"},\"reconciliation_status\":{\"const\":\"PASS\"},\"reconciliation_checkpoint_hash\":{\"$ref\":\"#/$defs/hash\"},\"ledger_status\":{\"const\":\"BALANCED\"},\"ledger_snapshot_hash\":{\"$ref\":\"#/$defs/hash\"}}},\"hash\":{\"type\":\"string\",\"pattern\":\"^[a-f0-9]{64}$\"}}}")
+PAPER_DOMAIN_EVENTS_V2_SCHEMA: dict[str, object] = json.loads("{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"$id\":\"woozoo.paper-domain-events/v2\",\"title\":\"Phase 7 production Paper authorization and order event registry\",\"x-creation-phase\":7,\"x-activation-phase\":7,\"oneOf\":[{\"$ref\":\"#/$defs/authorizationConsumed\"},{\"$ref\":\"#/$defs/authorizationBlocked\"},{\"$ref\":\"#/$defs/orderAccepted\"},{\"$ref\":\"#/$defs/orderCancelled\"},{\"$ref\":\"#/$defs/ledgerPosted\"}],\"$defs\":{\"base\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"spec_version\",\"event_id\",\"event_type\",\"event_version\",\"occurred_at\",\"producer\",\"activation_phase\",\"aggregate_id\",\"aggregate_version\",\"payload_hash\",\"data\"],\"properties\":{\"spec_version\":{\"const\":\"woozoo.event/v1\"},\"event_id\":{\"$ref\":\"#/$defs/hash\"},\"event_type\":{\"type\":\"string\"},\"event_version\":{\"const\":2},\"occurred_at\":{\"type\":\"string\",\"format\":\"date-time\"},\"producer\":{\"const\":\"paper-engine\"},\"activation_phase\":{\"const\":7},\"aggregate_id\":{\"$ref\":\"#/$defs/hash\"},\"aggregate_version\":{\"type\":\"integer\",\"minimum\":1},\"payload_hash\":{\"$ref\":\"#/$defs/hash\"},\"data\":{\"type\":\"object\"}}},\"authorizationConsumed\":{\"allOf\":[{\"$ref\":\"#/$defs/base\"},{\"properties\":{\"event_type\":{\"const\":\"paper.authorization.consumed.v2\"},\"data\":{\"$ref\":\"#/$defs/consumedData\"}}}]},\"authorizationBlocked\":{\"allOf\":[{\"$ref\":\"#/$defs/base\"},{\"properties\":{\"event_type\":{\"const\":\"paper.authorization.blocked.v2\"},\"data\":{\"$ref\":\"#/$defs/blockedData\"}}}]},\"orderAccepted\":{\"allOf\":[{\"$ref\":\"#/$defs/base\"},{\"properties\":{\"event_type\":{\"const\":\"paper.order.accepted.v2\"},\"data\":{\"$ref\":\"paper-order.v2.json\"}}}]},\"orderCancelled\":{\"allOf\":[{\"$ref\":\"#/$defs/base\"},{\"properties\":{\"event_type\":{\"const\":\"paper.order.cancelled.v2\"},\"data\":{\"$ref\":\"#/$defs/cancellationData\"}}}]},\"ledgerPosted\":{\"allOf\":[{\"$ref\":\"#/$defs/base\"},{\"properties\":{\"event_type\":{\"const\":\"ledger.transaction.posted.v2\"},\"data\":{\"$ref\":\"#/$defs/ledgerData\"}}}]},\"consumedData\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"authorization_id\",\"authorization_nonce\",\"approval_id\",\"request_hash\",\"outcome\",\"order_id\"],\"properties\":{\"authorization_id\":{\"$ref\":\"#/$defs/hash\"},\"authorization_nonce\":{\"$ref\":\"#/$defs/nonce\"},\"approval_id\":{\"$ref\":\"#/$defs/hash\"},\"request_hash\":{\"$ref\":\"#/$defs/hash\"},\"outcome\":{\"const\":\"CONSUMED_ORDER_CREATED\"},\"order_id\":{\"$ref\":\"#/$defs/hash\"}}},\"blockedData\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"authorization_id\",\"authorization_nonce\",\"approval_id\",\"request_hash\",\"outcome\",\"reason_code\"],\"properties\":{\"authorization_id\":{\"$ref\":\"#/$defs/hash\"},\"authorization_nonce\":{\"$ref\":\"#/$defs/nonce\"},\"approval_id\":{\"$ref\":\"#/$defs/hash\"},\"request_hash\":{\"$ref\":\"#/$defs/hash\"},\"outcome\":{\"const\":\"BLOCKED\"},\"reason_code\":{\"enum\":[\"KILL_ACTIVE\",\"KILL_SWITCH_ACTIVE\",\"KILL_VERSION_MISMATCH\",\"DATA_STALE\",\"DATA_INVALID\",\"AUTHORIZATION_EXPIRED\",\"AUTHORIZATION_REVOKED\",\"HASH_MISMATCH\",\"VERSION_MISMATCH\",\"RECONCILIATION_MISSING\",\"RECONCILIATION_UNHEALTHY\",\"LEDGER_UNHEALTHY\",\"INSUFFICIENT_FUNDS\",\"INSUFFICIENT_POSITION\"]}}},\"ledgerData\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"transaction_id\",\"authorization_id\"],\"properties\":{\"transaction_id\":{\"$ref\":\"#/$defs/hash\"},\"authorization_id\":{\"$ref\":\"#/$defs/hash\"}}},\"cancellationData\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"order\",\"request_hash\",\"reason\"],\"properties\":{\"order\":{\"$ref\":\"paper-order.v2.json\"},\"request_hash\":{\"$ref\":\"#/$defs/hash\"},\"reason\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":512}}},\"hash\":{\"type\":\"string\",\"pattern\":\"^[a-f0-9]{64}$\"},\"nonce\":{\"type\":\"string\",\"pattern\":\"^[A-Za-z0-9][A-Za-z0-9._:/-]{31,127}$\"}}}")

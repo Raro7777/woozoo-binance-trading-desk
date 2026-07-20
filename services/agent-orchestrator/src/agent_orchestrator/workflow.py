@@ -59,21 +59,26 @@ class AgentWorkflow:
         *,
         timeout_seconds: float = 30.0,
         clock: Callable[[], str],
+        namespace: str = "test",
     ) -> None:
         if provider.name != "mock" or provider.model != "woozoo-deterministic-mock/v1":
             raise ValueError("Phase 6 provider must be deterministic mock")
         self._provider = provider
         self._timeout_seconds = timeout_seconds
         self._clock = clock
+        if namespace not in {"test", "paper"}:
+            raise ValueError("Agent workflow namespace must be test or paper")
+        self._namespace = namespace
 
     async def run(self, evidence: EvidenceContext) -> WorkflowResult:
-        run_id = canonical_hash(
-            {
-                "evidence_digest": evidence.evidence_digest,
-                "prompt_manifest_hash": PROMPT_MANIFEST_HASH,
-                "workflow_hash": WORKFLOW_HASH,
-            }
-        )
+        run_identity = {
+            "evidence_digest": evidence.evidence_digest,
+            "prompt_manifest_hash": PROMPT_MANIFEST_HASH,
+            "workflow_hash": WORKFLOW_HASH,
+        }
+        if self._namespace == "paper":
+            run_identity["namespace"] = "paper"
+        run_id = canonical_hash(run_identity)
         preliminary = self._validate_evidence(evidence)
         if preliminary is not None:
             return self._hold(run_id, evidence, preliminary, ())
@@ -312,9 +317,11 @@ class AgentWorkflow:
         reason: HoldReason | None,
     ) -> dict[str, Any]:
         return {
-            "schema_version": "woozoo.analysis-run/v1",
+            "schema_version": (
+                "woozoo.analysis-run/v2" if self._namespace == "paper" else "woozoo.analysis-run/v1"
+            ),
             "run_id": run_id,
-            "namespace": "test",
+            "namespace": self._namespace,
             "evidence_id": evidence.evidence_id,
             "evidence_digest": evidence.evidence_digest,
             "symbol": evidence.symbol,
@@ -325,10 +332,12 @@ class AgentWorkflow:
             "prompt_manifest_hash": PROMPT_MANIFEST_HASH,
             "provider": self._provider.name,
             "model": self._provider.model,
+            **({"tool_count": 0} if self._namespace == "paper" else {}),
             "outcome": "HOLD" if reason else "COMPLETED",
             "hold_reason": None if reason is None else reason.value,
             "report_ids": [report["report_id"] for report in reports],
             "proposal_id": None if proposal is None else proposal["proposal_id"],
+            **({"risk_decision_id": None} if self._namespace == "paper" else {}),
             "audit_hash": audit["audit_hash"],
         }
 

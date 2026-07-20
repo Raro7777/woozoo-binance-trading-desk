@@ -50,15 +50,69 @@ const killFaults = [
 ];
 const killAttempts = ["timer", "ai", "process_restart", "redis_expiry", "unauthenticated_actor"];
 
-function run(command, args) {
+function run(command, args, environment = {}) {
+  const commandEnvironment = { ...deterministicEnvironment, ...environment };
   const result = process.platform === "win32" && [pnpm, "corepack"].includes(command)
     ? spawnSync(process.env.ComSpec ?? "cmd.exe", ["/d", "/s", "/c", [command, ...args].join(" ")], {
         cwd: root,
         stdio: "inherit",
-        env: deterministicEnvironment,
+        env: commandEnvironment,
       })
-    : spawnSync(command, args, { cwd: root, stdio: "inherit", env: deterministicEnvironment });
+    : spawnSync(command, args, { cwd: root, stdio: "inherit", env: commandEnvironment });
   if (result.status !== 0) throw new Error(`${command} ${args.join(" ")} failed`);
+}
+
+async function runPlaywrightWithResultGate(expectedTestCount) {
+  const resultPath = resolve(root, "artifacts", ".playwright-results", "e2e.xml");
+  await mkdir(resolve(resultPath, ".."), { recursive: true });
+  const command = [process.execPath, [resolve(root, "node_modules", "@playwright", "test", "cli.js"), "test", "--reporter=junit"]];
+  run(command[0], command[1], { PLAYWRIGHT_JUNIT_OUTPUT_NAME: resultPath });
+  const xml = await readFile(resultPath, "utf8");
+  const suites = xml.match(/<testsuites\b([^>]*)>/);
+  const counts = suites === null
+    ? {}
+    : Object.fromEntries([...suites[1].matchAll(/\b(tests|errors|failures|skipped)="(\d+)"/g)].map((match) => [match[1], Number(match[2])]));
+  if (
+    suites === null
+    || counts.tests !== expectedTestCount
+    || counts.errors !== 0
+    || counts.failures !== 0
+    || counts.skipped !== 0
+  ) {
+    throw new Error("Playwright must execute every declared browser scenario with zero failure, error, or skip");
+  }
+  for (const id of ["E2E-001", "E2E-002", "E2E-003", "E2E-004", "E2E-005"]) {
+    if (!xml.includes(`[live] ${id}`)) throw new Error(`${id} must be reported as a live non-mock browser scenario`);
+  }
+  for (const id of ["UI-001", "UI-002", "UI-003", "UI-004"]) {
+    if (!xml.includes(`[ui-only] ${id}`)) throw new Error(`${id} must remain explicitly isolated UI-only coverage`);
+  }
+  return { command, testCount: counts.tests };
+}
+
+async function runPytestWithResultGate(testPath, expectedTestCount) {
+  const resultPath = resolve(root, "artifacts", ".pytest-results", "phase7-api.xml");
+  await mkdir(resolve(resultPath, ".."), { recursive: true });
+  const command = [
+    "python",
+    ["-m", "uv", "run", "--locked", "pytest", "-q", testPath, `--junitxml=${resultPath}`],
+  ];
+  run(command[0], command[1]);
+  const xml = await readFile(resultPath, "utf8");
+  const suite = xml.match(/<testsuite\b([^>]*)>/);
+  const counts = suite === null
+    ? {}
+    : Object.fromEntries([...suite[1].matchAll(/\b(tests|errors|failures|skipped)="(\d+)"/g)].map((match) => [match[1], Number(match[2])]));
+  if (
+    suite === null
+    || counts.tests !== expectedTestCount
+    || counts.errors !== 0
+    || counts.failures !== 0
+    || counts.skipped !== 0
+  ) {
+    throw new Error(`pytest ${testPath} must execute exactly ${expectedTestCount} tests with zero failure, error, or skip`);
+  }
+  return { command, testCount: counts.tests };
 }
 
 async function fixtureManifestDigest() {
@@ -83,7 +137,7 @@ async function paperMetadata() {
 }
 
 async function riskMetadata() {
-  const manifest = await readFile(resolve(root, "docs", "woozoo-trading-desk", "phase-5", "p5-scenario-manifest.json"));
+  const manifest = await readFile(resolve(root, "docs", "woozoo-trading-desk", "phase-7", "p7-risk-regression-manifest.json"));
   return {
     schema_version: "woozoo.risk.replay-manifest/v1",
     risk_policy_version: "woozoo.risk-policy/v1",
@@ -95,7 +149,7 @@ async function riskMetadata() {
 }
 
 async function riskDataScenario(area, id, nodeIds) {
-  const manifestPath = resolve(root, "docs", "woozoo-trading-desk", "phase-5", "p5-scenario-manifest.json");
+  const manifestPath = resolve(root, "docs", "woozoo-trading-desk", "phase-7", "p7-risk-regression-manifest.json");
   const manifestBytes = await readFile(manifestPath);
   const manifest = JSON.parse(manifestBytes.toString("utf8"));
   const scenario = manifest.scenarios?.find((candidate) => candidate.id === id);
@@ -154,7 +208,7 @@ async function riskDataScenario(area, id, nodeIds) {
 }
 
 async function agentMetadata() {
-  const manifest = await readFile(resolve(root, "docs", "woozoo-trading-desk", "phase-6", "p6-scenario-manifest.json"));
+  const manifest = await readFile(resolve(root, "docs", "woozoo-trading-desk", "phase-7", "p7-agent-regression-manifest.json"));
   return {
     schema_version: "woozoo.agent.replay-manifest/v1",
     workflow_version: "woozoo.agent-workflow/v1",
@@ -165,12 +219,12 @@ async function agentMetadata() {
     timezone: "UTC",
     network_enabled: false,
     tool_allowlist: [],
-    runtime_namespace: "test",
+    runtime_namespace: "paper",
   };
 }
 
 async function agentDataScenario(area, id, nodeIds) {
-  const manifestPath = resolve(root, "docs", "woozoo-trading-desk", "phase-6", "p6-scenario-manifest.json");
+  const manifestPath = resolve(root, "docs", "woozoo-trading-desk", "phase-7", "p7-agent-regression-manifest.json");
   const manifestBytes = await readFile(manifestPath);
   const manifest = JSON.parse(manifestBytes.toString("utf8"));
   const scenario = manifest.scenarios?.find((candidate) => candidate.id === id);
@@ -182,7 +236,7 @@ async function agentDataScenario(area, id, nodeIds) {
     typeof scenario.oracle !== "string" ||
     scenario.oracle.length === 0
   ) {
-    throw new Error(`${id} Phase 6 scenario contract does not match its exact harness nodes`);
+    throw new Error(`${id} Phase 7 agent regression contract does not match its exact harness nodes`);
   }
   const sourcePaths = [...new Set(nodeIds.map((node) => node.split("::", 1)[0]))];
   const sourceDigests = [];
@@ -190,7 +244,7 @@ async function agentDataScenario(area, id, nodeIds) {
     sourceDigests.push(createHash("sha256").update(await readFile(resolve(root, sourcePath))).digest("hex"));
   }
   if (JSON.stringify(scenario.source_sha256) !== JSON.stringify(sourceDigests)) {
-    throw new Error(`${id} Phase 6 source digest contract is stale`);
+    throw new Error(`${id} Phase 7 agent regression source digest contract is stale`);
   }
   await dataScenario(area, id, nodeIds, {
     ...(await agentMetadata()),
@@ -357,9 +411,9 @@ const actions = {
       "tests/safety/test_phase4_paper_boundaries.py::test_phase_four_settings_reject_credential_vocabulary",
     ], await paperMetadata());
     await riskDataScenario("safety", "RISK-SAFE-001", [
-      "tests/safety/test_phase5_risk_boundaries.py::test_phase_five_has_no_active_risk_approval_or_authorization_ingress",
+      "tests/safety/test_phase5_risk_boundaries.py::test_phase_five_dormancy_is_activated_only_at_the_phase_seven_browser_boundary",
       "tests/safety/test_phase5_risk_boundaries.py::test_risk_engine_has_no_network_exchange_secret_or_ai_capability",
-      "tests/safety/test_phase5_risk_boundaries.py::test_phase_five_does_not_create_approval_or_authorization_contracts",
+      "tests/safety/test_phase5_risk_boundaries.py::test_phase_seven_contracts_preserve_the_phase_five_dormant_boundary",
     ]);
     await riskDataScenario("safety", "KILL-002", [
       "tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_has_no_automatic_ai_or_unauthenticated_recovery",
@@ -374,7 +428,7 @@ const actions = {
     ]);
     await agentDataScenario("safety", "SEC-002", [
       "tests/safety/test_phase6_agent_boundaries.py::test_sec_002_agent_has_no_execution_or_exchange_capability",
-      "tests/safety/test_phase6_agent_boundaries.py::test_sec_002_active_api_has_no_agent_or_proposal_route",
+      "tests/safety/test_phase6_agent_boundaries.py::test_sec_002_phase7_api_exposes_analysis_command_without_ai_execution_capability",
     ]);
   },
   "test:integration": async () => {
@@ -421,6 +475,20 @@ const actions = {
       "tests/integration/test_proposal_risk_fixture_chain.py::test_p6_hold_is_not_risk_eligible",
       "tests/integration/test_proposal_risk_fixture_chain.py::test_p6_risk_rejects_proposal_data_evidence_mismatch",
     ]);
+  },
+  "test:e2e": async () => {
+    const api = await runPytestWithResultGate("tests/integration/test_trading_room_api.py", 7);
+    const playwright = await runPlaywrightWithResultGate(14);
+    await scenarios(
+      "e2e",
+      ["E2E-001", "E2E-002", "E2E-003", "E2E-004", "E2E-005"],
+      [
+        api.command,
+        playwright.command,
+      ],
+      api.testCount + playwright.testCount,
+      true,
+    );
   },
   "test:replay": async () => {
     await dataScenario("replay", "DATA-001", [
@@ -553,9 +621,15 @@ const actions = {
     run("python", ["-m", "compileall", "-q", "packages", "services"]);
   },
   ci: async () => {
-    runPnpm(["bootstrap"]);
-    runPnpm(["env:init", "--", "--check"]);
-    for (const action of ["lint", "typecheck", "test:unit", "test:contracts", "test:safety", "test:integration", "test:property", "test:replay", "test:failure", "build"]) {
+    // Avoid an extra pnpm lifecycle nesting level on Windows. The bootstrap
+    // script itself runs the frozen pnpm install; invoking it through another
+    // `pnpm run` can terminate the outer CI lifecycle before later gates run.
+    // `pnpm ci` already starts with the lockfile-installed Node runtime. Avoid
+    // replacing its node_modules from a nested pnpm install on Windows, while
+    // still executing the Python sync and generated-contract bootstrap gates.
+    run("node", ["scripts/bootstrap.mjs", "--skip-pnpm-install"]);
+    run("node", ["scripts/env-init.mjs", "--check"]);
+    for (const action of ["lint", "typecheck", "test:unit", "test:contracts", "test:safety", "test:integration", "test:property", "test:replay", "test:failure", "test:e2e", "build"]) {
       await actions[action]();
     }
   },

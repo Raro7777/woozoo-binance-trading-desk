@@ -1,0 +1,133 @@
+{
+  "schema_version": "woozoo.phase-7-agent-regression-manifest/v1",
+  "phase": 7,
+  "workflow_version": "woozoo.agent-workflow/v1",
+  "provider": "mock",
+  "model": "woozoo-deterministic-mock/v1",
+  "risk_input_schema_version": "woozoo.risk-input/v2",
+  "fixed_seed": 0,
+  "timezone": "UTC",
+  "network_enabled": false,
+  "tool_allowlist": [],
+  "runtime_namespace": "paper",
+  "production_activation_phase": 7,
+  "scenarios": [
+    {
+      "id": "AI-001",
+      "owner": "agent-orchestrator",
+      "command": "corepack pnpm test:contracts",
+      "artifact": "artifacts/contracts/AI-001.json",
+      "test_nodes": [
+        "tests/contract/test_agent_contract.py::test_ai_001_failure_matrix"
+      ],
+      "source_sha256": [
+        "c64918afd6e834ed2cc664e5c26c1ac3bc78d19e7b502e8720d1b39e46ed8882"
+      ],
+      "oracle": "Timeout, provider failure, malformed JSON and schema-invalid output produce a stable run-level HOLD and no TradeProposal."
+    },
+    {
+      "id": "AI-002",
+      "owner": "agent-orchestrator",
+      "command": "corepack pnpm test:safety",
+      "artifact": "artifacts/safety/AI-002.json",
+      "test_nodes": [
+        "tests/safety/test_phase6_agent_boundaries.py::test_ai_002_orphan_and_future_claims_hold"
+      ],
+      "source_sha256": [
+        "4bc41544da1e5a584a0f7b1705da45eaf2c9028abaed89486ccd780c26e00dd3"
+      ],
+      "oracle": "Orphan Evidence citations and claims beyond both temporal cutoffs produce HOLD and cannot be promoted into a Proposal."
+    },
+    {
+      "id": "SEC-001",
+      "owner": "agent-orchestrator",
+      "command": "corepack pnpm test:safety",
+      "artifact": "artifacts/safety/SEC-001.json",
+      "test_nodes": [
+        "tests/safety/test_phase6_agent_boundaries.py::test_sec_001_has_no_real_provider_or_secret_configuration"
+      ],
+      "source_sha256": [
+        "4bc41544da1e5a584a0f7b1705da45eaf2c9028abaed89486ccd780c26e00dd3"
+      ],
+      "oracle": "No real-provider secret configuration exists in product configuration or agent source."
+    },
+    {
+      "id": "SEC-002",
+      "owner": "agent-orchestrator",
+      "command": "corepack pnpm test:safety",
+      "artifact": "artifacts/safety/SEC-002.json",
+      "test_nodes": [
+        "tests/safety/test_phase6_agent_boundaries.py::test_sec_002_agent_has_no_execution_or_exchange_capability",
+        "tests/safety/test_phase6_agent_boundaries.py::test_sec_002_phase7_api_exposes_analysis_command_without_ai_execution_capability"
+      ],
+      "source_sha256": [
+        "4bc41544da1e5a584a0f7b1705da45eaf2c9028abaed89486ccd780c26e00dd3"
+      ],
+      "oracle": "The AI tool registry and active route set expose zero account, Risk, approval, order, exchange or network capability."
+    },
+    {
+      "id": "AGENT-REPLAY-001",
+      "owner": "agent-orchestrator",
+      "command": "corepack pnpm test:replay",
+      "artifact": "artifacts/replay/AGENT-REPLAY-001.json",
+      "test_nodes": [
+        "tests/replay/test_agent_replay.py::test_agent_replay_is_stable_across_provider_json_key_order"
+      ],
+      "source_sha256": [
+        "594c924348193d9ee66dfe65538f64fe9a22f7aacb289945b0f11db4e151d8c7"
+      ],
+      "oracle": "The fixed Evidence, mock responses and clock produce byte-identical reports, Proposal, audit and events across JSON key order."
+    },
+    {
+      "id": "AGENT-PROPERTY-001",
+      "owner": "agent-orchestrator",
+      "command": "corepack pnpm test:property",
+      "artifact": "artifacts/property/AGENT-PROPERTY-001.json",
+      "test_nodes": [
+        "tests/property/test_agent_evidence_properties.py::test_every_orphan_citation_fails_closed"
+      ],
+      "source_sha256": [
+        "7d04f14d2ad76584b27c5a52776a751106ca0225a981feb78838d75789de8129"
+      ],
+      "oracle": "Every generated non-member Evidence item identifier is rejected with the same orphan reason and Proposal count zero."
+    },
+    {
+      "id": "AGENT-FAILURE-001",
+      "owner": "agent-orchestrator",
+      "command": "corepack pnpm test:failure",
+      "artifact": "artifacts/failure/AGENT-FAILURE-001.json",
+      "test_nodes": [
+        "tests/failure/test_agent_provider_failures.py::test_provider_failure_at_every_role_has_no_proposal"
+      ],
+      "source_sha256": [
+        "61a57916619763f63fd6b8787537af0e0faca4cf28af98a02a985584422cbceb"
+      ],
+      "oracle": "A provider failure at each of the eight fixed roles yields HOLD and no Proposal event."
+    },
+    {
+      "id": "AGENT-INTEGRATION-001",
+      "owner": "agent-orchestrator",
+      "command": "corepack pnpm test:integration",
+      "artifact": "artifacts/integration/AGENT-INTEGRATION-001.json",
+      "test_nodes": [
+        "tests/integration/test_agent_migration_contract.py::test_phase6_migration_is_append_only_least_privilege_and_test_only",
+        "tests/integration/test_agent_migration_contract.py::test_preexisting_agent_role_and_direct_grants_survive_empty_downgrade",
+        "tests/integration/test_agent_migration_contract.py::test_empty_downgrade_removes_migration_created_agent_role",
+        "tests/integration/test_agent_postgres_persistence.py::test_agent_persistence_is_atomic_idempotent_and_append_only",
+        "tests/integration/test_agent_postgres_persistence.py::test_agent_persistence_rejects_hold_with_proposal",
+        "tests/integration/test_agent_postgres_persistence.py::test_agent_persistence_rejects_rehashed_event_authority_mutation",
+        "tests/integration/test_agent_postgres_persistence.py::test_agent_database_rejects_hold_proposal_child",
+        "tests/integration/test_proposal_risk_fixture_chain.py::test_p6_authoritative_proposal_binds_full_hash_to_test_risk_v2",
+        "tests/integration/test_proposal_risk_fixture_chain.py::test_p6_hold_is_not_risk_eligible",
+        "tests/integration/test_proposal_risk_fixture_chain.py::test_p6_risk_rejects_proposal_data_evidence_mismatch"
+      ],
+      "source_sha256": [
+        "28a5476c1ca12a29135a36316be5a0e4f2fbbcf8f0eb8d192a07ac286640db2d",
+        "97bd9a03fc6cff44a5d6d9845eb5b7d6df5ddbc98b62537ef87c28ea1e2cd2b5",
+        "13795050779f7c56db07b846b603cd36192b29998f590c03566ec8e24920f8a5"
+      ],
+      "oracle": "Migration and persistence enforce authoritative snapshot metadata, parent-scoped citations, graph hashes, runtime-role access and ACL-preserving downgrade; full Proposal Evidence reaches only test Risk v2 and HOLD cannot enter Risk."
+    }
+  ],
+  "supersedes_runtime_source_bindings": "docs/woozoo-trading-desk/phase-6/p6-scenario-manifest.json"
+}

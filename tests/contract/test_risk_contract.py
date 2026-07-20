@@ -34,8 +34,8 @@ def test_risk_contract_001_is_closed_typed_and_dormant() -> None:
     assert "DRAWDOWN_LIMIT_EXCEEDED" not in kill["properties"]["reason_code"]["enum"]
     assert events["x-activation-phase"] == 7
     assert len(events["oneOf"]) == 2
-    assert not any(
-        token in path
-        for path in openapi["paths"]
-        for token in ("risk", "kill", "approval", "authorization")
-    )
+    paths = set(openapi["paths"])
+    assert any("risk" in path for path in paths)
+    assert any("kill" in path for path in paths)
+    assert any("approval" in path for path in paths)
+    assert not any("authorization" in path or "/internal/" in path for path in paths)

@@ -216,11 +216,14 @@ class PostgresKillSwitch:
                 ),
             )
             self._fail(KillPersistenceStage.EVENT, _fail_after)
-            connection.execute(
-                "UPDATE kill_switch_state SET active=true,version=%s,last_activation_event_id=%s "
+            updated = connection.execute(
+                "UPDATE kill_switch_state SET active=true,version=%s,last_activation_event_id=%s,"
+                "last_recovery_event_id=NULL "
                 "WHERE scope='paper-global' AND active=false AND version=%s",
                 (new_version, activation_event_id, prior_version),
             )
+            if updated.rowcount != 1:
+                raise RuntimeError("KILL_STATE_TRANSITION_CONFLICT")
             self._fail(KillPersistenceStage.STATE, _fail_after)
             connection.execute(
                 "INSERT INTO outbox_events"

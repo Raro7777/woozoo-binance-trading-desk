@@ -3,18 +3,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
-from decimal import Decimal
+from datetime import UTC, datetime, timedelta
+from decimal import ROUND_UP, Decimal
 from enum import StrEnum
 import hashlib
 import json
 from collections.abc import Callable
+from typing import cast
 
 import psycopg
 from psycopg.types.json import Jsonb
 
-from .decimal_policy import canonical, floor_product_to_step, subtract
-from .engine import PARTICIPATION_RATE, SYMBOL_RULES, PaperEngine
+from .decimal_policy import add, canonical, decimal_input, floor_product_to_step, multiply, subtract
+from .engine import FEE_RATE, PARTICIPATION_RATE, SYMBOL_RULES, PaperEngine
 from .models import (
     CommandReceipt,
     FifoLot,
@@ -161,6 +162,7 @@ class KillCancelResult:
     account_id: str | None
     cancelled_count: int
     has_more: bool
+    completion_created: bool = False
 
 
 def _json_default(value: object) -> str:
@@ -192,11 +194,18 @@ def kill_cancel_id(activation_event_id: str, order_id: str) -> str:
     )
 
 
+PAPER_DEFAULT_ACCOUNT_ID = "c71f45a74649ecfbc2f897ed1ced77309accd4dbbc069c9cd425754204c09b3e"
+
+
 def _validate_broker_input(item: BrokerInputWrite) -> None:
     observation_fields = (item.symbol, item.best_bid, item.best_ask, item.available_quantity)
     if item.source_kind == "TEST_COMMAND":
         if any(field is not None for field in observation_fields):
             raise ValueError("INVALID_TEST_COMMAND_INPUT")
+        return
+    if item.source_kind == "PAPER_AUTHORIZATION":
+        if any(field is not None for field in observation_fields):
+            raise ValueError("INVALID_PAPER_AUTHORIZATION_INPUT")
         return
     if item.source_kind != "RECORDED_BOOK" or any(field is None for field in observation_fields):
         raise ValueError("INVALID_RECORDED_BOOK_INPUT")
@@ -322,11 +331,972 @@ def _validate_outbox(item: OutboxWrite) -> None:
         raise ValueError("INVALID_PAPER_OUTBOX_CONTRACT")
 
 
+def _paper_outbox(
+    event_type: str,
+    aggregate_type: str,
+    aggregate_id: str,
+    aggregate_version: int,
+    data: dict[str, str],
+    occurred_at: datetime,
+) -> OutboxWrite:
+    event_id = _engine_id("event", event_type, aggregate_id, aggregate_version)
+    payload_hash = _engine_id(
+        "event-payload",
+        event_type,
+        aggregate_id,
+        aggregate_version,
+        json.dumps(data, sort_keys=True, separators=(",", ":")),
+    )
+    payload: dict[str, object] = {
+        "spec_version": "woozoo.event/v1",
+        "event_id": event_id,
+        "event_type": event_type,
+        "event_version": 1,
+        "occurred_at": occurred_at.isoformat(),
+        "producer": "paper-engine",
+        "activation_phase": 7,
+        "aggregate_id": aggregate_id,
+        "aggregate_version": aggregate_version,
+        "payload_hash": payload_hash,
+        "data": data,
+    }
+    return OutboxWrite(
+        event_id,
+        event_type,
+        aggregate_type,
+        aggregate_id,
+        aggregate_version,
+        payload,
+        payload_hash,
+        occurred_at,
+    )
+
+
+def _phase7_paper_outbox(
+    event_type: str,
+    aggregate_type: str,
+    aggregate_id: str,
+    aggregate_version: int,
+    data: dict[str, object],
+    occurred_at: datetime,
+) -> OutboxWrite:
+    """Build the production-only Phase 7 Paper event envelope."""
+    if event_type not in {
+        "paper.authorization.blocked.v2",
+        "paper.authorization.consumed.v2",
+        "paper.order.accepted.v2",
+        "paper.order.cancelled.v2",
+        "ledger.transaction.posted.v2",
+    }:
+        raise ValueError("INVALID_PHASE7_PAPER_EVENT_TYPE")
+    event_id = _engine_id("event", event_type, aggregate_id, aggregate_version)
+    payload_hash = _digest(data)
+    payload: dict[str, object] = {
+        "spec_version": "woozoo.event/v1",
+        "event_id": event_id,
+        "event_type": event_type,
+        "event_version": 2,
+        "occurred_at": occurred_at.isoformat(),
+        "producer": "paper-engine",
+        "activation_phase": 7,
+        "aggregate_id": aggregate_id,
+        "aggregate_version": aggregate_version,
+        "payload_hash": payload_hash,
+        "data": data,
+    }
+    return OutboxWrite(
+        event_id,
+        event_type,
+        aggregate_type,
+        aggregate_id,
+        aggregate_version,
+        payload,
+        payload_hash,
+        occurred_at,
+    )
+
+
+class Phase7AuthorizationWorker:
+    """One-shot consumer for durable production authorization issuance events."""
+
+    def __init__(self, store: PostgresPaperStore) -> None:
+        self._store = store
+
+    def run_once(self) -> CommitResult | None:
+        with psycopg.connect(self._store.database_url) as connection:
+            pending = connection.execute(
+                "SELECT authorization_id FROM paper_pending_authorizations_v1 "
+                "ORDER BY issued_at,authorization_id LIMIT 1"
+            ).fetchone()
+        if pending is None:
+            return None
+        return self._store.attempt_phase7_authorization(pending[0])
+
+
 class PostgresPaperStore:
     """Persists one already-authorized Paper effect in one SQL transaction."""
 
     def __init__(self, database_url: str) -> None:
         self.database_url = database_url
+
+    @staticmethod
+    def _append_outbox(
+        connection: psycopg.Connection[object], account_id: str, item: OutboxWrite
+    ) -> None:
+        _validate_outbox(item)
+        connection.execute(
+            "SELECT append_paper_outbox(%s,%s,%s,%s,%s,%s,%s,%s)",
+            (
+                item.event_id,
+                item.event_type,
+                Jsonb(item.payload),
+                item.payload_hash,
+                item.occurred_at,
+                item.aggregate_type,
+                item.aggregate_id,
+                item.aggregate_version,
+            ),
+        )
+        connection.execute(
+            "INSERT INTO paper_outbox_links(event_id,account_id) VALUES (%s,%s)",
+            (item.event_id, account_id),
+        )
+
+    @staticmethod
+    def _append_phase7_outbox(
+        connection: psycopg.Connection[object], account_id: str, item: OutboxWrite
+    ) -> None:
+        if item.payload.get("event_version") != 2:
+            raise ValueError("PHASE7_PAPER_EVENT_VERSION_REQUIRED")
+        connection.execute(
+            "SELECT append_paper_outbox(%s,%s,%s,%s,%s,%s,%s,%s)",
+            (
+                item.event_id,
+                item.event_type,
+                Jsonb(item.payload),
+                item.payload_hash,
+                item.occurred_at,
+                item.aggregate_type,
+                item.aggregate_id,
+                item.aggregate_version,
+            ),
+        )
+        connection.execute(
+            "INSERT INTO paper_outbox_links(event_id,account_id) VALUES (%s,%s)",
+            (item.event_id, account_id),
+        )
+
+    def attempt_phase7_authorization(self, authorization_id: str) -> CommitResult:
+        """Attempt one production Paper authorization using DB-owned financial inputs."""
+        with psycopg.connect(self.database_url) as connection:
+            identity = connection.execute(
+                "SELECT approval_id,paper_account_id FROM paper_execution_authorizations "
+                "WHERE authorization_id=%s AND namespace='paper'",
+                (authorization_id,),
+            ).fetchone()
+            if identity is None:
+                raise KeyError("PAPER_AUTHORIZATION_NOT_FOUND")
+            approval_id, account_id = identity
+            for lock_key in (
+                f"paper-approval:{approval_id}",
+                f"paper-authorization:{authorization_id}",
+                f"paper-account:{account_id}",
+                f"command:CREATE_ORDER:{authorization_id}",
+            ):
+                connection.execute(
+                    "SELECT pg_advisory_xact_lock(hashtextextended(%s,0))", (lock_key,)
+                )
+            authorization = connection.execute(
+                "SELECT * FROM paper_lock_execution_authorization_v1(%s)",
+                (authorization_id,),
+            ).fetchone()
+            if authorization is None:
+                raise RuntimeError("PAPER_AUTHORIZATION_DISAPPEARED")
+            (
+                authorization_nonce,
+                account_id,
+                authorization_digest,
+                expected_kill_version,
+                expected_reconciliation_hash,
+                expected_ledger_hash,
+                expires_at,
+                approval_id,
+                proposal_hash,
+                risk_decision_hash,
+                preview,
+                preview_hash,
+                expected_data_hash,
+                expected_data_as_of,
+                expected_knowledge_cutoff,
+                expected_books,
+            ) = authorization
+            revoked = connection.execute(
+                "SELECT EXISTS(SELECT 1 FROM paper_approval_revocations WHERE approval_id=%s)",
+                (approval_id,),
+            ).fetchone()
+            assert revoked is not None
+            request_hash = _digest(
+                {
+                    "authorization_id": authorization_id,
+                    "authorization_input_digest": authorization_digest,
+                    "operation": "PAPER_FIRST_ATTEMPT",
+                }
+            )
+            if not isinstance(preview, dict):
+                raise ValueError("INVALID_PAPER_ORDER_PREVIEW")
+            prior = connection.execute(
+                "SELECT request_hash,response FROM paper_command_receipts "
+                "WHERE scope='CREATE_ORDER' AND idempotency_key=%s",
+                (authorization_id,),
+            ).fetchone()
+            if prior is not None:
+                if prior[0] != request_hash:
+                    raise ValueError("IDEMPOTENCY_CONFLICT")
+                return CommitResult(
+                    False,
+                    prior[1],
+                    self.semantic_digest(account_id, connection=connection),
+                )
+
+            account = connection.execute(
+                "SELECT namespace FROM paper_accounts WHERE account_id=%s",
+                (account_id,),
+            ).fetchone()
+            if account != ("paper",):
+                raise ValueError("PRODUCTION_PAPER_ACCOUNT_REQUIRED")
+            barrier = connection.execute(
+                "SELECT active,version FROM paper_lock_kill_barrier()"
+            ).fetchone()
+            latest_reconciliation = connection.execute(
+                "SELECT checkpoint_id,status,mismatch_codes FROM "
+                "paper_reconciliation_checkpoints WHERE account_id=%s "
+                "ORDER BY created_at DESC,checkpoint_id DESC LIMIT 1",
+                (account_id,),
+            ).fetchone()
+            current_ledger_hash = self.semantic_digest(account_id, connection=connection)
+            database_now = connection.execute("SELECT CURRENT_TIMESTAMP").fetchone()
+            assert database_now is not None
+            current_time = database_now[0]
+
+            data_block_reason: str | None = None
+            symbol = preview.get("symbol")
+            if data_block_reason is None and symbol not in SYMBOL_RULES:
+                data_block_reason = "DATA_INVALID"
+            if not isinstance(expected_books, dict):
+                data_block_reason = "HASH_MISMATCH"
+            evidence = None
+            if data_block_reason is None:
+                evidence = connection.execute(
+                    "SELECT evidence_id,evidence_digest,as_of,knowledge_cutoff,quality_status "
+                    "FROM evidence_snapshots WHERE symbol=%s "
+                    "ORDER BY as_of DESC,knowledge_cutoff DESC,evidence_id DESC LIMIT 1",
+                    (symbol,),
+                ).fetchone()
+                if evidence is None or evidence[4] != "healthy":
+                    data_block_reason = "DATA_INVALID"
+                elif (
+                    evidence[2] > current_time
+                    or evidence[3] > current_time
+                    or current_time - evidence[2] > timedelta(minutes=5)
+                    or current_time - evidence[3] > timedelta(minutes=5)
+                ):
+                    data_block_reason = "DATA_STALE"
+                elif (
+                    evidence[2] != expected_data_as_of
+                    or evidence[3] != expected_knowledge_cutoff
+                    or _digest(
+                        {
+                            "evidence_id": evidence[0],
+                            "evidence_hash": evidence[1],
+                            "as_of": evidence[2].isoformat().replace("+00:00", "Z"),
+                            "knowledge_cutoff": evidence[3].isoformat().replace("+00:00", "Z"),
+                            "freshness": "FRESH",
+                            "quality": "HEALTHY",
+                            "future_contamination": False,
+                            "watermark_complete": True,
+                        }
+                    )
+                    != expected_data_hash
+                ):
+                    data_block_reason = "HASH_MISMATCH"
+
+            books: dict[str, tuple[object, ...]] = {}
+            if data_block_reason is None:
+                for row in connection.execute(
+                    "SELECT DISTINCT ON (symbol) symbol,payload,event_time,received_at,"
+                    "quality_status FROM normalized_market_events "
+                    "WHERE event_type='book_ticker' AND symbol IN ('BTCUSDT','ETHUSDT') "
+                    "ORDER BY symbol,event_time DESC,received_at DESC,id DESC"
+                ).fetchall():
+                    books[str(row[0])] = cast(tuple[object, ...], row)
+                if set(books) != {"BTCUSDT", "ETHUSDT"}:
+                    data_block_reason = "DATA_INVALID"
+                elif any(row[4] != "healthy" for row in books.values()):
+                    data_block_reason = "DATA_INVALID"
+                elif any(
+                    row[2] > current_time
+                    or row[3] > current_time
+                    or current_time - row[2] > timedelta(seconds=5)
+                    or current_time - row[3] > timedelta(seconds=5)
+                    for row in books.values()
+                ):
+                    data_block_reason = "DATA_STALE"
+                else:
+                    parsed_books: dict[str, tuple[Decimal, Decimal]] = {}
+                    for current_symbol, current_book in books.items():
+                        payload = current_book[1]
+                        if not isinstance(payload, dict):
+                            data_block_reason = "HASH_MISMATCH"
+                            break
+                        current_bid = decimal_input(str(payload.get("bid_price")))
+                        current_ask = decimal_input(str(payload.get("ask_price")))
+                        if current_bid <= 0 or current_ask <= 0 or current_bid > current_ask:
+                            data_block_reason = "DATA_INVALID"
+                            break
+                        parsed_books[current_symbol] = (current_bid, current_ask)
+                    if data_block_reason is None:
+                        assert isinstance(expected_books, dict)
+                        for position_symbol, (current_bid, current_ask) in parsed_books.items():
+                            expected_book = expected_books.get(position_symbol)
+                            if (
+                                not isinstance(expected_book, dict)
+                                or current_bid != decimal_input(str(expected_book.get("best_bid")))
+                                or current_ask != decimal_input(str(expected_book.get("best_ask")))
+                            ):
+                                data_block_reason = "HASH_MISMATCH"
+                                break
+                    if data_block_reason is None:
+                        target_bid, target_ask = parsed_books[str(symbol)]
+                        if target_bid != decimal_input(
+                            str(preview.get("best_bid"))
+                        ) or target_ask != decimal_input(str(preview.get("best_ask"))):
+                            data_block_reason = "HASH_MISMATCH"
+
+            block_reason: str | None = None
+            if barrier is None or barrier[0]:
+                block_reason = "KILL_SWITCH_ACTIVE"
+            elif barrier[1] != expected_kill_version:
+                block_reason = "KILL_VERSION_MISMATCH"
+            elif database_now[0] >= expires_at:
+                block_reason = "AUTHORIZATION_EXPIRED"
+            elif revoked[0]:
+                block_reason = "AUTHORIZATION_REVOKED"
+            elif data_block_reason is not None:
+                block_reason = data_block_reason
+            elif latest_reconciliation is None:
+                block_reason = "RECONCILIATION_MISSING"
+            else:
+                checkpoint_id, health, mismatch_codes = latest_reconciliation
+                reconciliation_hash = _digest(
+                    {
+                        "checkpoint_id": checkpoint_id,
+                        "health": health,
+                        "mismatch_codes": mismatch_codes,
+                    }
+                )
+                if health != "HEALTHY" or reconciliation_hash != expected_reconciliation_hash:
+                    block_reason = "RECONCILIATION_UNHEALTHY"
+            if block_reason is None and current_ledger_hash != expected_ledger_hash:
+                block_reason = "LEDGER_UNHEALTHY"
+
+            broker_seq_row = connection.execute(
+                "SELECT COALESCE(max(broker_seq),0)+1 FROM paper_broker_inputs WHERE account_id=%s",
+                (account_id,),
+            ).fetchone()
+            assert broker_seq_row is not None
+            broker_seq = broker_seq_row[0]
+            occurred_at = database_now[0].astimezone(UTC)
+            connection.execute("SET CONSTRAINTS ALL DEFERRED")
+            connection.execute(
+                "INSERT INTO paper_broker_inputs"
+                "(broker_seq,account_id,source_kind,source_key,payload_hash,observed_at,"
+                "paper_execution_authorization_id) "
+                "VALUES (%s,%s,'PAPER_AUTHORIZATION',%s,%s,%s,%s)",
+                (
+                    broker_seq,
+                    account_id,
+                    authorization_id,
+                    authorization_digest,
+                    occurred_at,
+                    authorization_id,
+                ),
+            )
+
+            if block_reason is not None:
+                response: dict[str, object] = {
+                    "result": "BLOCKED",
+                    "authorization_id": authorization_id,
+                    "reason_code": block_reason,
+                }
+                self._insert_phase7_receipt_attempt(
+                    connection,
+                    authorization_id=authorization_id,
+                    authorization_nonce=authorization_nonce,
+                    account_id=account_id,
+                    request_hash=request_hash,
+                    broker_seq=broker_seq,
+                    response=response,
+                    occurred_at=occurred_at,
+                    outcome="REJECTED",
+                    attempt_outcome="BLOCKED",
+                    reason_code=block_reason,
+                    order_id=None,
+                )
+                blocked = _phase7_paper_outbox(
+                    "paper.authorization.blocked.v2",
+                    "paper_authorization",
+                    authorization_id,
+                    1,
+                    {
+                        "authorization_id": authorization_id,
+                        "authorization_nonce": authorization_nonce,
+                        "approval_id": approval_id,
+                        "request_hash": request_hash,
+                        "outcome": "BLOCKED",
+                        "reason_code": block_reason,
+                    },
+                    occurred_at,
+                )
+                self._append_phase7_outbox(connection, account_id, blocked)
+                semantic_digest = self.semantic_digest(account_id, connection=connection)
+                return CommitResult(True, response, semantic_digest)
+
+            return self._create_phase7_order(
+                connection,
+                authorization_id=authorization_id,
+                authorization_nonce=authorization_nonce,
+                approval_id=approval_id,
+                proposal_hash=proposal_hash,
+                risk_decision_hash=risk_decision_hash,
+                account_id=account_id,
+                request_hash=request_hash,
+                broker_seq=broker_seq,
+                preview=preview,
+                preview_hash=preview_hash,
+                occurred_at=occurred_at,
+            )
+
+    @staticmethod
+    def _insert_phase7_receipt_attempt(
+        connection: psycopg.Connection[object],
+        *,
+        authorization_id: str,
+        authorization_nonce: str,
+        account_id: str,
+        request_hash: str,
+        broker_seq: int,
+        response: dict[str, object],
+        occurred_at: datetime,
+        outcome: str,
+        attempt_outcome: str,
+        reason_code: str | None,
+        order_id: str | None,
+    ) -> None:
+        connection.execute(
+            "INSERT INTO paper_command_receipts"
+            "(scope,idempotency_key,account_id,request_hash,outcome,paper_order_id,"
+            "authorization_id,broker_seq,response,created_at) "
+            "VALUES ('CREATE_ORDER',%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+            (
+                authorization_id,
+                account_id,
+                request_hash,
+                outcome,
+                order_id,
+                authorization_id,
+                broker_seq,
+                Jsonb(response),
+                occurred_at,
+            ),
+        )
+        connection.execute(
+            "INSERT INTO paper_authorization_attempts"
+            "(authorization_id,authorization_nonce,account_id,command_scope,"
+            "idempotency_key,namespace,request_hash,outcome,reason_code,created_at,"
+            "paper_execution_authorization_id) "
+            "VALUES (%s,%s,%s,'CREATE_ORDER',%s,'paper',%s,%s,%s,%s,%s)",
+            (
+                authorization_id,
+                authorization_nonce,
+                account_id,
+                authorization_id,
+                request_hash,
+                attempt_outcome,
+                reason_code,
+                occurred_at,
+                authorization_id,
+            ),
+        )
+
+    def _create_phase7_order(
+        self,
+        connection: psycopg.Connection[object],
+        *,
+        authorization_id: str,
+        authorization_nonce: str,
+        approval_id: str,
+        proposal_hash: str,
+        risk_decision_hash: str,
+        account_id: str,
+        request_hash: str,
+        broker_seq: int,
+        preview: dict[str, object],
+        preview_hash: str,
+        occurred_at: datetime,
+    ) -> CommitResult:
+        preview_without_hash = {
+            key: value for key, value in preview.items() if key != "paper_order_preview_hash"
+        }
+        if (
+            preview.get("paper_order_preview_hash") != preview_hash
+            or _digest(preview_without_hash) != preview_hash
+        ):
+            raise ValueError("PAPER_PREVIEW_HASH_MISMATCH")
+        symbol = preview.get("symbol")
+        side_text = preview.get("side")
+        if (
+            symbol not in SYMBOL_RULES
+            or side_text not in {"BUY", "SELL"}
+            or preview.get("order_type") != "LIMIT"
+            or preview.get("time_in_force") != "GTC"
+        ):
+            raise ValueError("INVALID_PAPER_ORDER_PREVIEW")
+        quantity = decimal_input(str(preview.get("quantity")), positive=True)
+        limit_price = decimal_input(str(preview.get("limit_price")), positive=True)
+        rule = SYMBOL_RULES[str(symbol)]
+        if quantity < rule["min_quantity"] or quantity % rule["step"] != 0:
+            raise ValueError("QUANTITY_FILTER_FAILED")
+        if limit_price % rule["tick"] != 0:
+            raise ValueError("PRICE_FILTER_FAILED")
+        principal = multiply(quantity, limit_price, rounding=ROUND_UP)
+        if principal < rule["min_notional"]:
+            raise ValueError("NOTIONAL_FILTER_FAILED")
+        held_asset = "USDT" if side_text == "BUY" else str(symbol).removesuffix("USDT")
+        held_amount = (
+            add(
+                principal,
+                multiply(principal, FEE_RATE, rounding=ROUND_UP),
+                rounding=ROUND_UP,
+            )
+            if side_text == "BUY"
+            else quantity
+        )
+        if decimal_input(str(preview.get("worst_case_hold"))) != held_amount:
+            raise ValueError("PAPER_PREVIEW_HOLD_MISMATCH")
+
+        balance = cast(
+            tuple[Decimal, Decimal, int] | None,
+            connection.execute(
+                "SELECT available,held,version FROM paper_asset_balances "
+                "WHERE account_id=%s AND asset=%s FOR UPDATE",
+                (account_id, held_asset),
+            ).fetchone(),
+        )
+        if balance is None:
+            raise RuntimeError("PAPER_BALANCE_MISSING")
+        available, held, balance_version = balance
+        if available < held_amount:
+            reason_code = "INSUFFICIENT_FUNDS"
+            response: dict[str, object] = {
+                "result": "BLOCKED",
+                "authorization_id": authorization_id,
+                "reason_code": reason_code,
+            }
+            self._insert_phase7_receipt_attempt(
+                connection,
+                authorization_id=authorization_id,
+                authorization_nonce=authorization_nonce,
+                account_id=account_id,
+                request_hash=request_hash,
+                broker_seq=broker_seq,
+                response=response,
+                occurred_at=occurred_at,
+                outcome="REJECTED",
+                attempt_outcome="BLOCKED",
+                reason_code=reason_code,
+                order_id=None,
+            )
+            blocked = _phase7_paper_outbox(
+                "paper.authorization.blocked.v2",
+                "paper_authorization",
+                authorization_id,
+                1,
+                {
+                    "authorization_id": authorization_id,
+                    "authorization_nonce": authorization_nonce,
+                    "approval_id": approval_id,
+                    "request_hash": request_hash,
+                    "outcome": "BLOCKED",
+                    "reason_code": reason_code,
+                },
+                occurred_at,
+            )
+            self._append_phase7_outbox(connection, account_id, blocked)
+            return CommitResult(
+                True,
+                response,
+                self.semantic_digest(account_id, connection=connection),
+            )
+
+        client_order_id = _engine_id("client-order", authorization_id)
+        order_id = _engine_id("order", client_order_id)
+        journal_id = _engine_id("hold-journal", order_id)
+        order_data: dict[str, object] = {
+            "order_id": order_id,
+            "client_order_id": client_order_id,
+            "authorization_id": authorization_id,
+            "authorization_namespace": "paper",
+            "authorization_nonce": authorization_nonce,
+            "approval_id": approval_id,
+            "proposal_hash": proposal_hash,
+            "risk_decision_hash": risk_decision_hash,
+            "paper_order_preview_hash": preview_hash,
+            "symbol": symbol,
+            "side": side_text,
+            "order_type": "LIMIT",
+            "time_in_force": "GTC",
+            "quantity": canonical(quantity),
+            "limit_price": canonical(limit_price),
+            "filled_quantity": canonical(Decimal(0)),
+            "status": "OPEN",
+            "version": 1,
+        }
+        response = {
+            "result": "CONSUMED_ORDER_CREATED",
+            "authorization_id": authorization_id,
+            "order_id": order_id,
+            "status": "OPEN",
+        }
+        self._insert_phase7_receipt_attempt(
+            connection,
+            authorization_id=authorization_id,
+            authorization_nonce=authorization_nonce,
+            account_id=account_id,
+            request_hash=request_hash,
+            broker_seq=broker_seq,
+            response=response,
+            occurred_at=occurred_at,
+            outcome="ORDER_CREATED",
+            attempt_outcome="CONSUMED_ORDER_CREATED",
+            reason_code=None,
+            order_id=order_id,
+        )
+        connection.execute(
+            "INSERT INTO paper_orders"
+            "(order_id,account_id,command_scope,idempotency_key,client_order_id,"
+            "authorization_id,symbol,side,order_type,time_in_force,quantity,limit_price,"
+            "filled_quantity,held_asset,held_amount,status,accepted_broker_seq,version) "
+            "VALUES (%s,%s,'CREATE_ORDER',%s,%s,%s,%s,%s,'LIMIT','GTC',%s,%s,0,%s,%s,"
+            "'OPEN',%s,1)",
+            (
+                order_id,
+                account_id,
+                authorization_id,
+                client_order_id,
+                authorization_id,
+                symbol,
+                side_text,
+                quantity,
+                limit_price,
+                held_asset,
+                held_amount,
+                broker_seq,
+            ),
+        )
+        updated = connection.execute(
+            "UPDATE paper_asset_balances SET available=%s,held=%s,version=%s "
+            "WHERE account_id=%s AND asset=%s AND version=%s",
+            (
+                subtract(available, held_amount),
+                add(held, held_amount),
+                balance_version + 1,
+                account_id,
+                held_asset,
+                balance_version,
+            ),
+        )
+        if updated.rowcount != 1:
+            raise RuntimeError("PAPER_BALANCE_VERSION_CONFLICT")
+        accepted = _phase7_paper_outbox(
+            "paper.order.accepted.v2",
+            "paper_order",
+            order_id,
+            1,
+            order_data,
+            occurred_at,
+        )
+        connection.execute(
+            "INSERT INTO paper_order_events"
+            "(event_id,order_id,order_version,event_type,source_key,payload_hash,occurred_at) "
+            "VALUES (%s,%s,1,'paper.order.accepted.v2',%s,%s,%s)",
+            (
+                accepted.event_id,
+                order_id,
+                authorization_id,
+                accepted.payload_hash,
+                occurred_at,
+            ),
+        )
+        connection.execute(
+            "INSERT INTO paper_ledger_transactions"
+            "(transaction_id,account_id,business_event_type,business_event_id,journal_kind,"
+            "posted_at) VALUES (%s,%s,'paper.hold',%s,'PHYSICAL',%s)",
+            (journal_id, account_id, order_id, occurred_at),
+        )
+        connection.execute(
+            "INSERT INTO paper_ledger_entries"
+            "(transaction_id,line_no,account_code,commodity,debit,credit) VALUES "
+            "(%s,0,'paper.held',%s,%s,0),(%s,1,'paper.available',%s,0,%s)",
+            (journal_id, held_asset, held_amount, journal_id, held_asset, held_amount),
+        )
+        for event in (
+            _phase7_paper_outbox(
+                "paper.authorization.consumed.v2",
+                "paper_authorization",
+                authorization_id,
+                1,
+                {
+                    "authorization_id": authorization_id,
+                    "authorization_nonce": authorization_nonce,
+                    "approval_id": approval_id,
+                    "request_hash": request_hash,
+                    "outcome": "CONSUMED_ORDER_CREATED",
+                    "order_id": order_id,
+                },
+                occurred_at,
+            ),
+            accepted,
+            _phase7_paper_outbox(
+                "ledger.transaction.posted.v2",
+                "paper_ledger",
+                journal_id,
+                1,
+                {"transaction_id": journal_id, "authorization_id": authorization_id},
+                occurred_at,
+            ),
+        ):
+            self._append_phase7_outbox(connection, account_id, event)
+        return CommitResult(
+            True,
+            response,
+            self.semantic_digest(account_id, connection=connection),
+        )
+
+    def cancel_phase7_order(
+        self,
+        order_id: str,
+        expected_version: int,
+        idempotency_key: str,
+        request_hash: str,
+        reason: str,
+    ) -> CommitResult:
+        """Cancel one production Paper order without accepting financial inputs."""
+        if expected_version < 1:
+            raise ValueError("INVALID_EXPECTED_VERSION")
+        if not 1 <= len(idempotency_key) <= 128:
+            raise ValueError("INVALID_IDEMPOTENCY_KEY")
+        if len(request_hash) != 64 or any(
+            character not in "0123456789abcdef" for character in request_hash
+        ):
+            raise ValueError("INVALID_REQUEST_HASH")
+        if not 1 <= len(reason) <= 512:
+            raise ValueError("INVALID_CANCELLATION_REASON")
+
+        with psycopg.connect(self.database_url) as connection:
+            identity = connection.execute(
+                "SELECT account_id FROM paper_orders WHERE order_id=%s", (order_id,)
+            ).fetchone()
+            if identity is None:
+                raise KeyError("PAPER_ORDER_NOT_FOUND")
+            account_id = identity[0]
+            for lock_key in (
+                f"paper-account:{account_id}",
+                f"command:CANCEL_ORDER:{idempotency_key}",
+            ):
+                connection.execute(
+                    "SELECT pg_advisory_xact_lock(hashtextextended(%s,0))", (lock_key,)
+                )
+            prior = connection.execute(
+                "SELECT request_hash,order_id,response FROM paper_cancel_command_receipts "
+                "WHERE idempotency_key=%s",
+                (idempotency_key,),
+            ).fetchone()
+            if prior is not None:
+                if prior[0] != request_hash or prior[1] != order_id:
+                    raise ValueError("IDEMPOTENCY_CONFLICT")
+                return CommitResult(
+                    False,
+                    prior[2],
+                    self.semantic_digest(account_id, connection=connection),
+                )
+
+            # Participate in the same global Kill serialization boundary. An active Kill
+            # never blocks a risk-reducing cancellation.
+            connection.execute("SELECT active,version FROM paper_lock_kill_barrier()").fetchone()
+            order = connection.execute(
+                "SELECT orders.client_order_id,orders.authorization_id,orders.symbol,"
+                "orders.side,orders.order_type,orders.time_in_force,orders.quantity,"
+                "orders.limit_price,orders.filled_quantity,orders.held_asset,"
+                "orders.held_amount,orders.status,orders.version,authz.authorization_nonce,"
+                "authz.approval_id,authz.proposal_hash,authz.risk_decision_hash,"
+                "authz.paper_order_preview_hash FROM paper_orders orders "
+                "JOIN paper_execution_authorizations authz "
+                "ON authz.authorization_id=orders.authorization_id "
+                "WHERE orders.order_id=%s AND orders.account_id=%s FOR UPDATE OF orders",
+                (order_id, account_id),
+            ).fetchone()
+            if order is None:
+                raise KeyError("PAPER_ORDER_NOT_FOUND")
+            (
+                client_order_id,
+                authorization_id,
+                symbol,
+                side,
+                order_type,
+                time_in_force,
+                quantity,
+                limit_price,
+                filled_quantity,
+                held_asset,
+                held_amount,
+                status,
+                version,
+                authorization_nonce,
+                approval_id,
+                proposal_hash,
+                risk_decision_hash,
+                preview_hash,
+            ) = order
+            if version != expected_version:
+                raise ValueError("ORDER_VERSION_MISMATCH")
+            if status not in {"OPEN", "PARTIALLY_FILLED"}:
+                raise ValueError("ORDER_NOT_CANCELLABLE")
+            balance = cast(
+                tuple[Decimal, Decimal, int] | None,
+                connection.execute(
+                    "SELECT available,held,version FROM paper_asset_balances "
+                    "WHERE account_id=%s AND asset=%s FOR UPDATE",
+                    (account_id, held_asset),
+                ).fetchone(),
+            )
+            if balance is None or balance[1] < held_amount:
+                raise RuntimeError("PAPER_CANCEL_HELD_BALANCE_UNDERFLOW")
+            available, held, balance_version = balance
+            now_row = connection.execute("SELECT CURRENT_TIMESTAMP").fetchone()
+            assert now_row is not None
+            occurred_at = now_row[0].astimezone(UTC)
+            new_version = version + 1
+            response: dict[str, object] = {
+                "result": "ORDER_CANCELLED",
+                "order_id": order_id,
+                "status": "CANCELLED",
+                "version": new_version,
+            }
+            order_data: dict[str, object] = {
+                "order_id": order_id,
+                "client_order_id": client_order_id,
+                "authorization_id": authorization_id,
+                "authorization_namespace": "paper",
+                "authorization_nonce": authorization_nonce,
+                "approval_id": approval_id,
+                "proposal_hash": proposal_hash,
+                "risk_decision_hash": risk_decision_hash,
+                "paper_order_preview_hash": preview_hash,
+                "symbol": symbol,
+                "side": side,
+                "order_type": order_type,
+                "time_in_force": time_in_force,
+                "quantity": canonical(quantity),
+                "limit_price": canonical(limit_price),
+                "filled_quantity": canonical(filled_quantity),
+                "status": "CANCELLED",
+                "version": new_version,
+            }
+            cancelled = _phase7_paper_outbox(
+                "paper.order.cancelled.v2",
+                "paper_order",
+                order_id,
+                new_version,
+                {"order": order_data, "request_hash": request_hash, "reason": reason},
+                occurred_at,
+            )
+            release_id = _engine_id("hold-release-journal", order_id)
+            ledger_event = _phase7_paper_outbox(
+                "ledger.transaction.posted.v2",
+                "paper_ledger",
+                release_id,
+                1,
+                {"transaction_id": release_id, "authorization_id": authorization_id},
+                occurred_at,
+            )
+
+            connection.execute("SET CONSTRAINTS ALL DEFERRED")
+            connection.execute(
+                "INSERT INTO paper_cancel_command_receipts"
+                "(idempotency_key,request_hash,order_id,expected_version,response,created_at) "
+                "VALUES (%s,%s,%s,%s,%s,%s)",
+                (
+                    idempotency_key,
+                    request_hash,
+                    order_id,
+                    expected_version,
+                    Jsonb(response),
+                    occurred_at,
+                ),
+            )
+            balance_update = connection.execute(
+                "UPDATE paper_asset_balances SET available=%s,held=%s,version=%s "
+                "WHERE account_id=%s AND asset=%s AND version=%s",
+                (
+                    add(available, held_amount),
+                    subtract(held, held_amount),
+                    balance_version + 1,
+                    account_id,
+                    held_asset,
+                    balance_version,
+                ),
+            )
+            if balance_update.rowcount != 1:
+                raise RuntimeError("PAPER_CANCEL_BALANCE_VERSION_CONFLICT")
+            order_update = connection.execute(
+                "UPDATE paper_orders SET held_amount=0,status='CANCELLED',version=%s "
+                "WHERE order_id=%s AND version=%s",
+                (new_version, order_id, expected_version),
+            )
+            if order_update.rowcount != 1:
+                raise RuntimeError("PAPER_CANCEL_ORDER_VERSION_CONFLICT")
+            connection.execute(
+                "INSERT INTO paper_order_events"
+                "(event_id,order_id,order_version,event_type,source_key,payload_hash,occurred_at) "
+                "VALUES (%s,%s,%s,'paper.order.cancelled.v2',%s,%s,%s)",
+                (
+                    cancelled.event_id,
+                    order_id,
+                    new_version,
+                    idempotency_key,
+                    cancelled.payload_hash,
+                    occurred_at,
+                ),
+            )
+            connection.execute(
+                "INSERT INTO paper_ledger_transactions"
+                "(transaction_id,account_id,business_event_type,business_event_id,"
+                "journal_kind,posted_at) VALUES (%s,%s,'paper.hold-release',%s,'PHYSICAL',%s)",
+                (release_id, account_id, order_id, occurred_at),
+            )
+            connection.execute(
+                "INSERT INTO paper_ledger_entries"
+                "(transaction_id,line_no,account_code,commodity,debit,credit) VALUES "
+                "(%s,0,'paper.available',%s,%s,0),(%s,1,'paper.held',%s,0,%s)",
+                (release_id, held_asset, held_amount, release_id, held_asset, held_amount),
+            )
+            self._append_phase7_outbox(connection, account_id, cancelled)
+            self._append_phase7_outbox(connection, account_id, ledger_event)
+            return CommitResult(
+                True,
+                response,
+                self.semantic_digest(account_id, connection=connection),
+            )
 
     @staticmethod
     def _fail(stage: PersistenceStage, requested: PersistenceStage | None) -> None:
@@ -340,6 +1310,15 @@ class PostgresPaperStore:
         _fail_after: PersistenceStage | None = None,
         _after_barrier_acquired: Callable[[], None] | None = None,
     ) -> CommitResult:
+        if write.namespace == "paper":
+            if write.receipt is None or write.authorization_attempt is None:
+                raise ValueError("PRODUCTION_AUTHORIZATION_ATTEMPT_REQUIRED")
+            if (
+                write.receipt.authorization_id != write.authorization_attempt.authorization_id
+                or write.receipt.request_hash != write.authorization_attempt.request_hash
+            ):
+                raise ValueError("PRODUCTION_AUTHORIZATION_BINDING_CONFLICT")
+            return self.attempt_phase7_authorization(write.authorization_attempt.authorization_id)
         with psycopg.connect(self.database_url) as connection:
             for item in write.broker_inputs:
                 _validate_broker_input(item)
@@ -822,20 +1801,32 @@ class PostgresPaperStore:
             raise ValueError("INVALID_KILL_ACTIVATION_IDENTITY")
 
         with psycopg.connect(self.database_url) as connection:
+            account = connection.execute(
+                "SELECT account_id FROM paper_orders "
+                "WHERE status IN ('OPEN','PARTIALLY_FILLED') "
+                "ORDER BY account_id,accepted_broker_seq,client_order_id,order_id LIMIT 1"
+            ).fetchone()
+            if account is None:
+                account = connection.execute(
+                    "SELECT paper_account_id FROM paper_kill_cancel_batches "
+                    "WHERE activation_event_id=%s ORDER BY completed_at DESC,batch_key DESC LIMIT 1",
+                    (activation_event_id,),
+                ).fetchone()
+            account_id = account[0] if account is not None else PAPER_DEFAULT_ACCOUNT_ID
+            connection.execute(
+                "SELECT pg_advisory_xact_lock(hashtextextended(%s,0))",
+                (f"paper-account:{account_id}",),
+            )
             barrier = connection.execute(
                 "SELECT active,version,last_activation_event_id FROM paper_lock_kill_barrier()"
             ).fetchone()
             if barrier is None or not barrier[0] or barrier[2] != activation_event_id:
                 raise RuntimeError("KILL_ACTIVATION_NOT_AUTHORITATIVE")
             durable_event = connection.execute(
-                "SELECT outbox.payload_hash FROM kill_switch_events kill_event "
-                "JOIN risk_outbox_links link ON link.aggregate_id=kill_event.activation_event_id "
-                "AND link.aggregate_kind='kill-switch' "
-                "JOIN outbox_events outbox ON outbox.event_id=link.event_id "
-                "WHERE kill_event.activation_event_id=%s",
-                (activation_event_id,),
+                "SELECT paper_validate_kill_activation_v1(%s,%s)",
+                (activation_event_id, payload_hash),
             ).fetchone()
-            if durable_event != (payload_hash,):
+            if durable_event != (True,):
                 raise ValueError("KILL_ACTIVATION_PAYLOAD_CONFLICT")
             cursor = connection.execute(
                 "INSERT INTO paper_kill_inbox(activation_event_id,payload_hash,received_at) "
@@ -858,10 +1849,25 @@ class PostgresPaperStore:
                 "ORDER BY account_id,accepted_broker_seq,client_order_id,order_id LIMIT 1"
             ).fetchone()
             if account is None:
-                return KillCancelResult(
-                    inbox_created, False, activation_event_id, None, None, 0, False
+                completion_created = self._complete_kill_activation(
+                    connection,
+                    activation_event_id=activation_event_id,
+                    payload_hash=payload_hash,
+                    account_id=account_id,
+                    completed_at=received_at,
                 )
-            account_id = account[0]
+                return KillCancelResult(
+                    inbox_created,
+                    False,
+                    activation_event_id,
+                    None,
+                    account_id,
+                    0,
+                    False,
+                    completion_created,
+                )
+            if account[0] != account_id:
+                raise RuntimeError("KILL_CANCEL_ACCOUNT_LOCK_DRIFT")
             connection.execute(
                 "SELECT pg_advisory_xact_lock(hashtextextended(%s,0))",
                 (f"kill-cancel:{activation_event_id}:{account_id}",),
@@ -881,8 +1887,24 @@ class PostgresPaperStore:
                 ).fetchone()
                 assert has_more_row is not None
                 has_more = has_more_row[0]
+                completion_created = False
+                if not has_more:
+                    completion_created = self._complete_kill_activation(
+                        connection,
+                        activation_event_id=activation_event_id,
+                        payload_hash=payload_hash,
+                        account_id=account_id,
+                        completed_at=received_at,
+                    )
                 return KillCancelResult(
-                    inbox_created, False, activation_event_id, None, account_id, 0, has_more
+                    inbox_created,
+                    False,
+                    activation_event_id,
+                    None,
+                    account_id,
+                    0,
+                    has_more,
+                    completion_created,
                 )
 
             first_cursor = [account_id, orders[0][1], orders[0][2], orders[0][0]]
@@ -1019,6 +2041,15 @@ class PostgresPaperStore:
             ).fetchone()
             assert has_more_row is not None
             has_more = has_more_row[0]
+            completion_created = False
+            if not has_more:
+                completion_created = self._complete_kill_activation(
+                    connection,
+                    activation_event_id=activation_event_id,
+                    payload_hash=payload_hash,
+                    account_id=account_id,
+                    completed_at=received_at,
+                )
         return KillCancelResult(
             inbox_created,
             True,
@@ -1027,7 +2058,57 @@ class PostgresPaperStore:
             account_id,
             len(orders),
             has_more,
+            completion_created,
         )
+
+    def _complete_kill_activation(
+        self,
+        connection: psycopg.Connection[object],
+        *,
+        activation_event_id: str,
+        payload_hash: str,
+        account_id: str,
+        completed_at: datetime,
+    ) -> bool:
+        if connection.execute(
+            "SELECT EXISTS(SELECT 1 FROM paper_orders WHERE status IN ('OPEN','PARTIALLY_FILLED'))"
+        ).fetchone() != (False,):
+            raise RuntimeError("KILL_CANCELLATION_STILL_HAS_OPEN_ORDERS")
+        counts = cast(
+            tuple[int, int] | None,
+            connection.execute(
+                "SELECT count(*),COALESCE(sum(cancelled_count),0) "
+                "FROM paper_kill_cancel_batches WHERE activation_event_id=%s",
+                (activation_event_id,),
+            ).fetchone(),
+        )
+        assert counts is not None
+        state_digest = self.semantic_digest(account_id, connection=connection)
+        inserted = connection.execute(
+            "INSERT INTO paper_kill_cancel_completions"
+            "(activation_event_id,payload_hash,paper_account_id,batch_count,cancelled_count,"
+            "state_digest,completed_at) VALUES (%s,%s,%s,%s,%s,%s,%s) "
+            "ON CONFLICT (activation_event_id) DO NOTHING",
+            (
+                activation_event_id,
+                payload_hash,
+                account_id,
+                counts[0],
+                counts[1],
+                state_digest,
+                completed_at,
+            ),
+        )
+        if inserted.rowcount == 1:
+            return True
+        prior = connection.execute(
+            "SELECT payload_hash,paper_account_id,batch_count,cancelled_count,state_digest "
+            "FROM paper_kill_cancel_completions WHERE activation_event_id=%s",
+            (activation_event_id,),
+        ).fetchone()
+        if prior != (payload_hash, account_id, counts[0], counts[1], state_digest):
+            raise RuntimeError("KILL_COMPLETION_REPLAY_CONFLICT")
+        return False
 
     def semantic_digest(
         self, account_id: str, *, connection: psycopg.Connection[object] | None = None
@@ -1281,6 +2362,10 @@ class PostgresPaperStore:
         self, account_id: str, *, checkpoint_id: str, created_at: datetime
     ) -> ReconciliationResult:
         with psycopg.connect(self.database_url) as connection:
+            connection.execute(
+                "SELECT pg_advisory_xact_lock(hashtextextended(%s,0))",
+                (f"paper-account:{account_id}",),
+            )
             state_digest = self.semantic_digest(account_id, connection=connection)
             balance_rows = connection.execute(
                 "SELECT asset,available,held FROM paper_asset_balances "

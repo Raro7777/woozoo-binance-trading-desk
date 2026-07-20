@@ -3,14 +3,9 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "packageManager": "pnpm@7.33.7",
+  "packageManager": "pnpm@11.9.0",
   "engines": {
     "node": ">=20.9.0 <25"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "esbuild"
-    ]
   },
   "scripts": {
     "bootstrap": "node scripts/bootstrap.mjs",
@@ -24,11 +19,16 @@
     "test:property": "node scripts/quality.mjs test:property",
     "test:replay": "node scripts/quality.mjs test:replay",
     "test:failure": "node scripts/quality.mjs test:failure",
+    "test:e2e": "node scripts/quality.mjs test:e2e",
+    "worker:paper": "python -m uv run --locked python -m paper_engine.authorization_worker",
     "build": "node scripts/quality.mjs build",
     "ci": "node scripts/quality.mjs ci"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.12.1",
+    "@playwright/test": "1.61.1",
     "@types/node": "^24.0.0",
+    "playwright-core": "1.61.1",
     "tsx": "^4.20.0",
     "typescript": "^5.9.0"
   }

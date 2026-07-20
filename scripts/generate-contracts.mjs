@@ -22,6 +22,19 @@ const analysisRunPath = resolve(root, "packages/contracts/spec/analysis-run.v1.j
 const analysisAuditPath = resolve(root, "packages/contracts/spec/analysis-audit.v1.json");
 const agentDomainEventsPath = resolve(root, "packages/contracts/spec/agent-domain-events.v1.json");
 const riskInputV2Path = resolve(root, "packages/contracts/spec/risk-input.v2.json");
+const phase7SpecNames = [
+  "analysis-run.v2.json",
+  "analysis-run-view.v1.json",
+  "risk-input.v3.json",
+  "paper-order.v2.json",
+  "paper-approval.v1.json",
+  "paper-approval-revocation.v1.json",
+  "paper-execution-authorization.v1.json",
+  "approval-view.v1.json",
+  "local-session.v1.json",
+  "risk-domain-events.v2.json",
+  "paper-domain-events.v2.json",
+];
 const check = process.argv.includes("--check");
 
 const stable = (value) => {
@@ -52,12 +65,39 @@ const analysisRun = JSON.parse(await readFile(analysisRunPath, "utf8"));
 const analysisAudit = JSON.parse(await readFile(analysisAuditPath, "utf8"));
 const agentDomainEvents = JSON.parse(await readFile(agentDomainEventsPath, "utf8"));
 const riskInputV2 = JSON.parse(await readFile(riskInputV2Path, "utf8"));
+const phase7Specs = Object.fromEntries(await Promise.all(phase7SpecNames.map(async (name) => [
+  name,
+  JSON.parse(await readFile(resolve(root, "packages/contracts/spec", name), "utf8")),
+])));
 
-if (
-  Object.keys(openApi.paths).join(",") !==
-  "/api/v1/health,/api/v1/markets/{symbol}/status,/api/v1/evidence/{evidence_id},/api/v1/commands/evidence-snapshots"
-) {
-  throw new Error("P3 OpenAPI must expose only the approved query and Evidence command paths");
+const expectedOpenApiPaths = [
+  "/api/v1/health",
+  "/api/v1/markets/{symbol}/status",
+  "/api/v1/evidence/{evidence_id}",
+  "/api/v1/commands/evidence-snapshots",
+  "/api/v1/session/login",
+  "/api/v1/session",
+  "/api/v1/session/logout",
+  "/api/v1/trading-room",
+  "/api/v1/analysis-runs",
+  "/api/v1/analysis-runs/{run_id}",
+  "/api/v1/risk-decisions/{risk_id}",
+  "/api/v1/proposals/{proposal_id}/approval-view",
+  "/api/v1/paper-approvals",
+  "/api/v1/paper-approvals/{approval_id}/revocations",
+  "/api/v1/paper-orders/{order_id}",
+  "/api/v1/paper-orders/{order_id}/cancel",
+  "/api/v1/paper-portfolio",
+  "/api/v1/audit-events",
+  "/api/v1/kill-switch",
+  "/api/v1/kill-switch/activate",
+  "/api/v1/kill-switch/recover",
+];
+if (JSON.stringify(Object.keys(openApi.paths)) !== JSON.stringify(expectedOpenApiPaths)) {
+  throw new Error("OpenAPI paths must exactly match the approved Phase 3 and Phase 7 browser API");
+}
+if (expectedOpenApiPaths.some((path) => path.includes("/internal/"))) {
+  throw new Error("Browser OpenAPI must not expose internal service routes");
 }
 if (
   openApi.info.version !== "v1" ||
@@ -133,6 +173,81 @@ if (
   riskInputV2.properties?.namespace?.const !== "test"
 ) {
   throw new Error("P6 Agent contracts must remain closed, tool-free, test-only, and dormant until Phase 7");
+}
+const expectedPhase7Ids = {
+  "analysis-run.v2.json": "woozoo.analysis-run/v2",
+  "analysis-run-view.v1.json": "woozoo.analysis-run-view/v1",
+  "risk-input.v3.json": "woozoo.risk-input/v3",
+  "paper-order.v2.json": "woozoo.paper-order/v2",
+  "paper-approval.v1.json": "woozoo.paper-approval/v1",
+  "paper-approval-revocation.v1.json": "woozoo.paper-approval-revocation/v1",
+  "paper-execution-authorization.v1.json": "woozoo.paper-execution-authorization/v1",
+  "approval-view.v1.json": "woozoo.approval-view/v1",
+  "local-session.v1.json": "woozoo.local-session/v1",
+  "risk-domain-events.v2.json": "woozoo.risk-domain-events/v2",
+  "paper-domain-events.v2.json": "woozoo.paper-domain-events/v2",
+};
+for (const [name, id] of Object.entries(expectedPhase7Ids)) {
+  const contract = phase7Specs[name];
+  if (
+    contract?.$id !== id ||
+    contract?.["x-creation-phase"] !== 7 ||
+    contract?.["x-activation-phase"] !== 7 ||
+    (contract.type === "object" && contract.additionalProperties !== false)
+  ) {
+    throw new Error(`Phase 7 contract ${name} must be closed and active only in Phase 7`);
+  }
+}
+if (
+  phase7Specs["analysis-run.v2.json"].properties?.namespace?.const !== "paper" ||
+  phase7Specs["risk-input.v3.json"].properties?.namespace?.const !== "paper" ||
+  phase7Specs["risk-input.v3.json"].properties?.preview_policy_version?.const !== "woozoo.paper-order-preview-policy/v1" ||
+  phase7Specs["paper-order.v2.json"].properties?.authorization_namespace?.const !== "paper" ||
+  phase7Specs["paper-approval.v1.json"].properties?.actor_id?.const !== "operator-local-1" ||
+  phase7Specs["paper-approval-revocation.v1.json"].properties?.actor_id?.const !== "operator-local-1"
+) {
+  throw new Error("Phase 7 production contracts must bind paper namespace and the server actor");
+}
+
+const cookieScheme = openApi.components?.securitySchemes?.LocalOperatorSession;
+if (
+  cookieScheme?.type !== "apiKey" || cookieScheme?.in !== "cookie" ||
+  cookieScheme?.name !== "__Host-woozoo_session"
+) {
+  throw new Error("Phase 7 browser auth must use only the hardened host cookie contract");
+}
+const phase7Mutations = [
+  ["/api/v1/session/logout", false],
+  ["/api/v1/analysis-runs", false],
+  ["/api/v1/paper-approvals", true],
+  ["/api/v1/paper-approvals/{approval_id}/revocations", true],
+  ["/api/v1/paper-orders/{order_id}/cancel", true],
+  ["/api/v1/kill-switch/activate", true],
+  ["/api/v1/kill-switch/recover", true],
+];
+const loginOperation = openApi.paths["/api/v1/session/login"]?.post;
+if (
+  JSON.stringify(loginOperation?.security) !== "[]" ||
+  JSON.stringify(loginOperation?.parameters) !==
+    JSON.stringify([{ $ref: "#/components/parameters/OriginHeader" }])
+) {
+  throw new Error("Local login must be explicitly unauthenticated and Origin-bound");
+}
+for (const [path, requiresVersion] of phase7Mutations) {
+  const operation = openApi.paths[path]?.post;
+  const refs = operation?.parameters?.map((parameter) => parameter.$ref) ?? [];
+  const required = [
+    "#/components/parameters/OriginHeader",
+    "#/components/parameters/CsrfHeader",
+    "#/components/parameters/IdempotencyHeader",
+  ];
+  if (
+    operation === undefined || JSON.stringify(operation.security) !== JSON.stringify([{ LocalOperatorSession: [] }]) ||
+    required.some((reference) => !refs.includes(reference)) ||
+    (requiresVersion && !refs.includes("#/components/parameters/IfMatchHeader"))
+  ) {
+    throw new Error(`Phase 7 mutation ${path} must bind session, Origin, CSRF, idempotency, and version where mutable`);
+  }
 }
 
 const schemas = openApi.components?.schemas;
@@ -285,6 +400,18 @@ const manifest = {
   agent_domain_event_spec_version: agentDomainEvents.$id,
   risk_input_v2_spec_version: riskInputV2.$id,
   agent_activation_phase: 7,
+  analysis_run_v2_spec_version: phase7Specs["analysis-run.v2.json"].$id,
+  analysis_run_view_spec_version: phase7Specs["analysis-run-view.v1.json"].$id,
+  risk_input_v3_spec_version: phase7Specs["risk-input.v3.json"].$id,
+  paper_order_v2_spec_version: phase7Specs["paper-order.v2.json"].$id,
+  paper_approval_spec_version: phase7Specs["paper-approval.v1.json"].$id,
+  paper_approval_revocation_spec_version: phase7Specs["paper-approval-revocation.v1.json"].$id,
+  paper_execution_authorization_spec_version: phase7Specs["paper-execution-authorization.v1.json"].$id,
+  approval_view_spec_version: phase7Specs["approval-view.v1.json"].$id,
+  local_session_spec_version: phase7Specs["local-session.v1.json"].$id,
+  risk_domain_event_v2_spec_version: phase7Specs["risk-domain-events.v2.json"].$id,
+  paper_domain_event_v2_spec_version: phase7Specs["paper-domain-events.v2.json"].$id,
+  trading_room_activation_phase: 7,
   market_source: marketEvent.properties.source.const,
   health_path: "/api/v1/health",
   market_status_path_template: "/api/v1/markets/{symbol}/status",
@@ -310,6 +437,7 @@ const manifest = {
     "analysis-audit.v1.json": digest(analysisAudit),
     "agent-domain-events.v1.json": digest(agentDomainEvents),
     "risk-input.v2.json": digest(riskInputV2),
+    ...Object.fromEntries(phase7SpecNames.map((name) => [name, digest(phase7Specs[name])])),
   },
 };
 const manifestJson = `${JSON.stringify(manifest, null, 2)}\n`;
@@ -506,6 +634,186 @@ ANALYSIS_AUDIT_SCHEMA: dict[str, object] = json.loads(${JSON.stringify(JSON.stri
 RISK_INPUT_V2_SCHEMA: dict[str, object] = json.loads(${JSON.stringify(JSON.stringify(riskInputV2))})
 `;
 
+const phase7TsBindings = `export type PaperApprovalDecisionBindingV1 = "APPROVED" | "REJECTED";
+export type ApprovalViewStatusBindingV1 = "PENDING_RISK" | "PENDING_APPROVAL" | "READY" | "APPROVED" | "AUTHORIZATION_ISSUED" | "BLOCKED" | "INVALID";
+export type AnalysisRunBindingV2 = { schema_version: "woozoo.analysis-run/v2"; run_id: string; namespace: "paper"; evidence_id: string; evidence_digest: string; symbol: "BTCUSDT" | "ETHUSDT"; as_of: string; knowledge_cutoff: string; workflow_version: "woozoo.agent-workflow/v1"; workflow_hash: string; prompt_manifest_hash: string; provider: "mock"; model: "woozoo-deterministic-mock/v1"; tool_count: 0; outcome: "COMPLETED" | "HOLD"; hold_reason: string | null; report_ids: string[]; proposal_id: string | null; risk_decision_id: string | null; audit_hash: string };
+export type AnalysisRunViewBindingV1 = { schema_version: "woozoo.analysis-run-view/v1"; namespace: "paper"; symbol: "BTCUSDT" | "ETHUSDT"; evidence_id: string; provider: "mock"; tool_count: 0; run_id: string; status: "COMPLETED"; report: { summary: string; confidence: string; hold_reasons: string[] }; proposal_id: string; risk_decision_id: string };
+export type PaperOrderBindingV2 = { order_id: string; client_order_id: string; authorization_id: string; authorization_namespace: "paper"; authorization_nonce: string; approval_id: string; proposal_hash: string; risk_decision_hash: string; paper_order_preview_hash: string; symbol: "BTCUSDT" | "ETHUSDT"; side: "BUY" | "SELL"; order_type: "LIMIT"; time_in_force: "GTC"; quantity: string; limit_price: string; filled_quantity: string; status: "OPEN" | "PARTIALLY_FILLED" | "FILLED" | "CANCELLED"; version: number };
+export type PaperApprovalBindingV1 = { approval_id: string; proposal_id: string; proposal_hash: string; risk_decision_id: string; risk_decision_hash: string; risk_input_digest: string; risk_policy_version: string; paper_order_preview: Record<string, unknown>; paper_order_preview_hash: string; actor_id: "operator-local-1"; session_binding_hash: string; csrf_binding_hash: string; origin_hash: string; decision: PaperApprovalDecisionBindingV1; approval_nonce: string; expected_kill_switch_version: number; expected_portfolio_version: number; expected_ledger_version: number; decided_at: string; expires_at: string; payload_hash: string };
+export type PaperApprovalRevocationBindingV1 = { revocation_id: string; approval_id: string; approval_hash: string; actor_id: "operator-local-1"; session_binding_hash: string; csrf_binding_hash: string; origin_hash: string; revocation_nonce: string; reason: string; expected_version: number; revoked_at: string; payload_hash: string };
+export type PaperExecutionAuthorizationBindingV1 = { authorization_id: string; namespace: "paper"; approval_id: string; approval_hash: string; approval_nonce_hash: string; authorization_nonce: string; proposal_id: string; proposal_hash: string; risk_decision_id: string; risk_decision_hash: string; risk_input_digest: string; risk_policy_version: string; paper_order_preview_hash: string; authorization_input_digest: string; current_data_state_hash: string; current_data_as_of: string; current_knowledge_cutoff: string; kill_switch_version: number; reconciliation_checkpoint_hash: string; ledger_snapshot_hash: string; paper_account_id: string; issued_at: string; expires_at: string };
+export type LocalSessionBindingV1 = { actor_id: "operator-local-1"; issued_at: string; idle_expires_at: string; absolute_expires_at: string; csrf_token: string; csrf_expires_at: string };
+export type KillRecoveryDataBindingV2 = { recovery_event_id: string; scope: "paper-global"; active: false; prior_version: number; version: number; actor_id: "operator-local-1"; session_binding_hash: string; csrf_binding_hash: string; origin_hash: string; incident_reference: string; reason: string; observed_at: string; context_digest: string; data_status: "HEALTHY"; data_state_hash: string; reconciliation_status: "PASS"; reconciliation_checkpoint_hash: string; ledger_status: "BALANCED"; ledger_snapshot_hash: string };
+`;
+
+const phase7PyBindings = `
+PaperApprovalDecisionBindingV1 = Literal["APPROVED", "REJECTED"]
+ApprovalViewStatusBindingV1 = Literal["PENDING_RISK", "PENDING_APPROVAL", "READY", "APPROVED", "AUTHORIZATION_ISSUED", "BLOCKED", "INVALID"]
+
+class AnalysisRunBindingV2(TypedDict):
+    schema_version: Literal["woozoo.analysis-run/v2"]
+    run_id: str
+    namespace: Literal["paper"]
+    evidence_id: str
+    evidence_digest: str
+    symbol: Literal["BTCUSDT", "ETHUSDT"]
+    as_of: str
+    knowledge_cutoff: str
+    workflow_version: Literal["woozoo.agent-workflow/v1"]
+    workflow_hash: str
+    prompt_manifest_hash: str
+    provider: Literal["mock"]
+    model: Literal["woozoo-deterministic-mock/v1"]
+    tool_count: Literal[0]
+    outcome: Literal["COMPLETED", "HOLD"]
+    hold_reason: str | None
+    report_ids: list[str]
+    proposal_id: str | None
+    risk_decision_id: str | None
+    audit_hash: str
+
+class AnalysisReportViewBindingV1(TypedDict):
+    summary: str
+    confidence: str
+    hold_reasons: list[str]
+
+class AnalysisRunViewBindingV1(TypedDict):
+    schema_version: Literal["woozoo.analysis-run-view/v1"]
+    namespace: Literal["paper"]
+    symbol: Literal["BTCUSDT", "ETHUSDT"]
+    evidence_id: str
+    provider: Literal["mock"]
+    tool_count: Literal[0]
+    run_id: str
+    status: Literal["COMPLETED"]
+    report: AnalysisReportViewBindingV1
+    proposal_id: str
+    risk_decision_id: str
+
+class PaperOrderBindingV2(TypedDict):
+    order_id: str
+    client_order_id: str
+    authorization_id: str
+    authorization_namespace: Literal["paper"]
+    authorization_nonce: str
+    approval_id: str
+    proposal_hash: str
+    risk_decision_hash: str
+    paper_order_preview_hash: str
+    symbol: Literal["BTCUSDT", "ETHUSDT"]
+    side: Literal["BUY", "SELL"]
+    order_type: Literal["LIMIT"]
+    time_in_force: Literal["GTC"]
+    quantity: str
+    limit_price: str
+    filled_quantity: str
+    status: Literal["OPEN", "PARTIALLY_FILLED", "FILLED", "CANCELLED"]
+    version: int
+
+class PaperApprovalBindingV1(TypedDict):
+    approval_id: str
+    proposal_id: str
+    proposal_hash: str
+    risk_decision_id: str
+    risk_decision_hash: str
+    risk_input_digest: str
+    risk_policy_version: str
+    paper_order_preview: dict[str, object]
+    paper_order_preview_hash: str
+    actor_id: Literal["operator-local-1"]
+    session_binding_hash: str
+    csrf_binding_hash: str
+    origin_hash: str
+    decision: PaperApprovalDecisionBindingV1
+    approval_nonce: str
+    expected_kill_switch_version: int
+    expected_portfolio_version: int
+    expected_ledger_version: int
+    decided_at: str
+    expires_at: str
+    payload_hash: str
+
+class PaperApprovalRevocationBindingV1(TypedDict):
+    revocation_id: str
+    approval_id: str
+    approval_hash: str
+    actor_id: Literal["operator-local-1"]
+    session_binding_hash: str
+    csrf_binding_hash: str
+    origin_hash: str
+    revocation_nonce: str
+    reason: str
+    expected_version: int
+    revoked_at: str
+    payload_hash: str
+
+class PaperExecutionAuthorizationBindingV1(TypedDict):
+    authorization_id: str
+    namespace: Literal["paper"]
+    approval_id: str
+    approval_hash: str
+    approval_nonce_hash: str
+    authorization_nonce: str
+    proposal_id: str
+    proposal_hash: str
+    risk_decision_id: str
+    risk_decision_hash: str
+    risk_input_digest: str
+    risk_policy_version: str
+    paper_order_preview_hash: str
+    authorization_input_digest: str
+    current_data_state_hash: str
+    current_data_as_of: str
+    current_knowledge_cutoff: str
+    kill_switch_version: int
+    reconciliation_checkpoint_hash: str
+    ledger_snapshot_hash: str
+    paper_account_id: str
+    issued_at: str
+    expires_at: str
+
+class LocalSessionBindingV1(TypedDict):
+    actor_id: Literal["operator-local-1"]
+    issued_at: str
+    idle_expires_at: str
+    absolute_expires_at: str
+    csrf_token: str
+    csrf_expires_at: str
+
+class KillRecoveryDataBindingV2(TypedDict):
+    recovery_event_id: str
+    scope: Literal["paper-global"]
+    active: Literal[False]
+    prior_version: int
+    version: int
+    actor_id: Literal["operator-local-1"]
+    session_binding_hash: str
+    csrf_binding_hash: str
+    origin_hash: str
+    incident_reference: str
+    reason: str
+    observed_at: str
+    context_digest: str
+    data_status: Literal["HEALTHY"]
+    data_state_hash: str
+    reconciliation_status: Literal["PASS"]
+    reconciliation_checkpoint_hash: str
+    ledger_status: Literal["BALANCED"]
+    ledger_snapshot_hash: str
+
+RISK_INPUT_V3_SCHEMA: dict[str, object] = json.loads(${JSON.stringify(JSON.stringify(phase7Specs["risk-input.v3.json"]))})
+ANALYSIS_RUN_V2_SCHEMA: dict[str, object] = json.loads(${JSON.stringify(JSON.stringify(phase7Specs["analysis-run.v2.json"]))})
+ANALYSIS_RUN_VIEW_SCHEMA: dict[str, object] = json.loads(${JSON.stringify(JSON.stringify(phase7Specs["analysis-run-view.v1.json"]))})
+PAPER_APPROVAL_SCHEMA: dict[str, object] = json.loads(${JSON.stringify(JSON.stringify(phase7Specs["paper-approval.v1.json"]))})
+PAPER_APPROVAL_REVOCATION_SCHEMA: dict[str, object] = json.loads(${JSON.stringify(JSON.stringify(phase7Specs["paper-approval-revocation.v1.json"]))})
+PAPER_EXECUTION_AUTHORIZATION_SCHEMA: dict[str, object] = json.loads(${JSON.stringify(JSON.stringify(phase7Specs["paper-execution-authorization.v1.json"]))})
+PAPER_ORDER_V2_SCHEMA: dict[str, object] = json.loads(${JSON.stringify(JSON.stringify(phase7Specs["paper-order.v2.json"]))})
+APPROVAL_VIEW_SCHEMA: dict[str, object] = json.loads(${JSON.stringify(JSON.stringify(phase7Specs["approval-view.v1.json"]))})
+LOCAL_SESSION_SCHEMA: dict[str, object] = json.loads(${JSON.stringify(JSON.stringify(phase7Specs["local-session.v1.json"]))})
+RISK_DOMAIN_EVENTS_V2_SCHEMA: dict[str, object] = json.loads(${JSON.stringify(JSON.stringify(phase7Specs["risk-domain-events.v2.json"]))})
+PAPER_DOMAIN_EVENTS_V2_SCHEMA: dict[str, object] = json.loads(${JSON.stringify(JSON.stringify(phase7Specs["paper-domain-events.v2.json"]))})
+`;
+
 const riskPyBindings = `
 RiskVerdictBindingV1 = Literal["ALLOWED", "DENIED", "ERROR"]
 
@@ -553,15 +861,26 @@ export const ANALYSIS_AUDIT_SPEC_VERSION = ${JSON.stringify(manifest.analysis_au
 export const AGENT_DOMAIN_EVENT_SPEC_VERSION = ${JSON.stringify(manifest.agent_domain_event_spec_version)} as const;
 export const RISK_INPUT_V2_SPEC_VERSION = ${JSON.stringify(manifest.risk_input_v2_spec_version)} as const;
 export const AGENT_ACTIVATION_PHASE = ${JSON.stringify(manifest.agent_activation_phase)} as const;
+export const ANALYSIS_RUN_V2_SPEC_VERSION = ${JSON.stringify(manifest.analysis_run_v2_spec_version)} as const;
+export const RISK_INPUT_V3_SPEC_VERSION = ${JSON.stringify(manifest.risk_input_v3_spec_version)} as const;
+export const PAPER_ORDER_V2_SPEC_VERSION = ${JSON.stringify(manifest.paper_order_v2_spec_version)} as const;
+export const PAPER_APPROVAL_SPEC_VERSION = ${JSON.stringify(manifest.paper_approval_spec_version)} as const;
+export const PAPER_APPROVAL_REVOCATION_SPEC_VERSION = ${JSON.stringify(manifest.paper_approval_revocation_spec_version)} as const;
+export const PAPER_EXECUTION_AUTHORIZATION_SPEC_VERSION = ${JSON.stringify(manifest.paper_execution_authorization_spec_version)} as const;
+export const APPROVAL_VIEW_SPEC_VERSION = ${JSON.stringify(manifest.approval_view_spec_version)} as const;
+export const LOCAL_SESSION_SPEC_VERSION = ${JSON.stringify(manifest.local_session_spec_version)} as const;
+export const RISK_DOMAIN_EVENT_V2_SPEC_VERSION = ${JSON.stringify(manifest.risk_domain_event_v2_spec_version)} as const;
+export const PAPER_DOMAIN_EVENT_V2_SPEC_VERSION = ${JSON.stringify(manifest.paper_domain_event_v2_spec_version)} as const;
+export const TRADING_ROOM_ACTIVATION_PHASE = ${JSON.stringify(manifest.trading_room_activation_phase)} as const;
 `;
 
 const outputs = new Map([
   [resolve(root, "packages/contracts/schema-manifest.json"), manifestJson],
   [resolve(root, "packages/contracts/src/generated-schema-manifest.ts"), `${tsManifest}${riskTsManifest}`],
-  [resolve(root, "packages/typescript/contract-bindings/src/generated.ts"), `${tsBindings}${marketTsBindings}${domainTsBindings}${strictEvidenceTsBindings}${paperTsBindings}${riskTsBindings}${agentTsBindings}`],
+  [resolve(root, "packages/typescript/contract-bindings/src/generated.ts"), `${tsBindings}${marketTsBindings}${domainTsBindings}${strictEvidenceTsBindings}${paperTsBindings}${riskTsBindings}${agentTsBindings}${phase7TsBindings}`],
   [
     resolve(root, "packages/python/platform-core/src/platform_core/generated_contracts.py"),
-    `${strictPyBindings}${riskSchemaPyBindings}${agentSchemaPyBindings}${evidencePyBindings}${paperPyBindings}${paperPyEventBindings}${riskPyBindings}`
+    `${strictPyBindings}${riskSchemaPyBindings}${agentSchemaPyBindings}${evidencePyBindings}${paperPyBindings}${paperPyEventBindings}${riskPyBindings}${phase7PyBindings}`
       .replace(
         'Literal["SCHEMA_INVALID", "IDEMPOTENCY_CONFLICT"]',
         'Literal["SCHEMA_INVALID", "IDEMPOTENCY_CONFLICT", "CALLER_UNAUTHORIZED"]',

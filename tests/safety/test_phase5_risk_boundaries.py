@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 import re
 
@@ -5,17 +6,17 @@ import re
 ROOT = Path(__file__).parents[2]
 
 
-def test_phase_five_has_no_active_risk_approval_or_authorization_ingress() -> None:
-    openapi = (ROOT / "packages/contracts/spec/openapi.v1.json").read_text("utf-8").lower()
-    app = (ROOT / "services/control-api/src/control_api/app.py").read_text("utf-8").lower()
-    for forbidden_path in (
-        "risk-evaluations",
-        "kill-switch",
-        "paper-approvals",
-        "paper-authorizations",
-    ):
-        assert forbidden_path not in openapi
-        assert forbidden_path not in app
+def test_phase_five_dormancy_is_activated_only_at_the_phase_seven_browser_boundary() -> None:
+    openapi = json.loads((ROOT / "packages/contracts/spec/openapi.v1.json").read_text("utf-8"))
+    paths = set(openapi["paths"])
+    assert {
+        "/api/v1/session/login",
+        "/api/v1/session",
+        "/api/v1/analysis-runs",
+        "/api/v1/paper-approvals",
+        "/api/v1/kill-switch",
+    } <= paths
+    assert not any("/internal/" in path or "paper-authorizations" in path for path in paths)
 
 
 def test_risk_engine_has_no_network_exchange_secret_or_ai_capability() -> None:
@@ -38,7 +39,8 @@ def test_risk_engine_has_no_network_exchange_secret_or_ai_capability() -> None:
         assert re.search(rf"(?<![a-z0-9_]){re.escape(forbidden)}(?![a-z0-9_])", sources) is None
 
 
-def test_phase_five_does_not_create_approval_or_authorization_contracts() -> None:
-    names = {path.name.lower() for path in (ROOT / "packages/contracts/spec").iterdir()}
-    assert "paper-approval.v1.json" not in names
-    assert "paper-execution-authorization.v1.json" not in names
+def test_phase_seven_contracts_preserve_the_phase_five_dormant_boundary() -> None:
+    for name in ("paper-approval.v1.json", "paper-execution-authorization.v1.json"):
+        schema = json.loads((ROOT / "packages/contracts/spec" / name).read_text("utf-8"))
+        assert schema["x-creation-phase"] == 7
+        assert schema["x-activation-phase"] == 7

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "woozoo.local-session/v1",
+  "title": "Phase 7 local operator session response",
+  "type": "object",
+  "additionalProperties": false,
+  "x-creation-phase": 7,
+  "x-activation-phase": 7,
+  "required": ["actor_id", "issued_at", "idle_expires_at", "absolute_expires_at", "csrf_token", "csrf_expires_at"],
+  "properties": {
+    "actor_id": {"const": "operator-local-1"},
+    "issued_at": {"type": "string", "format": "date-time"},
+    "idle_expires_at": {"type": "string", "format": "date-time"},
+    "absolute_expires_at": {"type": "string", "format": "date-time"},
+    "csrf_token": {"type": "string", "minLength": 32, "maxLength": 256},
+    "csrf_expires_at": {"type": "string", "format": "date-time"}
+  }
+}

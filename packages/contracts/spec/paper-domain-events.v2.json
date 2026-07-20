@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "woozoo.paper-domain-events/v2",
+  "title": "Phase 7 production Paper authorization and order event registry",
+  "x-creation-phase": 7,
+  "x-activation-phase": 7,
+  "oneOf": [
+    {"$ref": "#/$defs/authorizationConsumed"},
+    {"$ref": "#/$defs/authorizationBlocked"},
+    {"$ref": "#/$defs/orderAccepted"},
+    {"$ref": "#/$defs/orderCancelled"},
+    {"$ref": "#/$defs/ledgerPosted"}
+  ],
+  "$defs": {
+    "base": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["spec_version", "event_id", "event_type", "event_version", "occurred_at", "producer", "activation_phase", "aggregate_id", "aggregate_version", "payload_hash", "data"],
+      "properties": {
+        "spec_version": {"const": "woozoo.event/v1"},
+        "event_id": {"$ref": "#/$defs/hash"},
+        "event_type": {"type": "string"},
+        "event_version": {"const": 2},
+        "occurred_at": {"type": "string", "format": "date-time"},
+        "producer": {"const": "paper-engine"},
+        "activation_phase": {"const": 7},
+        "aggregate_id": {"$ref": "#/$defs/hash"},
+        "aggregate_version": {"type": "integer", "minimum": 1},
+        "payload_hash": {"$ref": "#/$defs/hash"},
+        "data": {"type": "object"}
+      }
+    },
+    "authorizationConsumed": {"allOf": [{"$ref": "#/$defs/base"}, {"properties": {"event_type": {"const": "paper.authorization.consumed.v2"}, "data": {"$ref": "#/$defs/consumedData"}}}]},
+    "authorizationBlocked": {"allOf": [{"$ref": "#/$defs/base"}, {"properties": {"event_type": {"const": "paper.authorization.blocked.v2"}, "data": {"$ref": "#/$defs/blockedData"}}}]},
+    "orderAccepted": {"allOf": [{"$ref": "#/$defs/base"}, {"properties": {"event_type": {"const": "paper.order.accepted.v2"}, "data": {"$ref": "paper-order.v2.json"}}}]},
+    "orderCancelled": {"allOf": [{"$ref": "#/$defs/base"}, {"properties": {"event_type": {"const": "paper.order.cancelled.v2"}, "data": {"$ref": "#/$defs/cancellationData"}}}]},
+    "ledgerPosted": {"allOf": [{"$ref": "#/$defs/base"}, {"properties": {"event_type": {"const": "ledger.transaction.posted.v2"}, "data": {"$ref": "#/$defs/ledgerData"}}}]},
+    "consumedData": {
+      "type": "object", "additionalProperties": false,
+      "required": ["authorization_id", "authorization_nonce", "approval_id", "request_hash", "outcome", "order_id"],
+      "properties": {"authorization_id": {"$ref": "#/$defs/hash"}, "authorization_nonce": {"$ref": "#/$defs/nonce"}, "approval_id": {"$ref": "#/$defs/hash"}, "request_hash": {"$ref": "#/$defs/hash"}, "outcome": {"const": "CONSUMED_ORDER_CREATED"}, "order_id": {"$ref": "#/$defs/hash"}}
+    },
+    "blockedData": {
+      "type": "object", "additionalProperties": false,
+      "required": ["authorization_id", "authorization_nonce", "approval_id", "request_hash", "outcome", "reason_code"],
+      "properties": {"authorization_id": {"$ref": "#/$defs/hash"}, "authorization_nonce": {"$ref": "#/$defs/nonce"}, "approval_id": {"$ref": "#/$defs/hash"}, "request_hash": {"$ref": "#/$defs/hash"}, "outcome": {"const": "BLOCKED"}, "reason_code": {"enum": ["KILL_ACTIVE", "KILL_SWITCH_ACTIVE", "KILL_VERSION_MISMATCH", "DATA_STALE", "DATA_INVALID", "AUTHORIZATION_EXPIRED", "AUTHORIZATION_REVOKED", "HASH_MISMATCH", "VERSION_MISMATCH", "RECONCILIATION_MISSING", "RECONCILIATION_UNHEALTHY", "LEDGER_UNHEALTHY", "INSUFFICIENT_FUNDS", "INSUFFICIENT_POSITION"]}}
+    },
+    "ledgerData": {"type": "object", "additionalProperties": false, "required": ["transaction_id", "authorization_id"], "properties": {"transaction_id": {"$ref": "#/$defs/hash"}, "authorization_id": {"$ref": "#/$defs/hash"}}},
+    "cancellationData": {"type": "object", "additionalProperties": false, "required": ["order", "request_hash", "reason"], "properties": {"order": {"$ref": "paper-order.v2.json"}, "request_hash": {"$ref": "#/$defs/hash"}, "reason": {"type": "string", "minLength": 1, "maxLength": 512}}},
+    "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "nonce": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{31,127}$"}
+  }
+}

@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "woozoo.approval-view/v1",
+  "title": "Phase 7 deterministic Paper approval projection",
+  "type": "object",
+  "additionalProperties": false,
+  "x-creation-phase": 7,
+  "x-activation-phase": 7,
+  "required": ["proposal_id", "proposal_hash", "status", "reason_codes", "risk_decision_id", "risk_decision_hash", "risk_input_digest", "risk_policy_version", "risk_verdict", "paper_order_preview", "paper_order_preview_hash", "approval_id", "approval_status", "approval_expires_at", "approval_ttl_seconds", "approval_action_allowed", "authorization_id", "authorization_status", "view_version", "served_at"],
+  "properties": {
+    "proposal_id": {"$ref": "#/$defs/hash"},
+    "proposal_hash": {"$ref": "#/$defs/hash"},
+    "status": {"enum": ["PENDING_RISK", "PENDING_APPROVAL", "READY", "APPROVED", "AUTHORIZATION_ISSUED", "BLOCKED", "INVALID"]},
+    "reason_codes": {"type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 64}, "uniqueItems": true},
+    "risk_decision_id": {"$ref": "#/$defs/nullableHash"},
+    "risk_decision_hash": {"$ref": "#/$defs/nullableHash"},
+    "risk_input_digest": {"$ref": "#/$defs/nullableHash"},
+    "risk_policy_version": {"type": ["string", "null"], "maxLength": 64},
+    "risk_verdict": {"enum": ["ALLOWED", "DENIED", "ERROR", null]},
+    "paper_order_preview": {"anyOf": [{"$ref": "#/$defs/preview"}, {"type": "null"}]},
+    "paper_order_preview_hash": {"$ref": "#/$defs/nullableHash"},
+    "approval_id": {"$ref": "#/$defs/nullableHash"},
+    "approval_status": {"enum": ["APPROVED", "REJECTED", "EXPIRED", "REVOKED", null]},
+    "approval_expires_at": {"type": ["string", "null"], "format": "date-time"},
+    "approval_ttl_seconds": {"const": 300},
+    "approval_action_allowed": {"type": "boolean"},
+    "authorization_id": {"$ref": "#/$defs/nullableHash"},
+    "authorization_status": {"enum": ["ISSUED", "BLOCKED", "CONSUMED", "EXPIRED", "REVOKED", "INVALIDATED", null]},
+    "view_version": {"type": "integer", "minimum": 1},
+    "served_at": {"type": "string", "format": "date-time"}
+  },
+  "allOf": [
+    {"if": {"properties": {"status": {"const": "READY"}}, "required": ["status"]}, "then": {"properties": {"approval_action_allowed": {"const": true}}}},
+    {"if": {"properties": {"status": {"enum": ["PENDING_RISK", "PENDING_APPROVAL", "APPROVED", "AUTHORIZATION_ISSUED", "BLOCKED", "INVALID"]}}, "required": ["status"]}, "then": {"properties": {"approval_action_allowed": {"const": false}}}}
+  ],
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "nullableHash": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+    "decimal": {"type": "string", "pattern": "^(0|[1-9][0-9]{0,19})(\\.[0-9]{1,18})?$"},
+    "preview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["symbol", "side", "order_type", "time_in_force", "quantity", "limit_price", "worst_case_fee", "worst_case_hold", "worst_case_notional", "best_bid", "best_ask", "expected_slippage_inputs", "paper_order_preview_hash"],
+      "properties": {
+        "symbol": {"enum": ["BTCUSDT", "ETHUSDT"]},
+        "side": {"enum": ["BUY", "SELL"]},
+        "order_type": {"const": "LIMIT"},
+        "time_in_force": {"const": "GTC"},
+        "quantity": {"$ref": "#/$defs/decimal"},
+        "limit_price": {"$ref": "#/$defs/decimal"},
+        "worst_case_fee": {"$ref": "#/$defs/decimal"},
+        "worst_case_hold": {"$ref": "#/$defs/decimal"},
+        "worst_case_notional": {"$ref": "#/$defs/decimal"},
+        "best_bid": {"$ref": "#/$defs/decimal"},
+        "best_ask": {"$ref": "#/$defs/decimal"},
+        "expected_slippage_inputs": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["method"],
+          "properties": {"method": {"const": "limit-vs-book-v1"}}
+        },
+        "paper_order_preview_hash": {"$ref": "#/$defs/hash"}
+      }
+    }
+  }
+}
