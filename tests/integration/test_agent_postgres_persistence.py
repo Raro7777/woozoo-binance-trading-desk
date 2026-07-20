@@ -306,6 +306,30 @@ def test_agent_persistence_rejects_hold_with_proposal() -> None:
         PostgresAgentStore._validate_graph(contradictory)
 
 
+def test_agent_persistence_rejects_rehashed_event_authority_mutation() -> None:
+    evidence = EvidenceContext(
+        evidence_id="e" * 64,
+        evidence_digest="a" * 64,
+        symbol="BTCUSDT",
+        as_of=NOW,
+        knowledge_cutoff=NOW,
+        quality="healthy",
+        item_ids=("1" * 64,),
+        quoted_content=("public market observation",),
+    )
+    forged = deepcopy(
+        asyncio.run(AgentWorkflow(MockLlmProvider(), clock=lambda: NOW).run(evidence))
+    )
+    for event in forged.events:
+        event["producer"] = "risk-engine"
+        event["activation_phase"] = 6
+        event["event_id"] = canonical_hash(
+            {key: value for key, value in event.items() if key != "event_id"}
+        )
+    with pytest.raises(ValueError, match="EVENT_ENVELOPE_AUTHORITY_MISMATCH"):
+        PostgresAgentStore._validate_graph(forged)
+
+
 def test_agent_database_rejects_hold_proposal_child() -> None:
     with docker_infrastructure_lock():
         run("docker", "compose", "down", "-v")

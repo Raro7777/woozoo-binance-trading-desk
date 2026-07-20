@@ -415,6 +415,7 @@ const actions = {
       "tests/integration/test_agent_migration_contract.py::test_empty_downgrade_removes_migration_created_agent_role",
       "tests/integration/test_agent_postgres_persistence.py::test_agent_persistence_is_atomic_idempotent_and_append_only",
       "tests/integration/test_agent_postgres_persistence.py::test_agent_persistence_rejects_hold_with_proposal",
+      "tests/integration/test_agent_postgres_persistence.py::test_agent_persistence_rejects_rehashed_event_authority_mutation",
       "tests/integration/test_agent_postgres_persistence.py::test_agent_database_rejects_hold_proposal_child",
       "tests/integration/test_proposal_risk_fixture_chain.py::test_p6_authoritative_proposal_binds_full_hash_to_test_risk_v2",
       "tests/integration/test_proposal_risk_fixture_chain.py::test_p6_hold_is_not_risk_eligible",

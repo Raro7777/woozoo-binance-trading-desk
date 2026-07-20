@@ -228,6 +228,29 @@ class PostgresAgentStore:
         if tuple(event.get("event_type") for event in result.events) != expected_event_types:
             raise ValueError("EVENT_SET_MISMATCH")
         for event in result.events:
+            if (
+                set(event)
+                != {
+                    "spec_version",
+                    "event_id",
+                    "event_type",
+                    "event_version",
+                    "occurred_at",
+                    "producer",
+                    "activation_phase",
+                    "aggregate_id",
+                    "aggregate_version",
+                    "payload_hash",
+                    "data",
+                }
+                or event.get("spec_version") != "woozoo.event/v1"
+                or event.get("event_version") != 1
+                or event.get("producer") != "agent-orchestrator"
+                or event.get("activation_phase") != 7
+                or event.get("aggregate_version") != 1
+            ):
+                raise ValueError("EVENT_ENVELOPE_AUTHORITY_MISMATCH")
+            _timestamp(event.get("occurred_at"))
             data = event.get("data")
             if not isinstance(data, dict) or canonical_hash(data) != event.get("payload_hash"):
                 raise ValueError("EVENT_PAYLOAD_HASH_MISMATCH")
