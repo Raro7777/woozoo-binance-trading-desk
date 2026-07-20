@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "phase": 2,
+  "status": "READY_FOR_DIGEST_BOUND_USER_APPROVAL",
+  "acceptance_status": "UNVERIFIED",
+  "digest_algorithm": "SHA-256",
+  "digest_definition": "SHA-256 of this UTF-8 manifest after its sorted artifact list and Git gate evidence are complete; this manifest does not hash itself. The frozen_code_revision Git commit and tree bind the product source tree.",
+  "frozen_code_revision": {
+    "commit": "05484fbd6fa27f077a9cc2d55c3bac8ee672942d",
+    "tree": "5061f52a8440edf58f5bad5570e6f2a23de449bb",
+    "branch": "codex/phase-2-public-data",
+    "verdict": "PASS"
+  },
+  "phase_item_verdicts": {
+    "P2-01": "PASS",
+    "P2-02": "PASS",
+    "P2-03": "PASS",
+    "P2-04": "PASS",
+    "P2-05": "PASS",
+    "P2-06": "PASS",
+    "P2-07": "PASS",
+    "P2-08": "PASS",
+    "P2-09": "PASS",
+    "P2-10": "PASS",
+    "P2-11": "PASS",
+    "P2-12": "PASS"
+  },
+  "review_gate": {
+    "role_separated_safety_qa": "PASS",
+    "codex_cross_review": "NO_CONFIRMED_FINDINGS",
+    "codex_cross_review_is_same_engine": true,
+    "external_review": "external-review-unavailable",
+    "external_gate_satisfied": false,
+    "external_review_is_not_pass": true,
+    "claude_used": false,
+    "approval_boundary": "The acceptance status remains UNVERIFIED until the user explicitly approves this exact manifest digest. This manifest is not authority to begin Phase 3."
+  },
+  "git_gate": {
+    "status": "PASS",
+    "evidence_path": "docs/woozoo-trading-desk/phase-2/p2-git-gate-evidence.json",
+    "frozen_code_commit": "05484fbd6fa27f077a9cc2d55c3bac8ee672942d",
+    "draft_pr": "https://github.com/Raro7777/woozoo-binance-trading-desk/pull/3",
+    "verified_pr_head": "a3f02dbd0d2370307ce4c15adb52bb8d2f898b34",
+    "base": "main"
+  },
+  "verification": {
+    "canonical_command": "corepack pnpm ci",
+    "status": "PASS",
+    "scenario_evidence": "docs/woozoo-trading-desk/phase-2/p2-scenario-manifest.json",
+    "frozen_artifact_git_commit": "05484fbd6fa27f077a9cc2d55c3bac8ee672942d"
+  },
+  "artifacts": [
+    {"path": "AGENTS.md", "sha256": "48a07aed6f8ac753df49740797cbbbf20e821240d1c14e63912b6c0a289b4e64", "verdict": "PASS"},
+    {"path": "artifacts/failure/DATA-003.json", "sha256": "3300b5c04e16018b979c6c3cd897a051e04bcd2bbe997967a6072ab2ec5900b9", "verdict": "PASS"},
+    {"path": "artifacts/failure/DATA-004.json", "sha256": "4fca5c9457e94ffd8299f96f91420ef70eed520226c0781d69714774dbf969ee", "verdict": "PASS"},
+    {"path": "artifacts/failure/DATA-005.json", "sha256": "ad73ae6765f2eb4ef0508b1cdba44ff044b68a5d85aa5914cad8214ee757e4c2", "verdict": "PASS"},
+    {"path": "artifacts/failure/DATA-006.json", "sha256": "4ab0ad2ad4783ff08749b8e5646257c17de586eaeffcfe3b266682ca74b8b7e9", "verdict": "PASS"},
+    {"path": "artifacts/property/DATA-007.json", "sha256": "268dd37b30b1df1a4b717aeecde2dd773c944543cd6de214a09cab652f77ca01", "verdict": "PASS"},
+    {"path": "artifacts/replay/DATA-001.json", "sha256": "3d6dc22a371325bb4a1f93725474f015141548660bf36bd059f1b958e6e41a50", "verdict": "PASS"},
+    {"path": "artifacts/replay/DATA-002.json", "sha256": "8752edb10d2f9551066af2bf75b253aac2f0ed42b7e2c7617a5f230730621a72", "verdict": "PASS"},
+    {"path": "docs/woozoo-trading-desk/phase-0/phase-1-scope-and-phase-0-report.md", "sha256": "ce7d2055713442f57ed68678304c990189109a3fbda64ac6b2faaadf78ea6fbd", "verdict": "PASS"},
+    {"path": "docs/woozoo-trading-desk/phase-2/binance-official-reverification.md", "sha256": "cc08337d2b47dd59c3c973bcaf82704e130fe864c0b7695e85032a1d467d720c", "verdict": "PASS"},
+    {"path": "docs/woozoo-trading-desk/phase-2/external-review-status.json", "sha256": "7c1868f801abc2517fc144c6e213983eacf6e2011cdf5b8a976ee92866ae1f6f", "verdict": "external-review-unavailable"},
+    {"path": "docs/woozoo-trading-desk/phase-2/final-review-record.md", "sha256": "1b1acac6e867649437be3b293e1045f2553c5e319742e26b7eab5c1906bf148d", "verdict": "PASS"},
+    {"path": "docs/woozoo-trading-desk/phase-2/implementation-contract.md", "sha256": "3170ec1a3f00d16d396641dbaf40fee832b6bd218637dbca36aaaa5683529644", "verdict": "PASS"},
+    {"path": "docs/woozoo-trading-desk/phase-2/p2-git-gate-evidence.json", "sha256": "074679359df7098e8efbc2926d267ba2cff37e9cbac571b8c224fadef8ce9ad8", "verdict": "PASS"},
+    {"path": "docs/woozoo-trading-desk/phase-2/p2-scenario-manifest.json", "sha256": "e38cebecc7ab6f3b53deb5e7086c75855ca638394b4126ea8413e7c0845430f9", "verdict": "PASS"},
+    {"path": "docs/woozoo-trading-desk/working_history/phase-2_public-market-data_20260719.md", "sha256": "b404bfaea7ca162aa24b5896653477dd0d2f80889c7a082586545bc9f5cd5c9c", "verdict": "PASS"}
+  ]
+}

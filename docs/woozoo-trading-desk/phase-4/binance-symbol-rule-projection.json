@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "projection_of_raw_response_sha256": "c30f738ad7fd6d8e1378b9a8ef022c78c801cf4d1bc0b005f8870c188364a788",
+  "projection_fields": ["symbol", "status", "baseAsset", "quoteAsset", "PRICE_FILTER", "LOT_SIZE", "NOTIONAL"],
+  "symbols": [
+    {
+      "symbol": "BTCUSDT",
+      "status": "TRADING",
+      "baseAsset": "BTC",
+      "quoteAsset": "USDT",
+      "filters": {
+        "PRICE_FILTER": {"tickSize": "0.01000000"},
+        "LOT_SIZE": {"minQty": "0.00001000", "stepSize": "0.00001000"},
+        "NOTIONAL": {"minNotional": "5.00000000"}
+      }
+    },
+    {
+      "symbol": "ETHUSDT",
+      "status": "TRADING",
+      "baseAsset": "ETH",
+      "quoteAsset": "USDT",
+      "filters": {
+        "PRICE_FILTER": {"tickSize": "0.01000000"},
+        "LOT_SIZE": {"minQty": "0.00010000", "stepSize": "0.00010000"},
+        "NOTIONAL": {"minNotional": "5.00000000"}
+      }
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "woozoo.risk-decision/v1",
+  "title": "Dormant Phase 5 deterministic Risk decision",
+  "type": "object",
+  "additionalProperties": false,
+  "x-creation-phase": 5,
+  "x-activation-phase": 7,
+  "required": ["decision_schema_version", "decision_id", "risk_input_digest", "decision_hash", "verdict", "primary_reason", "ordered_reason_codes", "policy_version", "proposal_hash", "portfolio_snapshot_hash", "data_state_hash", "paper_order_preview_hash", "reconciliation_checkpoint_hash", "kill_switch_version", "decision_as_of"],
+  "properties": {
+    "decision_schema_version": {"const": "woozoo.risk-decision/v1"},
+    "decision_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "risk_input_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "decision_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "verdict": {"enum": ["ALLOWED", "DENIED", "ERROR"]},
+    "primary_reason": {"$ref": "#/$defs/reasonCode"},
+    "ordered_reason_codes": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/reasonCode"}},
+    "policy_version": {"type": "string", "minLength": 1, "maxLength": 64},
+    "proposal_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "portfolio_snapshot_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "data_state_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "paper_order_preview_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "reconciliation_checkpoint_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "kill_switch_version": {"type": "integer", "minimum": 0},
+    "decision_as_of": {"type": "string", "format": "date-time"}
+  },
+  "$defs": {
+    "reasonCode": {
+      "enum": [
+        "RISK_POLICY_MISSING", "RISK_POLICY_HASH_MISMATCH", "DECIMAL_POLICY_INVALID", "INPUT_SCHEMA_INVALID", "EQUITY_INVALID",
+        "KILL_SWITCH_ACTIVE", "RECONCILIATION_UNHEALTHY", "LEDGER_IMBALANCE", "PORTFOLIO_SNAPSHOT_MISMATCH",
+        "EVIDENCE_MISSING", "DATA_INVALID", "DATA_STALE", "FUTURE_CONTAMINATION", "WATERMARK_INCOMPLETE",
+        "PROPOSAL_HASH_MISMATCH", "DUPLICATE_PROPOSAL", "DUPLICATE_ORDER_INTENT", "SYMBOL_NOT_ALLOWED",
+        "ORDER_TYPE_NOT_LIMIT", "SIDE_NOT_LONG_CASH", "TIF_NOT_ALLOWED", "INVALID_PRICE_OR_QTY",
+        "INSUFFICIENT_AVAILABLE_BALANCE", "FEE_RESERVE_INSUFFICIENT", "SELL_EXCEEDS_POSITION", "EXECUTION_QUALITY_UNKNOWN",
+        "SPREAD_LIMIT_EXCEEDED", "EXPECTED_SLIPPAGE_LIMIT_EXCEEDED", "ORDER_NOTIONAL_LIMIT_EXCEEDED",
+        "SYMBOL_EXPOSURE_LIMIT_EXCEEDED", "PORTFOLIO_EXPOSURE_LIMIT_EXCEEDED", "REALIZED_LOSS_LIMIT_EXCEEDED",
+        "DRAWDOWN_LIMIT_EXCEEDED", "RISK_ALLOWED"
+      ]
+    }
+  }
+}

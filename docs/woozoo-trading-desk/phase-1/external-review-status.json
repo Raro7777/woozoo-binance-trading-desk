@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "stage_id": "p1_platform_foundation",
+  "status": "external-review-unavailable",
+  "external_gate_satisfied": false,
+  "runner": "codex",
+  "selection": {
+    "policy": "codex-primary-no-claude",
+    "external_reviewer": "agy",
+    "selected_once": true
+  },
+  "attempt": {
+    "tool": "agy",
+    "result": "no usable review body",
+    "detail": "Headless execution was denied the required read_file permission before it could inspect the candidate.",
+    "attempted_at": "2026-07-19T03:26:14Z"
+  },
+  "interpretation": "Role-separated safety QA and same-engine Codex cross-review remain required, but neither is an external-engine PASS. No substitute reviewer was invoked."
+}

@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "stage_id": "p2_public_market_data",
+  "status": "external-review-unavailable",
+  "external_gate_satisfied": false,
+  "runner": "codex",
+  "selection": {
+    "policy": "codex-primary-no-claude",
+    "external_reviewer": "agy",
+    "selected_engine": "Gemini 3.1 Pro (High)",
+    "selected_once": true
+  },
+  "attempt": {
+    "tool": "agy",
+    "result": "no usable review body",
+    "detail": "Headless execution auto-denied the read_file permission required to inspect the Phase 2 candidate.",
+    "attempted_on": "2026-07-19"
+  },
+  "interpretation": "The external-review-unavailable record satisfies only the availability-record requirement. It is not an external PASS. Role-separated safety QA and same-engine Codex cross-review remain separate required evidence. Claude was disabled and was not used."
+}
