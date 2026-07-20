@@ -238,7 +238,7 @@
         "tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_attempt_keeps_postgres_active[unauthenticated_actor]"
       ],
       "source_sha256": [
-        "9d76cd6caf1ea7e90b9ad982f385ce9f6a802edbbfb24a9e48ab17f2d5b12d7a"
+        "5cc849817e07cca3b2cd1b092a51fa406166d906b0b692a87a9585863df71648"
       ],
       "attempt_cases": {
         "timer": "tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_attempt_keeps_postgres_active[timer]",
