@@ -13,11 +13,15 @@ def _hold_lock(
         release.wait(10)
 
 
-def _enter_lock(
-    attempting: multiprocessing.synchronize.Event,
-    acquired: multiprocessing.synchronize.Event,
-) -> None:
-    attempting.set()
+def _probe_locked(result: multiprocessing.queues.Queue) -> None:
+    try:
+        with docker_infrastructure_lock(timeout_seconds=0.5):
+            result.put("acquired")
+    except TimeoutError:
+        result.put("timed-out")
+
+
+def _enter_lock(acquired: multiprocessing.synchronize.Event) -> None:
     with docker_infrastructure_lock(timeout_seconds=10):
         acquired.set()
 
@@ -26,22 +30,29 @@ def test_shared_docker_lock_serializes_two_spawned_processes() -> None:
     context = multiprocessing.get_context("spawn")
     ready = context.Event()
     release = context.Event()
-    attempting = context.Event()
+    probe_result = context.Queue()
     acquired = context.Event()
     holder = context.Process(target=_hold_lock, args=(ready, release))
-    contender = context.Process(target=_enter_lock, args=(attempting, acquired))
+    probe = context.Process(target=_probe_locked, args=(probe_result,))
+    contender = context.Process(target=_enter_lock, args=(acquired,))
     holder.start()
     try:
         assert ready.wait(10)
-        contender.start()
-        assert attempting.wait(10)
-        assert not acquired.wait(0.5)
+        probe.start()
+        assert probe_result.get(timeout=10) == "timed-out"
+        probe.join(10)
+        assert probe.exitcode == 0
+        assert holder.is_alive()
         release.set()
+        holder.join(10)
+        assert holder.exitcode == 0
+        contender.start()
         assert acquired.wait(10)
     finally:
         release.set()
         holder.join(10)
+        if probe.pid is not None:
+            probe.join(10)
         if contender.pid is not None:
             contender.join(10)
-    assert holder.exitcode == 0
     assert contender.exitcode == 0
