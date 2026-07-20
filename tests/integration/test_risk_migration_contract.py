@@ -297,7 +297,7 @@ def test_phase_five_downgrade_fails_closed_when_immutable_history_exists() -> No
             )
             with psycopg.connect(DATABASE_URL) as connection:
                 assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == (
-                    "20260719_0005",
+                    "20260720_0006",
                 )
                 assert connection.execute(
                     "SELECT active,version,last_activation_event_id FROM kill_switch_state "

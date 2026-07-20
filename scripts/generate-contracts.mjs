@@ -15,6 +15,13 @@ const riskInputPath = resolve(root, "packages/contracts/spec/risk-input.v1.json"
 const riskDecisionPath = resolve(root, "packages/contracts/spec/risk-decision.v1.json");
 const killSwitchPath = resolve(root, "packages/contracts/spec/kill-switch.v1.json");
 const riskDomainEventsPath = resolve(root, "packages/contracts/spec/risk-domain-events.v1.json");
+const promptManifestPath = resolve(root, "packages/contracts/spec/prompt-manifest.v1.json");
+const agentReportPath = resolve(root, "packages/contracts/spec/agent-report.v1.json");
+const tradeProposalPath = resolve(root, "packages/contracts/spec/trade-proposal.v1.json");
+const analysisRunPath = resolve(root, "packages/contracts/spec/analysis-run.v1.json");
+const analysisAuditPath = resolve(root, "packages/contracts/spec/analysis-audit.v1.json");
+const agentDomainEventsPath = resolve(root, "packages/contracts/spec/agent-domain-events.v1.json");
+const riskInputV2Path = resolve(root, "packages/contracts/spec/risk-input.v2.json");
 const check = process.argv.includes("--check");
 
 const stable = (value) => {
@@ -38,6 +45,13 @@ const riskInput = JSON.parse(await readFile(riskInputPath, "utf8"));
 const riskDecision = JSON.parse(await readFile(riskDecisionPath, "utf8"));
 const killSwitch = JSON.parse(await readFile(killSwitchPath, "utf8"));
 const riskDomainEvents = JSON.parse(await readFile(riskDomainEventsPath, "utf8"));
+const promptManifest = JSON.parse(await readFile(promptManifestPath, "utf8"));
+const agentReport = JSON.parse(await readFile(agentReportPath, "utf8"));
+const tradeProposal = JSON.parse(await readFile(tradeProposalPath, "utf8"));
+const analysisRun = JSON.parse(await readFile(analysisRunPath, "utf8"));
+const analysisAudit = JSON.parse(await readFile(analysisAuditPath, "utf8"));
+const agentDomainEvents = JSON.parse(await readFile(agentDomainEventsPath, "utf8"));
+const riskInputV2 = JSON.parse(await readFile(riskInputV2Path, "utf8"));
 
 if (
   Object.keys(openApi.paths).join(",") !==
@@ -102,6 +116,23 @@ if (
   riskDomainEvents.oneOf.length !== 2
 ) {
   throw new Error("P5 Risk contracts must remain closed and dormant until Phase 7");
+}
+if (
+  promptManifest.$id !== "woozoo.prompt-manifest/v1" ||
+  agentReport.$id !== "woozoo.agent-report/v1" ||
+  tradeProposal.$id !== "woozoo.trade-proposal/v1" ||
+  analysisRun.$id !== "woozoo.analysis-run/v1" ||
+  analysisAudit.$id !== "woozoo.analysis-audit/v1" ||
+  agentDomainEvents.$id !== "woozoo.agent-domain-events/v1" ||
+  riskInputV2.$id !== "woozoo.risk-input/v2" ||
+  [promptManifest, agentReport, tradeProposal, analysisRun, analysisAudit, riskInputV2]
+    .some((contract) => contract.additionalProperties !== false || contract["x-creation-phase"] !== 6 || contract["x-activation-phase"] !== 7) ||
+  agentDomainEvents["x-activation-phase"] !== 7 ||
+  !Array.isArray(agentDomainEvents.oneOf) || agentDomainEvents.oneOf.length !== 3 ||
+  promptManifest.properties?.tool_allowlist?.const?.length !== 0 ||
+  riskInputV2.properties?.namespace?.const !== "test"
+) {
+  throw new Error("P6 Agent contracts must remain closed, tool-free, test-only, and dormant until Phase 7");
 }
 
 const schemas = openApi.components?.schemas;
@@ -246,6 +277,14 @@ const manifest = {
   kill_switch_spec_version: killSwitch.$id,
   risk_domain_event_spec_version: riskDomainEvents.$id,
   risk_activation_phase: 7,
+  prompt_manifest_spec_version: promptManifest.$id,
+  agent_report_spec_version: agentReport.$id,
+  trade_proposal_spec_version: tradeProposal.$id,
+  analysis_run_spec_version: analysisRun.$id,
+  analysis_audit_spec_version: analysisAudit.$id,
+  agent_domain_event_spec_version: agentDomainEvents.$id,
+  risk_input_v2_spec_version: riskInputV2.$id,
+  agent_activation_phase: 7,
   market_source: marketEvent.properties.source.const,
   health_path: "/api/v1/health",
   market_status_path_template: "/api/v1/markets/{symbol}/status",
@@ -264,6 +303,13 @@ const manifest = {
     "risk-decision.v1.json": digest(riskDecision),
     "kill-switch.v1.json": digest(killSwitch),
     "risk-domain-events.v1.json": digest(riskDomainEvents),
+    "prompt-manifest.v1.json": digest(promptManifest),
+    "agent-report.v1.json": digest(agentReport),
+    "trade-proposal.v1.json": digest(tradeProposal),
+    "analysis-run.v1.json": digest(analysisRun),
+    "analysis-audit.v1.json": digest(analysisAudit),
+    "agent-domain-events.v1.json": digest(agentDomainEvents),
+    "risk-input.v2.json": digest(riskInputV2),
   },
 };
 const manifestJson = `${JSON.stringify(manifest, null, 2)}\n`;
@@ -446,6 +492,20 @@ import json
 RISK_INPUT_SCHEMA: dict[str, object] = json.loads(${JSON.stringify(JSON.stringify(riskInput))})
 `;
 
+const agentTsBindings = `export type AgentRoleBindingV1 = "MARKET_REGIME" | "TECHNICAL" | "TRADE_FLOW" | "BULL" | "BEAR" | "TRADER" | "PORTFOLIO" | "AUDIT";
+export type AgentReportBindingV1 = { schema_version: "woozoo.agent-report/v1"; report_id: string; run_id: string; role: AgentRoleBindingV1; evidence_id: string; evidence_digest: string; as_of: string; knowledge_cutoff: string; symbol: "BTCUSDT" | "ETHUSDT"; evidence_item_ids: string[]; dependency_report_ids: string[]; claim_times: string[]; findings: string[]; uncertainty: string[]; invalidation_conditions: string[]; confidence: string; stance: "BUY" | "SELL" | "HOLD" | "NEUTRAL"; provider: "mock"; model: "woozoo-deterministic-mock/v1"; prompt_manifest_hash: string; workflow_hash: string; report_hash: string };
+export type TradeProposalBindingV1 = { schema_version: "woozoo.trade-proposal/v1"; proposal_id: string; proposal_version: "v1"; analysis_run_id: string; evidence_id: string; evidence_digest: string; as_of: string; knowledge_cutoff: string; symbol: "BTCUSDT" | "ETHUSDT"; side: "BUY" | "SELL" | "HOLD"; risk_eligible: boolean; report_ids: string[]; report_hashes: string[]; evidence_item_ids: string[]; thesis: string; uncertainty: string[]; invalidation_conditions: string[]; confidence: string; provider: "mock"; model: "woozoo-deterministic-mock/v1"; prompt_manifest_hash: string; workflow_version: "woozoo.agent-workflow/v1"; workflow_hash: string; proposal_hash: string };
+export type AnalysisRunBindingV1 = { schema_version: "woozoo.analysis-run/v1"; run_id: string; namespace: "test"; evidence_id: string; evidence_digest: string; symbol: "BTCUSDT" | "ETHUSDT"; as_of: string; knowledge_cutoff: string; workflow_version: "woozoo.agent-workflow/v1"; workflow_hash: string; prompt_manifest_hash: string; provider: "mock"; model: "woozoo-deterministic-mock/v1"; outcome: "COMPLETED" | "HOLD"; hold_reason: string | null; report_ids: string[]; proposal_id: string | null; audit_hash: string };
+`;
+
+const agentSchemaPyBindings = `
+AGENT_REPORT_SCHEMA: dict[str, object] = json.loads(${JSON.stringify(JSON.stringify(agentReport))})
+TRADE_PROPOSAL_SCHEMA: dict[str, object] = json.loads(${JSON.stringify(JSON.stringify(tradeProposal))})
+ANALYSIS_RUN_SCHEMA: dict[str, object] = json.loads(${JSON.stringify(JSON.stringify(analysisRun))})
+ANALYSIS_AUDIT_SCHEMA: dict[str, object] = json.loads(${JSON.stringify(JSON.stringify(analysisAudit))})
+RISK_INPUT_V2_SCHEMA: dict[str, object] = json.loads(${JSON.stringify(JSON.stringify(riskInputV2))})
+`;
+
 const riskPyBindings = `
 RiskVerdictBindingV1 = Literal["ALLOWED", "DENIED", "ERROR"]
 
@@ -485,15 +545,23 @@ export const RISK_DECISION_SPEC_VERSION = ${JSON.stringify(manifest.risk_decisio
 export const KILL_SWITCH_SPEC_VERSION = ${JSON.stringify(manifest.kill_switch_spec_version)} as const;
 export const RISK_DOMAIN_EVENT_SPEC_VERSION = ${JSON.stringify(manifest.risk_domain_event_spec_version)} as const;
 export const RISK_ACTIVATION_PHASE = ${JSON.stringify(manifest.risk_activation_phase)} as const;
+export const PROMPT_MANIFEST_SPEC_VERSION = ${JSON.stringify(manifest.prompt_manifest_spec_version)} as const;
+export const AGENT_REPORT_SPEC_VERSION = ${JSON.stringify(manifest.agent_report_spec_version)} as const;
+export const TRADE_PROPOSAL_SPEC_VERSION = ${JSON.stringify(manifest.trade_proposal_spec_version)} as const;
+export const ANALYSIS_RUN_SPEC_VERSION = ${JSON.stringify(manifest.analysis_run_spec_version)} as const;
+export const ANALYSIS_AUDIT_SPEC_VERSION = ${JSON.stringify(manifest.analysis_audit_spec_version)} as const;
+export const AGENT_DOMAIN_EVENT_SPEC_VERSION = ${JSON.stringify(manifest.agent_domain_event_spec_version)} as const;
+export const RISK_INPUT_V2_SPEC_VERSION = ${JSON.stringify(manifest.risk_input_v2_spec_version)} as const;
+export const AGENT_ACTIVATION_PHASE = ${JSON.stringify(manifest.agent_activation_phase)} as const;
 `;
 
 const outputs = new Map([
   [resolve(root, "packages/contracts/schema-manifest.json"), manifestJson],
   [resolve(root, "packages/contracts/src/generated-schema-manifest.ts"), `${tsManifest}${riskTsManifest}`],
-  [resolve(root, "packages/typescript/contract-bindings/src/generated.ts"), `${tsBindings}${marketTsBindings}${domainTsBindings}${strictEvidenceTsBindings}${paperTsBindings}${riskTsBindings}`],
+  [resolve(root, "packages/typescript/contract-bindings/src/generated.ts"), `${tsBindings}${marketTsBindings}${domainTsBindings}${strictEvidenceTsBindings}${paperTsBindings}${riskTsBindings}${agentTsBindings}`],
   [
     resolve(root, "packages/python/platform-core/src/platform_core/generated_contracts.py"),
-    `${strictPyBindings}${riskSchemaPyBindings}${evidencePyBindings}${paperPyBindings}${paperPyEventBindings}${riskPyBindings}`
+    `${strictPyBindings}${riskSchemaPyBindings}${agentSchemaPyBindings}${evidencePyBindings}${paperPyBindings}${paperPyEventBindings}${riskPyBindings}`
       .replace(
         'Literal["SCHEMA_INVALID", "IDEMPOTENCY_CONFLICT"]',
         'Literal["SCHEMA_INVALID", "IDEMPOTENCY_CONFLICT", "CALLER_UNAUTHORIZED"]',

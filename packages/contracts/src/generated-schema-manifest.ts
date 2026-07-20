@@ -24,10 +24,25 @@ export const CONTRACT_SOURCE_DIGESTS = {
   "risk-input.v1.json": "92bcaf8af96a4676eef5ed0777622e8933337d68d5f3c623b65c380ea3aa33a2",
   "risk-decision.v1.json": "3d3d8b34052fbcf21ec557051bffb5b713cfc6d95c220ee5ff35bc046e2bc1db",
   "kill-switch.v1.json": "c70ff8c0d61994a2400df4efe79bcadfeef65661591097e371959b232aadbc93",
-  "risk-domain-events.v1.json": "51558ea615fafb3827c251f6a19f1800881b31740619b1378f8a68bdb5be9ee3"
+  "risk-domain-events.v1.json": "51558ea615fafb3827c251f6a19f1800881b31740619b1378f8a68bdb5be9ee3",
+  "prompt-manifest.v1.json": "d6ec20a8099119810f4d2c6099972fa00e232c17695168deaf34281df397c109",
+  "agent-report.v1.json": "6b2521dee4976843e14c629911d6bda85f80577f2973b3ee7f05020083820950",
+  "trade-proposal.v1.json": "8ecb4426d9199e102ead687513d6fc0e2c4a3e9ad40b3e2d996ffd085c81d4cf",
+  "analysis-run.v1.json": "15281db11f3f89b9a7e1d98fb4f29ab09cf160e94c2cd7a4892e9abe6da750a9",
+  "analysis-audit.v1.json": "8cb5887a9f047b8f3fcc4c2011a3b271afb1de5af094da2595d095716bf6e831",
+  "agent-domain-events.v1.json": "0bb08a32ef4f78d3a5b86635887fd4a1ad9dcf64d8b23ab2ee0165feaee89489",
+  "risk-input.v2.json": "4fca44bdbb1a8b2e1bdaabfec5cf34f9a34263768c4ca4a803e038b3841e487a"
 } as const;
 export const RISK_INPUT_SPEC_VERSION = "woozoo.risk-input/v1" as const;
 export const RISK_DECISION_SPEC_VERSION = "woozoo.risk-decision/v1" as const;
 export const KILL_SWITCH_SPEC_VERSION = "woozoo.kill-switch/v1" as const;
 export const RISK_DOMAIN_EVENT_SPEC_VERSION = "woozoo.risk-domain-events/v1" as const;
 export const RISK_ACTIVATION_PHASE = 7 as const;
+export const PROMPT_MANIFEST_SPEC_VERSION = "woozoo.prompt-manifest/v1" as const;
+export const AGENT_REPORT_SPEC_VERSION = "woozoo.agent-report/v1" as const;
+export const TRADE_PROPOSAL_SPEC_VERSION = "woozoo.trade-proposal/v1" as const;
+export const ANALYSIS_RUN_SPEC_VERSION = "woozoo.analysis-run/v1" as const;
+export const ANALYSIS_AUDIT_SPEC_VERSION = "woozoo.analysis-audit/v1" as const;
+export const AGENT_DOMAIN_EVENT_SPEC_VERSION = "woozoo.agent-domain-events/v1" as const;
+export const RISK_INPUT_V2_SPEC_VERSION = "woozoo.risk-input/v2" as const;
+export const AGENT_ACTIVATION_PHASE = 7 as const;

@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "woozoo.analysis-run/v1",
+  "title": "Phase 6 deterministic analysis run projection",
+  "type": "object",
+  "additionalProperties": false,
+  "x-creation-phase": 6,
+  "x-activation-phase": 7,
+  "required": ["schema_version", "run_id", "namespace", "evidence_id", "evidence_digest", "symbol", "as_of", "knowledge_cutoff", "workflow_version", "workflow_hash", "prompt_manifest_hash", "provider", "model", "outcome", "hold_reason", "report_ids", "proposal_id", "audit_hash"],
+  "properties": {
+    "schema_version": {"const": "woozoo.analysis-run/v1"},
+    "run_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "namespace": {"const": "test"},
+    "evidence_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "evidence_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "symbol": {"enum": ["BTCUSDT", "ETHUSDT"]},
+    "as_of": {"type": "string", "format": "date-time"},
+    "knowledge_cutoff": {"type": "string", "format": "date-time"},
+    "workflow_version": {"const": "woozoo.agent-workflow/v1"},
+    "workflow_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "prompt_manifest_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "provider": {"const": "mock"},
+    "model": {"const": "woozoo-deterministic-mock/v1"},
+    "outcome": {"enum": ["COMPLETED", "HOLD"]},
+    "hold_reason": {"oneOf": [{"type": "null"}, {"enum": ["EVIDENCE_NOT_FOUND", "EVIDENCE_DIGEST_MISMATCH", "EVIDENCE_UNHEALTHY", "EVIDENCE_FUTURE_CONTAMINATION", "PROVIDER_TIMEOUT", "PROVIDER_FAILURE", "MODEL_OUTPUT_MALFORMED", "REPORT_SCHEMA_INVALID", "REQUIRED_REPORT_MISSING", "ORPHAN_EVIDENCE_ITEM", "TEMPORAL_BOUNDARY_VIOLATION", "PROMPT_INJECTION_DETECTED", "TOOL_CALL_FORBIDDEN", "AUDIT_REJECTED"]}]},
+    "report_ids": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-f0-9]{64}$"}},
+    "proposal_id": {"oneOf": [{"type": "null"}, {"type": "string", "pattern": "^[a-f0-9]{64}$"}]},
+    "audit_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+  }
+}

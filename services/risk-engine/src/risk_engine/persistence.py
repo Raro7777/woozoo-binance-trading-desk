@@ -87,6 +87,12 @@ class PostgresRiskStore:
             raise ValueError("DECISION_HASH_MISMATCH")
 
         proposal = _object(risk_input["proposal"])
+        proposal_payload = _object(proposal["payload"])
+        proposal_id = (
+            cast(str, proposal_payload["proposal_id"])
+            if risk_input.get("risk_input_schema_version") == "woozoo.risk-input/v2"
+            else None
+        )
         portfolio = _object(risk_input["portfolio"])
         data_state = _object(risk_input["data"])
         preview = _object(risk_input["order_preview"])
@@ -161,8 +167,8 @@ class PostgresRiskStore:
                 "(decision_id,risk_input_digest,risk_input,decision_hash,verdict,primary_reason,"
                 "ordered_reason_codes,policy_version,proposal_hash,portfolio_snapshot_hash,"
                 "data_state_hash,paper_order_preview_hash,reconciliation_checkpoint_hash,"
-                "kill_switch_version,decision_as_of,recorded_at) "
-                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                "kill_switch_version,decision_as_of,recorded_at,proposal_id) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
                 (
                     decision_id,
                     decision.risk_input_digest,
@@ -180,6 +186,7 @@ class PostgresRiskStore:
                     cast(int, kill["version"]),
                     _timestamp(clock["decision_as_of"]),
                     recorded_at,
+                    proposal_id,
                 ),
             )
             self._fail(RiskPersistenceStage.DECISION, _fail_after)

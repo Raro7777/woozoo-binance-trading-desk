@@ -153,6 +153,51 @@ async function riskDataScenario(area, id, nodeIds) {
   });
 }
 
+async function agentMetadata() {
+  const manifest = await readFile(resolve(root, "docs", "woozoo-trading-desk", "phase-6", "p6-scenario-manifest.json"));
+  return {
+    schema_version: "woozoo.agent.replay-manifest/v1",
+    workflow_version: "woozoo.agent-workflow/v1",
+    provider: "mock",
+    model: "woozoo-deterministic-mock/v1",
+    scenario_manifest_sha256: createHash("sha256").update(manifest).digest("hex"),
+    fixed_seed: 0,
+    timezone: "UTC",
+    network_enabled: false,
+    tool_allowlist: [],
+    runtime_namespace: "test",
+  };
+}
+
+async function agentDataScenario(area, id, nodeIds) {
+  const manifestPath = resolve(root, "docs", "woozoo-trading-desk", "phase-6", "p6-scenario-manifest.json");
+  const manifestBytes = await readFile(manifestPath);
+  const manifest = JSON.parse(manifestBytes.toString("utf8"));
+  const scenario = manifest.scenarios?.find((candidate) => candidate.id === id);
+  if (
+    scenario === undefined ||
+    scenario.command !== `corepack pnpm test:${area === "contracts" ? "contracts" : area}` ||
+    scenario.artifact !== `artifacts/${area}/${id}.json` ||
+    JSON.stringify(scenario.test_nodes) !== JSON.stringify(nodeIds) ||
+    typeof scenario.oracle !== "string" ||
+    scenario.oracle.length === 0
+  ) {
+    throw new Error(`${id} Phase 6 scenario contract does not match its exact harness nodes`);
+  }
+  const sourcePaths = [...new Set(nodeIds.map((node) => node.split("::", 1)[0]))];
+  const sourceDigests = [];
+  for (const sourcePath of sourcePaths) {
+    sourceDigests.push(createHash("sha256").update(await readFile(resolve(root, sourcePath))).digest("hex"));
+  }
+  if (JSON.stringify(scenario.source_sha256) !== JSON.stringify(sourceDigests)) {
+    throw new Error(`${id} Phase 6 source digest contract is stale`);
+  }
+  await dataScenario(area, id, nodeIds, {
+    ...(await agentMetadata()),
+    scenario_input_digest: createHash("sha256").update(JSON.stringify(scenario)).digest("hex"),
+  });
+}
+
 async function revisionEvidence() {
   const commit = spawnSync("git", ["rev-parse", "HEAD"], {
     cwd: root,
@@ -297,6 +342,9 @@ const actions = {
     await riskDataScenario("contracts", "RISK-CONTRACT-001", [
       "tests/contract/test_risk_contract.py::test_risk_contract_001_is_closed_typed_and_dormant",
     ]);
+    await agentDataScenario("contracts", "AI-001", [
+      "tests/contract/test_agent_contract.py::test_ai_001_failure_matrix",
+    ]);
   },
   "test:safety": async () => {
     await scenarios("safety", ["SAFE-001", "SAFE-002", "SAFE-003", "SAFE-004", "SAFE-005"], [["python", ["-m", "uv", "run", "--locked", "pytest", "tests/safety", "-q"]], ["node", ["scripts/capability-zero.mjs"]], ["corepack", [pnpm, "exec", "tsx", "--test", "tests/safety/capability-zero.test.ts"]]]);
@@ -317,6 +365,16 @@ const actions = {
       "tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_has_no_automatic_ai_or_unauthenticated_recovery",
       "tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_scans_every_executable_config_and_tool_registry_for_recovery_writer",
       ...killAttempts.map((name) => `tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_attempt_keeps_postgres_active[${name}]`),
+    ]);
+    await agentDataScenario("safety", "AI-002", [
+      "tests/safety/test_phase6_agent_boundaries.py::test_ai_002_orphan_and_future_claims_hold",
+    ]);
+    await agentDataScenario("safety", "SEC-001", [
+      "tests/safety/test_phase6_agent_boundaries.py::test_sec_001_has_no_real_provider_or_secret_configuration",
+    ]);
+    await agentDataScenario("safety", "SEC-002", [
+      "tests/safety/test_phase6_agent_boundaries.py::test_sec_002_agent_has_no_execution_or_exchange_capability",
+      "tests/safety/test_phase6_agent_boundaries.py::test_sec_002_active_api_has_no_agent_or_proposal_route",
     ]);
   },
   "test:integration": async () => {
@@ -350,6 +408,12 @@ const actions = {
       "tests/integration/test_risk_migration_contract.py::test_phase_five_downgrade_fails_closed_when_immutable_history_exists",
       "tests/unit/test_docker_infrastructure_lock.py::test_shared_docker_lock_serializes_two_spawned_processes",
       "tests/integration/test_reconciliation_kill_handler.py::test_critical_reconciliation_mismatch_activates_kill_once_and_retries_idempotently",
+    ]);
+    await agentDataScenario("integration", "AGENT-INTEGRATION-001", [
+      "tests/integration/test_agent_migration_contract.py::test_phase6_migration_is_append_only_least_privilege_and_test_only",
+      "tests/integration/test_agent_postgres_persistence.py::test_agent_persistence_is_atomic_idempotent_and_append_only",
+      "tests/integration/test_proposal_risk_fixture_chain.py::test_p6_authoritative_proposal_binds_full_hash_to_test_risk_v2",
+      "tests/integration/test_proposal_risk_fixture_chain.py::test_p6_hold_is_not_risk_eligible",
     ]);
   },
   "test:replay": async () => {
@@ -392,6 +456,9 @@ const actions = {
       "tests/unit/test_risk_engine.py::test_risk_001_every_bound_section_mutation_changes_digest",
       "tests/replay/test_risk_replay.py::test_risk_replay_is_independent_of_json_key_order_and_process_identity",
       "tests/replay/test_risk_replay.py::test_reason_message_or_recording_metadata_cannot_enter_decision_hash",
+    ]);
+    await agentDataScenario("replay", "AGENT-REPLAY-001", [
+      "tests/replay/test_agent_replay.py::test_agent_replay_is_stable_across_provider_json_key_order",
     ]);
   },
   "test:failure": async () => {
@@ -442,6 +509,9 @@ const actions = {
       ...killFaults.map((name) => `tests/failure/test_kill_fault_matrix.py::test_kill_001_fault_matrix[${name}]`),
       "tests/failure/test_kill_cancel_identity.py::test_kill_cancel_id_binds_full_activation_and_order_ids",
     ]);
+    await agentDataScenario("failure", "AGENT-FAILURE-001", [
+      "tests/failure/test_agent_provider_failures.py::test_provider_failure_at_every_role_has_no_proposal",
+    ]);
   },
   "test:property": async () => {
     await dataScenario("property", "DATA-007", [
@@ -456,6 +526,9 @@ const actions = {
       "tests/property/test_evidence_boundaries.py::test_dual_cutoff_is_independently_inclusive[event_delta3-received_delta3-False]",
       "tests/unit/test_evidence_features.py::test_feature_derivation_rejects_incomplete_or_gapped_windows",
     ], { schema_version: "woozoo.evidence.replay-manifest/v1", evidence_recipe_version: evidenceRecipeVersion });
+    await agentDataScenario("property", "AGENT-PROPERTY-001", [
+      "tests/property/test_agent_evidence_properties.py::test_every_orphan_citation_fails_closed",
+    ]);
     await dataScenario("property", "FIN-001", [
       "tests/property/test_paper_financial_properties.py::test_fin_001_generated_fill_cancel_sequences_conserve_and_balance",
     ], await paperMetadata());

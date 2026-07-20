@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "woozoo.analysis-audit/v1",
+  "title": "Phase 6 deterministic analysis audit",
+  "type": "object",
+  "additionalProperties": false,
+  "x-creation-phase": 6,
+  "x-activation-phase": 7,
+  "required": ["schema_version", "audit_id", "run_id", "verdict", "reason_codes", "evidence_digest", "report_hashes", "proposal_hash", "workflow_hash", "prompt_manifest_hash", "audited_at", "audit_hash"],
+  "properties": {
+    "schema_version": {"const": "woozoo.analysis-audit/v1"},
+    "audit_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "run_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "verdict": {"enum": ["ACCEPTED", "HOLD"]},
+    "reason_codes": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 64}},
+    "evidence_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "report_hashes": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-f0-9]{64}$"}},
+    "proposal_hash": {"oneOf": [{"type": "null"}, {"type": "string", "pattern": "^[a-f0-9]{64}$"}]},
+    "workflow_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "prompt_manifest_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "audited_at": {"type": "string", "format": "date-time"},
+    "audit_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+  }
+}

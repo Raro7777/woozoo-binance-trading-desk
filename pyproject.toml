@@ -24,7 +24,7 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-pythonpath = ["packages/python/platform-core/src", "services/control-api/src", "services/market-data-worker/src", "services/evidence-worker/src", "services/paper-engine/src", "services/risk-engine/src", "tests/unit", "tests/integration"]
+pythonpath = ["packages/python/platform-core/src", "services/control-api/src", "services/market-data-worker/src", "services/evidence-worker/src", "services/paper-engine/src", "services/risk-engine/src", "services/agent-orchestrator/src", "tests/unit", "tests/integration"]
 testpaths = ["tests"]
 
 [tool.ruff]
@@ -35,4 +35,4 @@ extend-exclude = ["packages/python/platform-core/src/platform_core/generated_con
 [tool.mypy]
 python_version = "3.13"
 strict = true
-files = ["packages/python/platform-core/src", "services/control-api/src", "services/outbox-relay/src", "services/market-data-worker/src", "services/evidence-worker/src", "services/paper-engine/src", "services/risk-engine/src"]
+files = ["packages/python/platform-core/src", "services/control-api/src", "services/outbox-relay/src", "services/market-data-worker/src", "services/evidence-worker/src", "services/paper-engine/src", "services/risk-engine/src", "services/agent-orchestrator/src"]

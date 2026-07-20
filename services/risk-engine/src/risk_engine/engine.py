@@ -16,12 +16,18 @@ import re
 from jsonschema import Draft202012Validator, FormatChecker
 from jsonschema.exceptions import ValidationError
 from platform_core import canonical_hash
-from platform_core.generated_contracts import RISK_INPUT_SCHEMA
+from platform_core.generated_contracts import (
+    RISK_INPUT_SCHEMA,
+    RISK_INPUT_V2_SCHEMA,
+    TRADE_PROPOSAL_SCHEMA,
+)
+from referencing import Registry, Resource
 
 from .models import RiskDecision
 
 
 INPUT_VERSION = "woozoo.risk-input/v1"
+INPUT_VERSION_V2 = "woozoo.risk-input/v2"
 DECISION_VERSION = "woozoo.risk-decision/v1"
 PROPOSAL_FIXTURE_CONTRACT = "p6-trade-proposal-consumer/v1"
 POLICY_VERSION = "woozoo.risk-policy/v1"
@@ -29,6 +35,20 @@ _DECIMAL = re.compile(r"^(0|[1-9][0-9]*)(\.[0-9]+)?$")
 _SIGNED_DECIMAL = re.compile(r"^-?(0|[1-9][0-9]*)(\.[0-9]+)?$")
 _HASH = re.compile(r"^[0-9a-f]{64}$")
 _INPUT_VALIDATOR = Draft202012Validator(RISK_INPUT_SCHEMA, format_checker=FormatChecker())
+_V2_REGISTRY = Registry().with_resources(
+    [
+        ("https://schemas.woozoo.local/risk-input/v1", Resource.from_contents(RISK_INPUT_SCHEMA)),
+        (
+            "https://schemas.woozoo.local/trade-proposal/v1",
+            Resource.from_contents(TRADE_PROPOSAL_SCHEMA),
+        ),
+    ]
+)
+_INPUT_V2_VALIDATOR = Draft202012Validator(
+    RISK_INPUT_V2_SCHEMA,
+    registry=_V2_REGISTRY,
+    format_checker=FormatChecker(),
+)
 
 
 def _is_semantic_schema_error(error: ValidationError) -> bool:
@@ -305,10 +325,12 @@ def evaluate_risk(risk_input: object) -> RiskDecision:
         reasons.add("INPUT_SCHEMA_INVALID")
     if reasons:
         return _finish(digest, reasons)
-    schema_errors = tuple(_INPUT_VALIDATOR.iter_errors(root))
+    input_version = root["risk_input_schema_version"]
+    validator = _INPUT_V2_VALIDATOR if input_version == INPUT_VERSION_V2 else _INPUT_VALIDATOR
+    schema_errors = tuple(validator.iter_errors(root))
     if any(not _is_semantic_schema_error(error) for error in schema_errors):
         return _finish(digest, {"INPUT_SCHEMA_INVALID"})
-    if root["risk_input_schema_version"] != INPUT_VERSION or root["namespace"] != "test":
+    if input_version not in {INPUT_VERSION, INPUT_VERSION_V2} or root["namespace"] != "test":
         reasons.add("INPUT_SCHEMA_INVALID")
 
     proposal = _object(root["proposal"])
@@ -348,8 +370,13 @@ def evaluate_risk(risk_input: object) -> RiskDecision:
     assert duplicate is not None
     assert exposure_snapshot is not None
 
+    proposal_fields = (
+        {"producer_contract", "schema_version", "payload", "proposal_hash"}
+        if input_version == INPUT_VERSION_V2
+        else {"fixture_contract", "schema_version", "payload", "proposal_hash"}
+    )
     shapes = (
-        (proposal, {"fixture_contract", "schema_version", "payload", "proposal_hash"}),
+        (proposal, proposal_fields),
         (
             portfolio,
             {
@@ -407,14 +434,38 @@ def evaluate_risk(risk_input: object) -> RiskDecision:
         return _finish(digest, {"INPUT_SCHEMA_INVALID"})
 
     proposal_payload = _object(proposal["payload"])
+    proposal_contract_valid = (
+        proposal.get("producer_contract") == "woozoo.trade-proposal/v1"
+        if input_version == INPUT_VERSION_V2
+        else proposal.get("fixture_contract") == PROPOSAL_FIXTURE_CONTRACT
+    )
+    proposal_payload_shape_valid = (
+        proposal_payload is not None
+        and proposal_payload.get("schema_version") == "woozoo.trade-proposal/v1"
+        and (
+            input_version == INPUT_VERSION_V2
+            or _exact_fields(proposal_payload, {"schema_version", "proposal_id", "symbol", "side"})
+        )
+    )
     if (
-        proposal["fixture_contract"] != PROPOSAL_FIXTURE_CONTRACT
+        not proposal_contract_valid
         or proposal["schema_version"] != "woozoo.trade-proposal/v1"
-        or proposal_payload is None
-        or not _exact_fields(proposal_payload, {"schema_version", "proposal_id", "symbol", "side"})
-        or proposal_payload["schema_version"] != "woozoo.trade-proposal/v1"
+        or not proposal_payload_shape_valid
     ):
         reasons.add("INPUT_SCHEMA_INVALID")
+    elif input_version == INPUT_VERSION_V2:
+        assert proposal_payload is not None
+        authoritative_body = {
+            key: value
+            for key, value in proposal_payload.items()
+            if key not in {"proposal_id", "proposal_hash"}
+        }
+        if (
+            not _valid_hash(proposal["proposal_hash"])
+            or proposal_payload["proposal_hash"] != proposal["proposal_hash"]
+            or canonical_hash(authoritative_body) != proposal["proposal_hash"]
+        ):
+            reasons.add("PROPOSAL_HASH_MISMATCH")
     elif (
         not _valid_hash(proposal["proposal_hash"])
         or canonical_hash(proposal["payload"]) != proposal["proposal_hash"]
