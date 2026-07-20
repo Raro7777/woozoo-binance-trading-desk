@@ -269,7 +269,7 @@
       ],
       "source_sha256": [
         "9d5d32d65c8bf17db096b4ecd718969c96b4be5f613db594f8021b7ff2325abc",
-        "7f70d55eac93cf395a6fce7330104cb9456bf5529ea4f5d2396a6eb1698eea1a",
+        "be9a5a1747b6e671b3416fa61503744109aa093dab4e2f5a59a1e789f8230e71",
         "9aee089bc0aa944c9a96eec974f6cf583218bfdf99c34e6ca7dfdd04acf74738"
       ],
       "oracle": "Kill, reconciliation, revocation, stale books and execution-quality drift are revalidated at the first Paper attempt; any failure consumes or blocks the authorization terminally with no order, hold, fill or ledger effect."
@@ -302,7 +302,7 @@
       "source_sha256": [
         "c4b7370eac01be33cc74aaca376e8520a44460adc2ac5b0f3a6472bf6c832fb5",
         "dd85d3264e1a7374d1e34e8f7fde5a083fd8ae115b927d453941c5a4be9942d3",
-        "7f70d55eac93cf395a6fce7330104cb9456bf5529ea4f5d2396a6eb1698eea1a",
+        "be9a5a1747b6e671b3416fa61503744109aa093dab4e2f5a59a1e789f8230e71",
         "07cb535db57cca0e4f13b44a2ad75a2716461abe283517bb6cfe67d0409757c6",
         "cf2f8ed902b1e7bebd7b362843c67c2c947c35d56b6304693d5cb19fc2ae6632",
         "b8b385334142d1dc3b20e0c692a05464ef5fad297172f3746f4a904ab2d62aa5"
@@ -310,7 +310,7 @@
       "configuration_sources": [
         {
           "path": "tests/e2e/live_control_api.py",
-          "sha256": "4603dcc29057ede150c3eb9117f66e25b473367dc41912c8068e3412a322510c"
+          "sha256": "ecfb5d7cdd30a305e6bb25a637293d751c71f1a33ef8fa7b4bdca9bb3bfec6ec"
         },
         {
           "path": "tests/e2e/https-web-server.mjs",
@@ -373,7 +373,7 @@
       "source_sha256": [
         "c4b7370eac01be33cc74aaca376e8520a44460adc2ac5b0f3a6472bf6c832fb5",
         "dd85d3264e1a7374d1e34e8f7fde5a083fd8ae115b927d453941c5a4be9942d3",
-        "7f70d55eac93cf395a6fce7330104cb9456bf5529ea4f5d2396a6eb1698eea1a"
+        "be9a5a1747b6e671b3416fa61503744109aa093dab4e2f5a59a1e789f8230e71"
       ],
       "oracle": "Kill activation cancels the open Paper order, permits no later fill and remains active until an authenticated operator supplies the bound incident reference after healthy reconciliation. Recovery remains blocked when the current market projection, stream watermark, collector session or raw-bound public book authority is stale or invalid, even if a recent normalized book row still says healthy."
     },

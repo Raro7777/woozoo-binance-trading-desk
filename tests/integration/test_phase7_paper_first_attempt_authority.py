@@ -640,9 +640,7 @@ def _record_current_public_book(
 
 
 def _record_current_public_books(suffix: str, *, sequence: int) -> None:
-    _record_current_public_book(
-        f"{suffix}-btc", sequence=sequence, symbol="BTCUSDT"
-    )
+    _record_current_public_book(f"{suffix}-btc", sequence=sequence, symbol="BTCUSDT")
     _record_current_public_book(
         f"{suffix}-eth",
         sequence=sequence,
@@ -1839,8 +1837,7 @@ def test_recovery_races_consumer_but_requires_completion_and_later_checkpoint(
             "SELECT active FROM kill_switch_state WHERE scope='paper-global'"
         ).fetchone() == (True,)
         assert connection.execute(
-            "SELECT count(*) FROM risk_kill_recovery_command_receipts "
-            "WHERE idempotency_key=%s",
+            "SELECT count(*) FROM risk_kill_recovery_command_receipts WHERE idempotency_key=%s",
             (recovery_key,),
         ).fetchone() == (0,)
 

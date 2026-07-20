@@ -353,9 +353,7 @@ def refresh_evidence(
 
     def reconcile_if_needed() -> None:
         with psycopg.connect(paper_url) as connection:
-            current_digest = paper_store.semantic_digest(
-                PAPER_ACCOUNT_ID, connection=connection
-            )
+            current_digest = paper_store.semantic_digest(PAPER_ACCOUNT_ID, connection=connection)
             latest = connection.execute(
                 "SELECT input_digest,status FROM paper_reconciliation_checkpoints "
                 "WHERE account_id=%s ORDER BY created_at DESC,checkpoint_id DESC LIMIT 1",
@@ -385,8 +383,7 @@ def refresh_evidence(
         else:
             if result.status != "HEALTHY":
                 raise RuntimeError(
-                    "E2E_REFRESH_RECONCILIATION_FAILED:"
-                    + ",".join(result.mismatch_codes)
+                    "E2E_REFRESH_RECONCILIATION_FAILED:" + ",".join(result.mismatch_codes)
                 )
 
     for _attempt in range(64):
