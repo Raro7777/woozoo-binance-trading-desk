@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "phase": 7,
+  "status": "PASS",
+  "frozen_code_commit": "e4a8f26a19db2fb915df2a4ef570d9ab8974d1b2",
+  "frozen_code_tree": "616ba0464b0a32081316efe1f13475e84341114e",
+  "review_evidence_commit": "db98b926abdd13b032ca052e8ad6d6f6e14677bf",
+  "branch": "codex/phase-7-trading-room",
+  "base": "main",
+  "push": {
+    "status": "PASS",
+    "remote": "origin",
+    "remote_head": "db98b926abdd13b032ca052e8ad6d6f6e14677bf"
+  },
+  "draft_pr": {
+    "status": "PASS",
+    "url": "https://github.com/Raro7777/woozoo-binance-trading-desk/pull/8",
+    "number": 8,
+    "state": "open",
+    "draft": true,
+    "mergeable": true,
+    "base": "main",
+    "head": "codex/phase-7-trading-room",
+    "verified_head_sha": "db98b926abdd13b032ca052e8ad6d6f6e14677bf",
+    "created_at": "2026-07-20T12:42:28Z"
+  },
+  "verification": {
+    "github_connector": "PASS",
+    "public_github_metadata": "PASS"
+  },
+  "gate_effect": "PASS. PR #8 is an open mergeable Draft targeting main from codex/phase-7-trading-room and contained the frozen implementation plus final review evidence when verified."
+}
