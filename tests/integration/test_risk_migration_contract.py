@@ -249,11 +249,17 @@ def test_preexisting_risk_login_and_direct_grants_survive_empty_downgrade() -> N
                 ).fetchone() == (True, 7)
                 assert connection.execute(
                     "SELECT has_schema_privilege('woozoo_risk_engine','public','USAGE'),"
+                    "EXISTS (SELECT 1 FROM pg_namespace namespace,"
+                    "LATERAL aclexplode(COALESCE(namespace.nspacl,"
+                    "acldefault('n',namespace.nspowner))) acl,pg_roles role "
+                    "WHERE namespace.nspname='public' "
+                    "AND role.rolname='woozoo_risk_engine' "
+                    "AND acl.grantee=role.oid AND acl.privilege_type='USAGE'),"
                     "has_table_privilege('woozoo_risk_engine','outbox_events','SELECT'),"
                     "has_table_privilege('woozoo_risk_engine','outbox_events','INSERT'),"
                     "has_table_privilege('woozoo_risk_engine',"
                     "'paper_reconciliation_checkpoints','SELECT')"
-                ).fetchone() == (True, True, False, False)
+                ).fetchone() == (True, True, True, False, False)
         finally:
             run("docker", "compose", "down", "-v")
 
