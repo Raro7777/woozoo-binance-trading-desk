@@ -2851,14 +2851,41 @@ class PostgresPaperStore:
                     ).fetchall()
                 )
                 engine.journals[tx[0]] = Journal(tx[0], tx[1], tx[2], tx[3], entries, tx[4], tx[5])
-            for scope, key, request_hash, outcome, order_id, response in connection.execute(
-                "SELECT scope,idempotency_key,request_hash,outcome,paper_order_id,response "
-                "FROM paper_command_receipts WHERE account_id=%s ORDER BY scope,idempotency_key",
+            for (
+                scope,
+                key,
+                request_hash,
+                outcome,
+                order_id,
+                response,
+                attempt_reason_code,
+            ) in connection.execute(
+                "SELECT receipt.scope,receipt.idempotency_key,receipt.request_hash,"
+                "receipt.outcome,receipt.paper_order_id,receipt.response,attempt.reason_code "
+                "FROM paper_command_receipts receipt LEFT JOIN paper_authorization_attempts attempt "
+                "ON attempt.authorization_id=receipt.authorization_id "
+                "AND attempt.account_id=receipt.account_id "
+                "AND attempt.command_scope=receipt.scope "
+                "AND attempt.idempotency_key=receipt.idempotency_key "
+                "WHERE receipt.account_id=%s ORDER BY receipt.scope,receipt.idempotency_key",
                 (account_id,),
             ).fetchall():
                 if outcome == "REJECTED":
+                    if not isinstance(response, dict):
+                        raise RuntimeError("PAPER_REJECTED_RECEIPT_CORRUPT")
+                    serialized_codes = [
+                        response[name] for name in ("error_code", "reason_code") if name in response
+                    ]
+                    if (
+                        len(serialized_codes) != 1
+                        or not isinstance(serialized_codes[0], str)
+                        or not serialized_codes[0]
+                        or serialized_codes[0] != attempt_reason_code
+                    ):
+                        raise RuntimeError("PAPER_REJECTED_RECEIPT_CORRUPT")
+                    rejection_code = serialized_codes[0]
                     engine.command_receipts[key] = CommandReceipt(
-                        request_hash, outcome, error_code=response["error_code"]
+                        request_hash, outcome, error_code=rejection_code
                     )
                 elif outcome == "ORDER_CANCELLED":
                     assert order_id is not None

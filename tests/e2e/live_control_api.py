@@ -270,6 +270,8 @@ def refresh_evidence(
     symbol: str,
     non_crossing_buy_symbol: str | None = None,
     non_crossing_sell_symbol: str | None = None,
+    *,
+    materialize_evidence: bool = True,
 ) -> int:
     """Refresh both authoritative books, then materialize immutable Evidence."""
     from evidence_worker.runner import materialize_evidence_command
@@ -395,6 +397,9 @@ def refresh_evidence(
     else:
         raise RuntimeError("E2E_RECORDED_BOOK_DRAIN_LIMIT")
 
+    if not materialize_evidence:
+        return 0
+
     # Keep the requested Evidence window point-in-time valid even when the full
     # browser suite runs beyond the shortest (1m) interval.
     intervals = {
@@ -499,7 +504,11 @@ def record_partial_book(symbol: str) -> int:
     return 0
 
 
-def create_sell_analysis(symbol: str) -> int:
+def create_sell_analysis(
+    symbol: str,
+    non_crossing_buy_symbol: str | None = None,
+    non_crossing_sell_symbol: str | None = None,
+) -> int:
     """Persist a real E2E-only SELL analysis after E2E-001 acquires base asset."""
     import asyncio
     import json
@@ -536,12 +545,24 @@ def create_sell_analysis(symbol: str) -> int:
     persisted = store.persist(workflow)
     if persisted.proposal_id is None or persisted.outcome != "COMPLETED":
         raise RuntimeError("E2E_SELL_ANALYSIS_HELD")
+    # The mock workflow deliberately exercises several durable boundaries and
+    # can outlive the five-second public-book window on a cold CI runner. Keep
+    # the immutable Evidence/Proposal, but refresh and fully reconcile the same
+    # protected public prices immediately before Risk snapshots authority.
+    refresh_evidence(
+        symbol,
+        non_crossing_buy_symbol,
+        non_crossing_sell_symbol,
+        materialize_evidence=False,
+    )
+    risk_recorded_at = datetime.now(UTC)
     PostgresRiskEvaluationPort(_required_environment("RISK_DATABASE_URL")).evaluate_proposal(
         persisted.proposal_id,
         PAPER_ACCOUNT_ID,
-        now,
+        risk_recorded_at,
     )
     print(f"E2E_SELL_RUN_ID:{persisted.run_id}")
+    print(f"E2E_SELL_PROPOSAL_ID:{persisted.proposal_id}")
     return 0
 
 
@@ -590,7 +611,11 @@ def main() -> int:
     if args.record_partial_book:
         return record_partial_book(args.record_partial_book)
     if args.create_sell_analysis:
-        return create_sell_analysis(args.create_sell_analysis)
+        return create_sell_analysis(
+            args.create_sell_analysis,
+            args.non_crossing_buy_book,
+            args.non_crossing_sell_book,
+        )
     uvicorn.run(
         create_live_app(),
         host="127.0.0.1",

@@ -47,11 +47,28 @@ function runLiveControl(...args: string[]) {
   });
 }
 
-function createSellAnalysis(symbol: "BTCUSDT" | "ETHUSDT"): string {
-  const output = runLiveControl("--create-sell-analysis", symbol);
-  const match = output.match(/E2E_SELL_RUN_ID:([a-f0-9]{64})/);
-  if (match === null) throw new Error(`E2E_SELL_RUN_ID_MISSING:${output}`);
-  return match[1];
+function createSellAnalysis(
+  symbol: "BTCUSDT" | "ETHUSDT",
+  nonCrossingBuySymbol?: "BTCUSDT" | "ETHUSDT",
+  nonCrossingSellSymbol?: "BTCUSDT" | "ETHUSDT",
+): { runId: string; proposalId: string } {
+  const protection = nonCrossingBuySymbol === undefined
+    ? []
+    : ["--non-crossing-buy-book", nonCrossingBuySymbol];
+  const sellProtection = nonCrossingSellSymbol === undefined
+    ? []
+    : ["--non-crossing-sell-book", nonCrossingSellSymbol];
+  const output = runLiveControl(
+    "--create-sell-analysis",
+    symbol,
+    ...protection,
+    ...sellProtection,
+  );
+  const runMatch = output.match(/E2E_SELL_RUN_ID:([a-f0-9]{64})/);
+  const proposalMatch = output.match(/E2E_SELL_PROPOSAL_ID:([a-f0-9]{64})/);
+  if (runMatch === null) throw new Error(`E2E_SELL_RUN_ID_MISSING:${output}`);
+  if (proposalMatch === null) throw new Error(`E2E_SELL_PROPOSAL_ID_MISSING:${output}`);
+  return { runId: runMatch[1], proposalId: proposalMatch[1] };
 }
 
 function refreshEvidence(
@@ -610,8 +627,12 @@ test("[live] E2E-005 desktop and mobile journey is keyboard accessible, Axe-clea
     });
   }
 
-  const sellRunId = createSellAnalysis(symbol);
-  await page.goto(`/analysis/${sellRunId}`);
+  const sellAnalysis = createSellAnalysis(
+    symbol,
+    testInfo.project.name === "mobile-chromium" ? "ETHUSDT" : undefined,
+    testInfo.project.name === "mobile-chromium" ? "BTCUSDT" : undefined,
+  );
+  await page.goto(`/analysis/${sellAnalysis.runId}`);
   await expect(page).toHaveURL(/\/analysis\//);
   await expect(page.getByText("저장된 모의 언어 모델의 모의투자 분석", { exact: true })).toBeVisible();
   await expect(page.getByText("생성됨", { exact: true })).toBeVisible();
@@ -624,6 +645,23 @@ test("[live] E2E-005 desktop and mobile journey is keyboard accessible, Axe-clea
     page.keyboard.press("Enter"),
   ]);
   await assertAccessible(page.url());
+
+  // Axe and keyboard traversal intentionally take longer than the production
+  // five-second public-book freshness window. Build a second immutable
+  // proposal and Risk snapshot from freshly drained authority immediately
+  // before approval instead of weakening that fail-closed boundary.
+  refreshEvidence(
+    symbol,
+    testInfo.project.name === "mobile-chromium" ? "ETHUSDT" : undefined,
+    testInfo.project.name === "mobile-chromium" ? "BTCUSDT" : undefined,
+  );
+  const freshSellAnalysis = createSellAnalysis(
+    symbol,
+    testInfo.project.name === "mobile-chromium" ? "ETHUSDT" : undefined,
+    testInfo.project.name === "mobile-chromium" ? "BTCUSDT" : undefined,
+  );
+  await page.goto(`/proposals/${freshSellAnalysis.proposalId}`);
+  await expect(page).toHaveURL(/\/proposals\//);
 
   const approveButton = page.getByRole("button", { name: "정확한 미리보기 승인" });
   const approvalViewResponse = await page.request.get(

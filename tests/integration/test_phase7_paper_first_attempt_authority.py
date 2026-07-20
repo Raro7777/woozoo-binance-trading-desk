@@ -842,6 +842,19 @@ def test_kill_first_attempt_stays_blocked_after_recovery_and_retry(
     assert replay.created is False
     assert replay.response == first.response
     _assert_blocked_only(authorization_id, "KILL_SWITCH_ACTIVE")
+    hydrated = store.hydrate_engine(ACCOUNT_ID)
+    assert hydrated.command_receipts[authorization_id].error_code == "KILL_SWITCH_ACTIVE"
+    with psycopg.connect(DATABASE_URL) as connection:
+        connection.execute("SET session_replication_role='replica'")
+        connection.execute(
+            "UPDATE paper_command_receipts "
+            "SET response=jsonb_set(response,'{reason_code}','\"DATA_STALE\"'::jsonb) "
+            "WHERE authorization_id=%s",
+            (authorization_id,),
+        )
+        connection.execute("SET session_replication_role='origin'")
+    with pytest.raises(RuntimeError, match="PAPER_REJECTED_RECEIPT_CORRUPT"):
+        store.hydrate_engine(ACCOUNT_ID)
 
 
 def test_missing_reconciliation_consumes_authorization_without_financial_effects(
