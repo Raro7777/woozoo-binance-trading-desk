@@ -5,7 +5,7 @@
     "agy"
   ],
   "external_gate_satisfied": false,
-  "tool_status": "failed-after-one-retry",
+  "tool_status": "unavailable-after-recorded-attempts-and-final-inventory-check",
   "attempts": [
     {
       "attempt": 1,
@@ -19,8 +19,17 @@
       "artifact": "_workspace/reviews/p7_mvp_agy_retry.md"
     }
   ],
+  "final_inventory_check": {
+    "checked_at": "2026-07-20T23:22:43Z",
+    "allowed_external_reviewers": [
+      "agy",
+      "Gemini"
+    ],
+    "callable_tools": [],
+    "result": "external-review-unavailable"
+  },
   "same_engine_codex_is_external_pass": false,
   "user_approval_or_transition_authority": false,
   "claude_used": false,
-  "note": "No external PASS was produced. The required unavailability evidence is recorded without treating internal Codex review as external independence."
+  "note": "No external PASS was produced. Earlier permitted agy attempts failed, and the final callable-tool inventory exposed neither agy nor Gemini. The required unavailability evidence is recorded without treating internal Codex review as external independence."
 }
