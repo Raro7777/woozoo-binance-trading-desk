@@ -219,7 +219,7 @@
       ],
       "source_sha256": [
         "c69138d0379deaa38656b20c1ef50fe08d586d2da3348f0b9b1a8d9117bf0026",
-        "6078015923359e3a5217a389ab7d13f532723fb36916ed66fdec6b5b6982344c",
+        "f498ade35a16cbb73750f6e2ce92abca837fd743d0d8eb34bb348b30f2f292fc",
         "16c4257805a95a32de14f5f9286c35176aa32eff888287289c1d1e6b1805a3ec"
       ],
       "oracle": "A committed response lost before acknowledgement is replayed after restart with zero additional order, fill, posting or event effect."
@@ -251,15 +251,16 @@
         "tests/integration/test_trading_room_command_ports.py::test_approval_view_projects_worker_failure_as_approve_only_block[stale]",
         "tests/integration/test_trading_room_command_ports.py::test_approval_view_projects_worker_failure_as_approve_only_block[failed]",
         "tests/integration/test_trading_room_command_ports.py::test_approval_view_projects_worker_failure_as_approve_only_block[missing]",
-        "tests/integration/test_trading_room_command_ports.py::test_approval_view_projects_worker_failure_as_approve_only_block[unavailable]"
+        "tests/integration/test_trading_room_command_ports.py::test_approval_view_projects_worker_failure_as_approve_only_block[unavailable]",
+        "tests/integration/test_trading_room_command_ports.py::test_approval_view_projects_worker_failure_as_approve_only_block[invalid]"
       ],
       "source_sha256": [
         "d477334cd1b479a723175d21192f993ad180858766ef0e1dcf7599a6530b64df",
         "f4ddb1a8cb9f835f043ce03d2a0e2b51c97e16c336978a68225f02541e53e042",
-        "44c0dc4522b30b389ed80ab115d3dc58d841436d5cebdaafa365c69f9dced673",
+        "dab3213f194c3bc1161f9279fe200b66bd810c09ef6482a1c3d526ebd0835fec",
         "799fbd11362ba754a2a385d84d01f0ac4a37ed283de66553be5876e3524d69c3",
         "9d5d32d65c8bf17db096b4ecd718969c96b4be5f613db594f8021b7ff2325abc",
-        "6078015923359e3a5217a389ab7d13f532723fb36916ed66fdec6b5b6982344c"
+        "f498ade35a16cbb73750f6e2ce92abca837fd743d0d8eb34bb348b30f2f292fc"
       ],
       "oracle": "Session, Origin, one-time CSRF, exact preview hashes, approval version and distinct authorization nonce are all valid. Session validation, idle touch, one-time CSRF consumption and logout revocation serialize atomically; when logout wins, a waiting command is rejected without consuming its CSRF or creating a financial effect. Worker failure blocks APPROVE while one immutable, idempotent REJECT remains available and creates no authorization or Paper effect. Every stale, replayed, foreign or malformed counterexample has zero new financial effect."
     },
@@ -283,7 +284,7 @@
       "source_sha256": [
         "9d5d32d65c8bf17db096b4ecd718969c96b4be5f613db594f8021b7ff2325abc",
         "9038342c0343567dd339168dc77a1dc54c3eccb1b35adf5c06bfd693196491c5",
-        "6078015923359e3a5217a389ab7d13f532723fb36916ed66fdec6b5b6982344c"
+        "f498ade35a16cbb73750f6e2ce92abca837fd743d0d8eb34bb348b30f2f292fc"
       ],
       "oracle": "Approval issuance rejects a reconciliation checkpoint whose stamped authority sequence predates any committed Paper effect. Kill, reconciliation, revocation, stale books and execution-quality drift are revalidated at the first Paper attempt; any failure consumes or blocks the authorization terminally with no order, hold, fill or ledger effect."
     },
@@ -382,7 +383,7 @@
       "source_sha256": [
         "90a31939b5325fb4ec774edd91789ef40b51c70ff35d97206f2393e6f756d3ef",
         "799fbd11362ba754a2a385d84d01f0ac4a37ed283de66553be5876e3524d69c3",
-        "6078015923359e3a5217a389ab7d13f532723fb36916ed66fdec6b5b6982344c"
+        "f498ade35a16cbb73750f6e2ce92abca837fd743d0d8eb34bb348b30f2f292fc"
       ],
       "configuration_sources": [
         {

@@ -157,10 +157,73 @@ def test_phase7_approval_chain_is_closed_hash_bound_and_nonce_distinct() -> None
     }
     validator = Draft202012Validator(view)
     validator.validate(blocked_worker_view)
+    for worker_reason in (
+        "PAPER_WORKER_MISSING",
+        "PAPER_WORKER_STALE",
+        "PAPER_WORKER_FAILED",
+        "PAPER_WORKER_STOPPED",
+        "PAPER_WORKER_NOT_READY",
+        "PAPER_WORKER_STATE_MISSING",
+        "PAPER_WORKER_STATE_UNAVAILABLE",
+        "PAPER_WORKER_STATE_INVALID",
+    ):
+        validator.validate({**blocked_worker_view, "reason_codes": [worker_reason]})
+
+    reject_binding_fields = (
+        "risk_decision_id",
+        "risk_decision_hash",
+        "risk_input_digest",
+        "risk_policy_version",
+        "risk_verdict",
+        "paper_order_preview",
+        "paper_order_preview_hash",
+    )
+    for field in reject_binding_fields:
+        missing = dict(blocked_worker_view)
+        del missing[field]
+        with pytest.raises(ValidationError):
+            validator.validate(missing)
+        with pytest.raises(ValidationError):
+            validator.validate({**blocked_worker_view, field: None})
+
+    with pytest.raises(ValidationError):
+        validator.validate({**blocked_worker_view, "risk_policy_version": ""})
+    incomplete_preview = dict(blocked_worker_view["paper_order_preview"])
+    del incomplete_preview["quantity"]
+    with pytest.raises(ValidationError):
+        validator.validate({**blocked_worker_view, "paper_order_preview": incomplete_preview})
+    for invalid_reasons in ([], ["AUTHORITY_BLOCKED"]):
+        with pytest.raises(ValidationError):
+            validator.validate({**blocked_worker_view, "reason_codes": invalid_reasons})
+
+    for field, contradiction in (
+        ("approval_id", hash_value),
+        ("approval_status", "APPROVED"),
+        ("approval_expires_at", "2026-07-21T00:05:00Z"),
+        ("authorization_id", hash_value),
+        ("authorization_status", "ISSUED"),
+    ):
+        missing = dict(blocked_worker_view)
+        del missing[field]
+        with pytest.raises(ValidationError):
+            validator.validate(missing)
+        with pytest.raises(ValidationError):
+            validator.validate({**blocked_worker_view, field: contradiction})
+
     for impossible in (
         {**blocked_worker_view, "status": "PENDING_RISK"},
         {**blocked_worker_view, "risk_verdict": "DENIED"},
-        {**blocked_worker_view, "approval_status": "APPROVED"},
+        {
+            **blocked_worker_view,
+            "approval_id": hash_value,
+            "approval_status": "APPROVED",
+            "approval_expires_at": "2026-07-21T00:05:00Z",
+        },
+        {
+            **blocked_worker_view,
+            "authorization_id": hash_value,
+            "authorization_status": "ISSUED",
+        },
     ):
         with pytest.raises(ValidationError):
             validator.validate(impossible)

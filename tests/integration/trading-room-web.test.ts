@@ -96,10 +96,14 @@ test("PLAT-UI-APPROVAL renders only a complete closed canonical Paper preview", 
 
 test("PLAT-UI-REJECT keeps the Korean Reject control usable when only worker readiness blocks Approve", () => {
   for (const reason of [
+    "PAPER_WORKER_MISSING",
     "PAPER_WORKER_STALE",
     "PAPER_WORKER_FAILED",
+    "PAPER_WORKER_STOPPED",
+    "PAPER_WORKER_NOT_READY",
     "PAPER_WORKER_STATE_MISSING",
     "PAPER_WORKER_STATE_UNAVAILABLE",
+    "PAPER_WORKER_STATE_INVALID",
   ]) {
     const workerBlocked = {
       ...canonicalApprovalView,

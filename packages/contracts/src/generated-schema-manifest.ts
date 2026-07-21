@@ -39,7 +39,7 @@ export const CONTRACT_SOURCE_DIGESTS = {
   "paper-approval.v1.json": "57df16b7a8846a7e72cabf31db0278784a7b34a94f3d45f8c153850c232e5a38",
   "paper-approval-revocation.v1.json": "e019a61bd4350b63c9e605e7b665dfb1a2b505aa81df54355ac7f99582df6654",
   "paper-execution-authorization.v1.json": "0bed79c7d469e077d7970f964485286ba53509ae9295436a88dd3b5f9e652e20",
-  "approval-view.v1.json": "bdef417b9a051401b5ab0602ca50fea533aba3e0501237bf80fc90d30b684324",
+  "approval-view.v1.json": "72aa3bdec35ce52d42e48e3e3a1237ce7c51b80f0c7949c2732a09c10f19374c",
   "local-session.v1.json": "6698a0d8be20ae5281a8820f635691adb432945727aa179ac482e2b44c63630e",
   "risk-domain-events.v2.json": "90aeb936e34084fbae0c54dd72b69ba4005dbf1016f4bbdca903a19dd2fb0b1d",
   "paper-domain-events.v2.json": "88a581b9e640eddc70d6bacb6c50fbfdcc9ad9a376def37f85f06224f78591ec"

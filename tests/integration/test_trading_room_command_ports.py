@@ -215,7 +215,21 @@ class ApprovalViewConnection:
             "6" * 64,
             "woozoo.risk-policy/v1",
             "ALLOWED",
-            {"paper_order_preview_hash": "2" * 64},
+            {
+                "symbol": "BTCUSDT",
+                "side": "BUY",
+                "order_type": "LIMIT",
+                "time_in_force": "GTC",
+                "quantity": "0.001",
+                "limit_price": "60001.00",
+                "worst_case_fee": "0.060001",
+                "worst_case_hold": "60.061001",
+                "worst_case_notional": "60.061001",
+                "best_bid": "60000.00",
+                "best_ask": "60001.00",
+                "expected_slippage_inputs": {"method": "limit-vs-book-v1"},
+                "paper_order_preview_hash": "2" * 64,
+            },
             "2" * 64,
             None,
             None,
@@ -515,8 +529,9 @@ def test_unready_worker_blocks_approve_but_permits_one_idempotent_reject_without
         (FixedWorkerReadinessAuthority("FAILED"), "PAPER_WORKER_FAILED"),
         (MissingWorkerReadinessAuthority(), "PAPER_WORKER_STATE_MISSING"),
         (UnavailableWorkerReadinessAuthority(), "PAPER_WORKER_STATE_UNAVAILABLE"),
+        (FixedWorkerReadinessAuthority("CORRUPT"), "PAPER_WORKER_STATE_INVALID"),
     ],
-    ids=("stale", "failed", "missing", "unavailable"),
+    ids=("stale", "failed", "missing", "unavailable", "invalid"),
 )
 def test_approval_view_projects_worker_failure_as_approve_only_block(
     worker: PaperWorkerReadinessAuthority, reason_code: str
@@ -537,6 +552,23 @@ def test_approval_view_projects_worker_failure_as_approve_only_block(
     assert view["approval_action_allowed"] is False
     assert view["approve_action_allowed"] is False
     assert view["reject_action_allowed"] is True
+    for binding_field in (
+        "risk_decision_id",
+        "risk_decision_hash",
+        "risk_input_digest",
+        "risk_policy_version",
+        "paper_order_preview",
+        "paper_order_preview_hash",
+    ):
+        assert view[binding_field] is not None
+    for absent_state_field in (
+        "approval_id",
+        "approval_status",
+        "approval_expires_at",
+        "authorization_id",
+        "authorization_status",
+    ):
+        assert view[absent_state_field] is None
 
 
 def test_malformed_preconditions_have_zero_effect_and_do_not_consume_csrf() -> None:

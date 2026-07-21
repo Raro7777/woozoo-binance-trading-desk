@@ -808,6 +808,7 @@ const actions = {
       "tests/integration/test_trading_room_command_ports.py::test_approval_view_projects_worker_failure_as_approve_only_block[failed]",
       "tests/integration/test_trading_room_command_ports.py::test_approval_view_projects_worker_failure_as_approve_only_block[missing]",
       "tests/integration/test_trading_room_command_ports.py::test_approval_view_projects_worker_failure_as_approve_only_block[unavailable]",
+      "tests/integration/test_trading_room_command_ports.py::test_approval_view_projects_worker_failure_as_approve_only_block[invalid]",
     ]);
     await dataScenario("unit", "EVID-001", [
       "tests/unit/test_evidence_features.py::test_derives_approved_decimal_features_with_ordered_provenance",

@@ -46,6 +46,7 @@ APPROVAL_TTL = timedelta(minutes=5)
 FEE_RATE = Decimal("0.001")
 MAX_ORDER_NOTIONAL_RATIO = Decimal("0.0025")
 PAPER_ACCOUNT_ID = "c71f45a74649ecfbc2f897ed1ced77309accd4dbbc069c9cd425754204c09b3e"
+PAPER_WORKER_STATUSES = frozenset({"MISSING", "STALE", "HEALTHY", "FAILED", "STOPPED"})
 
 SYMBOL_RULES = {
     "BTCUSDT": {
@@ -1376,7 +1377,10 @@ class PostgresTradingRoom:
                 "Paper worker readiness authority is unavailable",
                 503,
             ) from exc
-        if not isinstance(state.get("ready"), bool) or not isinstance(state.get("status"), str):
+        if (
+            not isinstance(state.get("ready"), bool)
+            or state.get("status") not in PAPER_WORKER_STATUSES
+        ):
             raise TradingRoomError(
                 "PAPER_WORKER_STATE_INVALID", "Paper worker state is invalid", 503
             )

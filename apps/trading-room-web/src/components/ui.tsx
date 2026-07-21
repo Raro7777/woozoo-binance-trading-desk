@@ -120,6 +120,7 @@ const diagnosticLabels: Readonly<Record<string, string>> = {
   PAPER_WORKER_STATE_MISSING: "모의투자 작업자 상태를 찾을 수 없음",
   PAPER_WORKER_STATE_UNAVAILABLE: "모의투자 작업자 상태를 조회할 수 없음",
   PAPER_WORKER_STALE: "모의투자 작업자 상태가 오래됨",
+  PAPER_WORKER_STOPPED: "모의투자 작업자가 중지됨",
   RECONCILIATION_UNHEALTHY: "대사 상태가 비정상임",
   RISK_ALLOWED: "위험 정책이 허용함",
   "risk.decision.recorded.v1": "위험 판단 기록",
