@@ -141,7 +141,10 @@ recorded-book fill or Kill recovery. Quality events use a deterministic ID;
 only SQLSTATE `40P01` and `40001` are retried, at most three total attempts.
 Any final persistence failure marks the in-process stream invalid and raises a
 fail-stop error instead of allowing the collector to continue on memory-only
-quality state.
+quality state. The live supervisor treats that error as a fatal producer outcome,
+not a transport disconnect: the consumer checks it before every subsequent
+dequeue, leaves queued messages unprocessed, and cannot start another collector
+session or reconnect generation.
 
 The same inbound-less Paper runtime may consume only append-only, healthy Binance
 Spot public `book_ticker` rows received after an order was accepted. It selects

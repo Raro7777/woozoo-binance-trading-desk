@@ -1,17 +1,21 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from datetime import UTC, datetime, timedelta
 import random
 
 import pytest
 
 from market_data_worker.failures import ReconnectPolicy
-from market_data_worker.pipeline import CollectorPipeline, InMemoryMarketStore
+from market_data_worker.pipeline import (
+    CollectorPipeline,
+    InMemoryMarketStore,
+    QualityPersistenceError,
+)
 from market_data_worker.runner import run_market_data
 from market_data_worker.supervisor import MarketDataSupervisor
-from market_data_worker.types import QualityStatus
+from market_data_worker.types import QualityEvent, QualityStatus
 
 
 NOW = datetime(2026, 7, 19, tzinfo=UTC)
@@ -53,6 +57,13 @@ class AdvancingTransport:
         self.calls += 1
         self.clock.current += timedelta(hours=23, minutes=45)
         yield b'{"bad":true}'
+
+
+class FailOnQueueOverflowStore(InMemoryMarketStore):
+    def append_quality(self, event: QualityEvent) -> None:
+        if event.reason == "queue_overflow":
+            raise OSError("injected queue-overflow quality persistence failure")
+        super().append_quality(event)
 
 
 def test_connection_is_planned_rotated_at_23_hours_45_minutes() -> None:
@@ -230,3 +241,42 @@ def test_live_supervisor_uses_bounded_queue_and_persists_overflow_failure() -> N
     assert result is pipeline
     assert pipeline.state.status is QualityStatus.INVALID
     assert "queue_overflow" in pipeline.state.reasons
+
+
+def test_quality_persistence_failure_is_fatal_before_queue_drain_or_reconnect() -> None:
+    message = (
+        b'{"stream":"btcusdt@bookTicker","data":'
+        b'{"u":1,"s":"BTCUSDT","b":"60000.1","B":"1",'
+        b'"a":"60000.2","A":"2"}}'
+    )
+    store = FailOnQueueOverflowStore()
+    pipeline = CollectorPipeline(store)
+    transport = Transport([[message] * 10_001, [message]])
+    issued_sessions: list[str] = []
+
+    def session_ids() -> Iterator[str]:
+        for session_id in ("s1", "s2"):
+            issued_sessions.append(session_id)
+            yield session_id
+
+    with pytest.raises(QualityPersistenceError, match="collector continuation is unsafe"):
+        asyncio.run(
+            run_market_data(
+                {
+                    "TRADING_MODE": "paper",
+                    "MARKET_DATA_SOURCE": "spot_public",
+                    "MARKET_DATABASE_URL": "postgresql://writer",
+                },
+                pipeline=pipeline,
+                transport=transport,
+                clock=Clock(),
+                session_ids=session_ids(),
+                max_generations=2,
+            )
+        )
+
+    assert store.normalized_events == []
+    assert pipeline.state.status is QualityStatus.INVALID
+    assert pipeline.state.reasons == ["quality_append_failed"]
+    assert transport.calls == 1
+    assert issued_sessions == ["s1"]

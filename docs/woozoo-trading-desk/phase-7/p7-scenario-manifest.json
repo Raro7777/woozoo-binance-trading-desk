@@ -8,7 +8,7 @@
   "phase_schedule_amendment": "docs/woozoo-trading-desk/phase-5/phase-0-contract-amendment.md",
   "phase_schedule_amendment_sha256": "faab0952b4c60d6cc432bd699d549f52d9c9b43f75e4e7050b30e01bb70b6c68",
   "implementation_contract": "docs/woozoo-trading-desk/phase-7/implementation-contract.md",
-  "implementation_contract_sha256": "081ba30be9c13a8445ae8ff403bc5294bc41438db7be231409b14e4c4bad5678",
+  "implementation_contract_sha256": "ade54071efcaf2fef7731994df175f17009e6ffffcbc90eaac3e2569f5634c51",
   "fixed_seed": 0,
   "timezone": "UTC",
   "trading_mode": "paper",

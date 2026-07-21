@@ -17,7 +17,7 @@ from platform_core.config import PlatformSettings
 from .capabilities import PublicStream, fixed_phase_two_streams
 from .failures import ReconnectPolicy
 from .persistence import PostgresMarketStore
-from .pipeline import CollectorPipeline
+from .pipeline import CollectorPipeline, QualityPersistenceError
 from .queueing import BackpressureOverflow, BoundedIngressQueue
 from .recovery import PostgresRestartRepository, RestartCoordinator
 from .settings import MarketDataSettings, MarketDataSource
@@ -181,8 +181,10 @@ class MarketDataSupervisor:
         queue = BoundedIngressQueue[bytes](10_000)
         finished = asyncio.Event()
         outcome = ["completed"]
+        fatal_error: QualityPersistenceError | None = None
 
         async def produce() -> None:
+            nonlocal fatal_error
             try:
                 async for message in self._transport.messages(self._streams):
                     try:
@@ -193,6 +195,8 @@ class MarketDataSupervisor:
                             QualityStatus.INVALID, "queue_overflow", self._clock.now()
                         )
                         return
+            except QualityPersistenceError as error:
+                fatal_error = error
             except Exception:
                 outcome[0] = "disconnect"
             finally:
@@ -201,6 +205,8 @@ class MarketDataSupervisor:
         producer = asyncio.create_task(produce())
         try:
             while not finished.is_set() or queue.size:
+                if fatal_error is not None:
+                    raise fatal_error
                 if self._clock.now() - connected_at >= MAX_CONNECTION_AGE:
                     return "planned_rotation"
                 self._pipeline.evaluate_freshness(self._clock.now())
@@ -209,10 +215,16 @@ class MarketDataSupervisor:
                 if queue.size == 0:
                     await asyncio.sleep(0.01)
                     continue
+                # No await follows this check, so a producer fatal outcome can
+                # never be followed by another dequeue in this event loop.
+                if fatal_error is not None:
+                    raise fatal_error
                 message = queue.take()
                 result = self._ingest_message(session_id, message)
                 if result == "server_shutdown":
                     return result
+            if fatal_error is not None:
+                raise fatal_error
             return outcome[0]
         finally:
             if not producer.done():

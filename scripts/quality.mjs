@@ -1293,6 +1293,7 @@ const actions = {
     await dataScenario("property", "DATA-007", [
       "tests/property/test_market_data_backpressure.py::test_data_007_capacity_overflow_is_explicit_and_fail_closed",
       "tests/failure/test_market_data_supervisor.py::test_live_supervisor_uses_bounded_queue_and_persists_overflow_failure",
+      "tests/failure/test_market_data_supervisor.py::test_quality_persistence_failure_is_fatal_before_queue_drain_or_reconnect",
     ]);
     run("python", ["-m", "uv", "run", "--locked", "pytest", "tests/property", "-q"]);
     await dataScenario("property", "EVID-003", [
