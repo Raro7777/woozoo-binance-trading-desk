@@ -270,7 +270,7 @@
       ],
       "source_sha256": [
         "9d5d32d65c8bf17db096b4ecd718969c96b4be5f613db594f8021b7ff2325abc",
-        "a20489a6a7e5bf46f052dcbd8000d00277205d563f2fc80a2d4b028d5f306e1a",
+        "31ef114c7470046098a5b2ec4dff6d5a772bbfc67f423fc22acea421f25d5c5b",
         "9aee089bc0aa944c9a96eec974f6cf583218bfdf99c34e6ca7dfdd04acf74738"
       ],
       "oracle": "Approval issuance rejects a reconciliation checkpoint whose stamped authority sequence predates any committed Paper effect. Kill, reconciliation, revocation, stale books and execution-quality drift are revalidated at the first Paper attempt; any failure consumes or blocks the authorization terminally with no order, hold, fill or ledger effect."
@@ -301,9 +301,9 @@
         "tests/integration/test_trading_room_migration_contract.py::test_phase7_migration_upgrades_with_digest_only_storage_and_least_privilege"
       ],
       "source_sha256": [
-        "c4b7370eac01be33cc74aaca376e8520a44460adc2ac5b0f3a6472bf6c832fb5",
+        "9f93757c6e5c131a0a40a00109bce87170d87c6b742ac546cc748bf2e5214f57",
         "dd85d3264e1a7374d1e34e8f7fde5a083fd8ae115b927d453941c5a4be9942d3",
-        "a20489a6a7e5bf46f052dcbd8000d00277205d563f2fc80a2d4b028d5f306e1a",
+        "31ef114c7470046098a5b2ec4dff6d5a772bbfc67f423fc22acea421f25d5c5b",
         "07cb535db57cca0e4f13b44a2ad75a2716461abe283517bb6cfe67d0409757c6",
         "5769abf0ed4b9a57c849a168da2536cb6397d2b24dc514d06b8c45e54633c7a8",
         "040bee0d0228ab50ee17bcb60110d25770e8c5a5277e13bf9ff8f04a89dcaa2e"
@@ -311,7 +311,7 @@
       "configuration_sources": [
         {
           "path": "tests/e2e/live_control_api.py",
-          "sha256": "ecfb5d7cdd30a305e6bb25a637293d751c71f1a33ef8fa7b4bdca9bb3bfec6ec"
+          "sha256": "186e6b4af3d6f9d1334d78cd0f59dc3ae38da940da7bfa507639ab02d9d08381"
         },
         {
           "path": "tests/e2e/https-web-server.mjs",
@@ -335,7 +335,7 @@
         "tests/integration/test_trading_room_api.py::test_e2e_002_stale_data_consumes_csrf_and_blocks_without_order"
       ],
       "source_sha256": [
-        "c4b7370eac01be33cc74aaca376e8520a44460adc2ac5b0f3a6472bf6c832fb5",
+        "9f93757c6e5c131a0a40a00109bce87170d87c6b742ac546cc748bf2e5214f57",
         "dd85d3264e1a7374d1e34e8f7fde5a083fd8ae115b927d453941c5a4be9942d3"
       ],
       "oracle": "Stale Evidence is displayed in Korean as a fail-closed hold, consumes the command token according to policy and creates no Proposal, authorization or Paper order."
@@ -354,7 +354,7 @@
         "tests/integration/test_trading_room_command_ports.py::test_concurrent_same_request_issues_once_without_browser_paper_effect"
       ],
       "source_sha256": [
-        "c4b7370eac01be33cc74aaca376e8520a44460adc2ac5b0f3a6472bf6c832fb5",
+        "9f93757c6e5c131a0a40a00109bce87170d87c6b742ac546cc748bf2e5214f57",
         "799fbd11362ba754a2a385d84d01f0ac4a37ed283de66553be5876e3524d69c3",
         "9aee089bc0aa944c9a96eec974f6cf583218bfdf99c34e6ca7dfdd04acf74738"
       ],
@@ -376,9 +376,9 @@
         "tests/unit/test_paper_authorization_worker_runtime.py::test_runner_drains_pending_authorization_before_kill_completion"
       ],
       "source_sha256": [
-        "c4b7370eac01be33cc74aaca376e8520a44460adc2ac5b0f3a6472bf6c832fb5",
+        "9f93757c6e5c131a0a40a00109bce87170d87c6b742ac546cc748bf2e5214f57",
         "dd85d3264e1a7374d1e34e8f7fde5a083fd8ae115b927d453941c5a4be9942d3",
-        "a20489a6a7e5bf46f052dcbd8000d00277205d563f2fc80a2d4b028d5f306e1a",
+        "31ef114c7470046098a5b2ec4dff6d5a772bbfc67f423fc22acea421f25d5c5b",
         "5769abf0ed4b9a57c849a168da2536cb6397d2b24dc514d06b8c45e54633c7a8"
       ],
       "oracle": "Kill activation cancels the open Paper order, permits no later fill and remains active until an authenticated operator supplies the bound incident reference after healthy reconciliation. Recovery remains blocked when the current market projection, stream watermark, collector session or raw-bound public book authority is stale or invalid, even if a recent normalized book row still says healthy. Cancellation completion waits until all already-issued Paper authorizations are terminally blocked under Kill, and a test-namespace attempt cannot satisfy that drain condition; a pre-completion checkpoint cannot release Kill, while the later checkpoint bound to the immutable completion digest restores manual recovery."
@@ -394,10 +394,18 @@
         "tests/integration/test_trading_room_api.py::test_audit_api_preserves_provenance_and_recursively_redacts_command_secrets"
       ],
       "source_sha256": [
-        "c4b7370eac01be33cc74aaca376e8520a44460adc2ac5b0f3a6472bf6c832fb5",
+        "9f93757c6e5c131a0a40a00109bce87170d87c6b742ac546cc748bf2e5214f57",
         "dd85d3264e1a7374d1e34e8f7fde5a083fd8ae115b927d453941c5a4be9942d3"
       ],
       "configuration_sources": [
+        {
+          "path": "tests/e2e/live_control_api.py",
+          "sha256": "186e6b4af3d6f9d1334d78cd0f59dc3ae38da940da7bfa507639ab02d9d08381"
+        },
+        {
+          "path": "tests/e2e/https-web-server.mjs",
+          "sha256": "56320448610d1af28ed5db2d36a5477f4445a62282e177eceb8f43f6e2c42223"
+        },
         {
           "path": "playwright.config.ts",
           "sha256": "b474092e95677c1fcec15fc54419ffa3e610ff3d8894dfe0bdc26bcc8ac7a99f"
