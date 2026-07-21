@@ -3,11 +3,11 @@
   "phase": 7,
   "status": "external-review-unavailable",
   "runner": "codex",
-  "target_commit": "8bfc8850b26de83d0162f84c2e03b43de827bae4",
-  "target_tree": "9b12ed46236552516361682ac3222a5682b5ff08",
+  "target_commit": "2b8aa59f366bc621fbbd3ffe4ef40a6ce6d86456",
+  "target_tree": "3d3e96360561a4029deb6c052e40f7a527615c30",
   "prompt_evidence": {
     "path": "_workspace/reviews/p7_mvp_prompt_external.md",
-    "sha256": "4c575e444fbbb4886a369a3de2c5be1637be79c2ab113f490729542fbc30cd75"
+    "sha256": "61f0f6d02905b0d544205787f7eab4609efc0c977d86774855c08f93fbb5c6b7"
   },
   "selected_reviewers": [
     "agy"
@@ -30,7 +30,7 @@
     }
   ],
   "final_inventory_check": {
-    "checked_at": "2026-07-21T02:03:09Z",
+    "checked_at": "2026-07-21T03:31:42Z",
     "project_selector_result": "EXTERNAL_REVIEWERS: agy",
     "allowed_external_reviewers": [
       "agy",
@@ -49,5 +49,5 @@
   "same_engine_codex_is_external_pass": false,
   "user_approval_or_transition_authority": false,
   "claude_used": false,
-  "note": "No external PASS was produced. The policy-selected agy route exhausted its permitted attempt and one retry without usable review text. Binary discovery is not a review result. This exact target is therefore recorded as external-review-unavailable without treating internal Codex review as external independence."
+  "note": "No external PASS was produced. The policy-selected agy route exhausted its permitted attempt and one retry without usable review text. Binary discovery is not a review result. Safety QA and same-engine Codex cross-review remain separate internal evidence and do not satisfy external independence."
 }
