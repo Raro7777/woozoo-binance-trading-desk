@@ -8,7 +8,6 @@ from control_api.security import (
     CommandGuardRejected,
     InMemorySecurityRepository,
     LocalOperatorSecurity,
-    SessionRecord,
     SessionRejected,
     make_password_verifier,
     token_digest,
@@ -83,31 +82,60 @@ def test_logout_revokes_session_and_consumes_csrf() -> None:
         auth.consume_command_guard(raw_session, token, "https://localhost:3443")
 
 
-def test_in_memory_logout_wins_before_a_waiting_command_guard_atomically() -> None:
+def test_in_memory_invalid_or_replayed_csrf_does_not_touch_session() -> None:
+    clock = Clock()
+    repository = InMemorySecurityRepository()
+    auth = LocalOperatorSecurity(
+        make_password_verifier("correct horse battery staple"),
+        "https://localhost:3443",
+        repository=repository,
+        clock=clock,
+    )
+    raw_session = auth.login("correct horse battery staple", "https://localhost:3443")
+    valid_csrf = auth.issue_csrf(raw_session)
+    session_digest = token_digest(raw_session)
+    before_invalid = repository.get_session(session_digest)
+    assert before_invalid is not None
+
+    clock.value += timedelta(minutes=1)
+    with pytest.raises(CommandGuardRejected):
+        auth.consume_command_guard(
+            raw_session,
+            "unknown-csrf",
+            "https://localhost:3443",
+        )
+    assert repository.get_session(session_digest) == before_invalid
+
+    auth.consume_command_guard(raw_session, valid_csrf, "https://localhost:3443")
+    after_valid = repository.get_session(session_digest)
+    assert after_valid is not None and after_valid.last_seen_at == clock.value
+
+    clock.value += timedelta(minutes=1)
+    with pytest.raises(CommandGuardRejected):
+        auth.consume_command_guard(raw_session, valid_csrf, "https://localhost:3443")
+    assert repository.get_session(session_digest) == after_valid
+
+
+def test_in_memory_command_guard_and_logout_serialize_in_both_orders() -> None:
     class PausingRepository(InMemorySecurityRepository):
         def __init__(self) -> None:
             super().__init__()
-            self.command_waiting = Event()
-            self.release_command = Event()
+            self.pause_effect: str | None = None
+            self.session_locked = Event()
+            self.release_session = Event()
 
-        def consume_command_guard(
-            self,
-            session_digest: str,
-            csrf_digest: str,
-            now: datetime,
-            *,
-            revoke_session: bool,
-        ) -> SessionRecord:
-            if not revoke_session:
-                self.command_waiting.set()
-                if not self.release_command.wait(timeout=5):
-                    raise TimeoutError("command guard was not released")
-            return super().consume_command_guard(
-                session_digest,
-                csrf_digest,
-                now,
-                revoke_session=revoke_session,
-            )
+        def pause_next(self, effect: str) -> None:
+            self.pause_effect = effect
+            self.session_locked.clear()
+            self.release_session.clear()
+
+        def _after_command_session_locked(self, *, revoke_session: bool) -> None:
+            effect = "logout" if revoke_session else "command"
+            if self.pause_effect == effect:
+                self.session_locked.set()
+                if not self.release_session.wait(timeout=5):
+                    raise TimeoutError("session lock was not released")
+                self.pause_effect = None
 
         def csrf_was_consumed(self, raw_csrf: str) -> bool:
             with self._lock:
@@ -124,7 +152,9 @@ def test_in_memory_logout_wins_before_a_waiting_command_guard_atomically() -> No
     raw_session = auth.login("correct horse battery staple", "https://localhost:3443")
     command_csrf = auth.issue_csrf(raw_session)
     logout_csrf = auth.issue_csrf(raw_session)
-    rejected: list[type[Exception]] = []
+    command_done = Event()
+    logout_done = Event()
+    errors: list[type[Exception]] = []
 
     def command() -> None:
         try:
@@ -134,19 +164,59 @@ def test_in_memory_logout_wins_before_a_waiting_command_guard_atomically() -> No
                 "https://localhost:3443",
             )
         except Exception as error:  # noqa: BLE001 - thread result is asserted below
-            rejected.append(type(error))
+            errors.append(type(error))
+        finally:
+            command_done.set()
 
+    def logout() -> None:
+        try:
+            auth.logout(raw_session, logout_csrf, "https://localhost:3443")
+        except Exception as error:  # noqa: BLE001 - thread result is asserted below
+            errors.append(type(error))
+        finally:
+            logout_done.set()
+
+    repository.pause_next("command")
     command_thread = Thread(target=command)
     command_thread.start()
-    assert repository.command_waiting.wait(timeout=5)
+    assert repository.session_locked.wait(timeout=5)
+    logout_thread = Thread(target=logout)
+    logout_thread.start()
     try:
-        auth.logout(raw_session, logout_csrf, "https://localhost:3443")
+        assert logout_done.wait(timeout=0.2) is False
     finally:
-        repository.release_command.set()
+        repository.release_session.set()
+        command_thread.join(timeout=5)
+        logout_thread.join(timeout=5)
+
+    assert not command_thread.is_alive() and not logout_thread.is_alive()
+    assert command_done.is_set() and logout_done.is_set()
+    assert errors == []
+    assert repository.csrf_was_consumed(logout_csrf) is True
+    assert repository.csrf_was_consumed(command_csrf) is True
+
+    raw_session = auth.login("correct horse battery staple", "https://localhost:3443")
+    command_csrf = auth.issue_csrf(raw_session)
+    logout_csrf = auth.issue_csrf(raw_session)
+    command_done.clear()
+    logout_done.clear()
+    errors.clear()
+    repository.pause_next("logout")
+    logout_thread = Thread(target=logout)
+    logout_thread.start()
+    assert repository.session_locked.wait(timeout=5)
+    command_thread = Thread(target=command)
+    command_thread.start()
+    try:
+        assert command_done.wait(timeout=0.2) is False
+    finally:
+        repository.release_session.set()
+        logout_thread.join(timeout=5)
         command_thread.join(timeout=5)
 
-    assert not command_thread.is_alive()
-    assert rejected == [SessionRejected]
+    assert not command_thread.is_alive() and not logout_thread.is_alive()
+    assert logout_done.is_set() and command_done.is_set()
+    assert errors == [SessionRejected]
     assert repository.csrf_was_consumed(logout_csrf) is True
     assert repository.csrf_was_consumed(command_csrf) is False
     with pytest.raises(SessionRejected):

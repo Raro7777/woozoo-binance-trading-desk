@@ -111,6 +111,9 @@ class InMemorySecurityRepository:
         with self._lock:
             self._csrf[record.digest] = record
 
+    def _after_command_session_locked(self, *, revoke_session: bool) -> None:
+        del revoke_session
+
     def consume_command_guard(
         self,
         session_digest: str,
@@ -129,6 +132,7 @@ class InMemorySecurityRepository:
                 or session.actor_id != ACTOR_ID
             ):
                 raise SessionRejected("session is unavailable")
+            self._after_command_session_locked(revoke_session=revoke_session)
             csrf = self._csrf.get(csrf_digest)
             if (
                 csrf is None
@@ -225,6 +229,12 @@ class PostgresSecurityRepository:
                 (record.digest, record.session_digest, record.issued_at, record.expires_at),
             )
 
+    def _after_command_session_locked(self, *, revoke_session: bool) -> None:
+        del revoke_session
+
+    def _before_command_session_update(self, *, revoke_session: bool) -> None:
+        del revoke_session
+
     def consume_command_guard(
         self,
         session_digest: str,
@@ -249,6 +259,7 @@ class PostgresSecurityRepository:
                 or session.actor_id != ACTOR_ID
             ):
                 raise SessionRejected("session is unavailable")
+            self._after_command_session_locked(revoke_session=revoke_session)
             consumed = connection.execute(
                 "UPDATE session_csrf_tokens SET consumed_at=%s WHERE csrf_token_digest=%s "
                 "AND session_digest=%s AND consumed_at IS NULL AND expires_at>%s "
@@ -257,6 +268,7 @@ class PostgresSecurityRepository:
             ).fetchone()
             if consumed is None:
                 raise CommandGuardRejected("CSRF token unavailable")
+            self._before_command_session_update(revoke_session=revoke_session)
             next_idle = min(now + SESSION_IDLE_TTL, session.absolute_expires_at)
             if revoke_session:
                 updated = connection.execute(

@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 import json
 import os
 from pathlib import Path
@@ -14,6 +14,7 @@ from referencing.jsonschema import DRAFT202012
 
 from control_api.security import (
     ACTOR_ID,
+    CommandGuardRejected,
     LocalOperatorSecurity,
     PostgresSecurityRepository,
     SessionRecord,
@@ -261,31 +262,32 @@ def test_stale_concurrent_session_touch_cannot_resurrect_logged_out_session() ->
             run("docker", "compose", "down", "-v")
 
 
-def test_postgres_logout_wins_before_a_waiting_command_guard_atomically() -> None:
+def test_postgres_command_guard_and_logout_serialize_and_roll_back() -> None:
     class PausingRepository(PostgresSecurityRepository):
         def __init__(self, database_url: str, password_verifier: str) -> None:
             super().__init__(database_url, password_verifier)
-            self.command_waiting = Event()
-            self.release_command = Event()
+            self.pause_effect: str | None = None
+            self.session_locked = Event()
+            self.release_session = Event()
+            self.fail_before_session_update = False
 
-        def consume_command_guard(
-            self,
-            session_digest: str,
-            csrf_digest: str,
-            now: datetime,
-            *,
-            revoke_session: bool,
-        ) -> SessionRecord:
-            if not revoke_session:
-                self.command_waiting.set()
-                if not self.release_command.wait(timeout=5):
-                    raise TimeoutError("command guard was not released")
-            return super().consume_command_guard(
-                session_digest,
-                csrf_digest,
-                now,
-                revoke_session=revoke_session,
-            )
+        def pause_next(self, effect: str) -> None:
+            self.pause_effect = effect
+            self.session_locked.clear()
+            self.release_session.clear()
+
+        def _after_command_session_locked(self, *, revoke_session: bool) -> None:
+            effect = "logout" if revoke_session else "command"
+            if self.pause_effect == effect:
+                self.session_locked.set()
+                if not self.release_session.wait(timeout=5):
+                    raise TimeoutError("session row lock was not released")
+                self.pause_effect = None
+
+        def _before_command_session_update(self, *, revoke_session: bool) -> None:
+            del revoke_session
+            if self.fail_before_session_update:
+                raise RuntimeError("INJECTED_SESSION_UPDATE_FAILURE")
 
     with docker_infrastructure_lock():
         run("docker", "compose", "down", "-v")
@@ -294,12 +296,12 @@ def test_postgres_logout_wins_before_a_waiting_command_guard_atomically() -> Non
             run(sys.executable, "-m", "alembic", "upgrade", "head")
             verifier = make_password_verifier("postgres-command-race-password")
             repository = PausingRepository(CONTROL_URL, verifier)
-            now = datetime(2026, 7, 20, 6, 0, tzinfo=UTC)
+            clock = [datetime(2026, 7, 20, 6, 0, tzinfo=UTC)]
             security = LocalOperatorSecurity(
                 verifier,
                 "https://localhost:3443",
                 repository=repository,
-                clock=lambda: now,
+                clock=lambda: clock[0],
             )
             raw_session = security.login(
                 "postgres-command-race-password",
@@ -307,7 +309,9 @@ def test_postgres_logout_wins_before_a_waiting_command_guard_atomically() -> Non
             )
             command_csrf = security.issue_csrf(raw_session)
             logout_csrf = security.issue_csrf(raw_session)
-            rejected: list[type[Exception]] = []
+            command_done = Event()
+            logout_done = Event()
+            errors: list[type[Exception]] = []
 
             def command() -> None:
                 try:
@@ -317,19 +321,34 @@ def test_postgres_logout_wins_before_a_waiting_command_guard_atomically() -> Non
                         "https://localhost:3443",
                     )
                 except Exception as error:  # noqa: BLE001 - thread result is asserted below
-                    rejected.append(type(error))
+                    errors.append(type(error))
+                finally:
+                    command_done.set()
 
+            def logout() -> None:
+                try:
+                    security.logout(raw_session, logout_csrf, "https://localhost:3443")
+                except Exception as error:  # noqa: BLE001 - thread result is asserted below
+                    errors.append(type(error))
+                finally:
+                    logout_done.set()
+
+            repository.pause_next("command")
             command_thread = Thread(target=command)
             command_thread.start()
-            assert repository.command_waiting.wait(timeout=5)
+            assert repository.session_locked.wait(timeout=5)
+            logout_thread = Thread(target=logout)
+            logout_thread.start()
             try:
-                security.logout(raw_session, logout_csrf, "https://localhost:3443")
+                assert logout_done.wait(timeout=0.2) is False
             finally:
-                repository.release_command.set()
+                repository.release_session.set()
                 command_thread.join(timeout=5)
+                logout_thread.join(timeout=5)
 
-            assert not command_thread.is_alive()
-            assert rejected == [SessionRejected]
+            assert not command_thread.is_alive() and not logout_thread.is_alive()
+            assert command_done.is_set() and logout_done.is_set()
+            assert errors == []
             with psycopg.connect(DATABASE_URL) as connection:
                 session_row = connection.execute(
                     "SELECT revoked_at FROM operator_sessions WHERE session_digest=%s",
@@ -342,8 +361,128 @@ def test_postgres_logout_wins_before_a_waiting_command_guard_atomically() -> Non
                         (token_digest(command_csrf), token_digest(logout_csrf)),
                     ).fetchall()
                 )
-            assert session_row is not None and session_row[0] == now
-            assert csrf_rows[token_digest(logout_csrf)] == now
+            assert session_row is not None and session_row[0] == clock[0]
+            assert csrf_rows[token_digest(logout_csrf)] == clock[0]
+            assert csrf_rows[token_digest(command_csrf)] == clock[0]
+
+            raw_session = security.login(
+                "postgres-command-race-password",
+                "https://localhost:3443",
+            )
+            command_csrf = security.issue_csrf(raw_session)
+            logout_csrf = security.issue_csrf(raw_session)
+            command_done.clear()
+            logout_done.clear()
+            errors.clear()
+            repository.pause_next("logout")
+            logout_thread = Thread(target=logout)
+            logout_thread.start()
+            assert repository.session_locked.wait(timeout=5)
+            command_thread = Thread(target=command)
+            command_thread.start()
+            try:
+                assert command_done.wait(timeout=0.2) is False
+            finally:
+                repository.release_session.set()
+                logout_thread.join(timeout=5)
+                command_thread.join(timeout=5)
+
+            assert not command_thread.is_alive() and not logout_thread.is_alive()
+            assert logout_done.is_set() and command_done.is_set()
+            assert errors == [SessionRejected]
+            with psycopg.connect(DATABASE_URL) as connection:
+                session_row = connection.execute(
+                    "SELECT revoked_at FROM operator_sessions WHERE session_digest=%s",
+                    (token_digest(raw_session),),
+                ).fetchone()
+                csrf_rows = dict(
+                    connection.execute(
+                        "SELECT csrf_token_digest,consumed_at FROM session_csrf_tokens "
+                        "WHERE csrf_token_digest IN (%s,%s)",
+                        (token_digest(command_csrf), token_digest(logout_csrf)),
+                    ).fetchall()
+                )
+            assert session_row is not None and session_row[0] == clock[0]
+            assert csrf_rows[token_digest(logout_csrf)] == clock[0]
             assert csrf_rows[token_digest(command_csrf)] is None
+
+            raw_session = security.login(
+                "postgres-command-race-password",
+                "https://localhost:3443",
+            )
+            rollback_csrf = security.issue_csrf(raw_session)
+            session_digest = token_digest(raw_session)
+            with psycopg.connect(DATABASE_URL) as connection:
+                before_failure = connection.execute(
+                    "SELECT last_seen_at,idle_expires_at,revoked_at FROM operator_sessions "
+                    "WHERE session_digest=%s",
+                    (session_digest,),
+                ).fetchone()
+            clock[0] += timedelta(minutes=1)
+            repository.fail_before_session_update = True
+            with pytest.raises(RuntimeError, match="INJECTED_SESSION_UPDATE_FAILURE"):
+                security.consume_command_guard(
+                    raw_session,
+                    rollback_csrf,
+                    "https://localhost:3443",
+                )
+            repository.fail_before_session_update = False
+            with psycopg.connect(DATABASE_URL) as connection:
+                assert (
+                    connection.execute(
+                        "SELECT last_seen_at,idle_expires_at,revoked_at FROM operator_sessions "
+                        "WHERE session_digest=%s",
+                        (session_digest,),
+                    ).fetchone()
+                    == before_failure
+                )
+                assert connection.execute(
+                    "SELECT consumed_at FROM session_csrf_tokens WHERE csrf_token_digest=%s",
+                    (token_digest(rollback_csrf),),
+                ).fetchone() == (None,)
+
+            with pytest.raises(CommandGuardRejected):
+                security.consume_command_guard(
+                    raw_session,
+                    "unknown-csrf",
+                    "https://localhost:3443",
+                )
+            with psycopg.connect(DATABASE_URL) as connection:
+                assert (
+                    connection.execute(
+                        "SELECT last_seen_at,idle_expires_at,revoked_at FROM operator_sessions "
+                        "WHERE session_digest=%s",
+                        (session_digest,),
+                    ).fetchone()
+                    == before_failure
+                )
+
+            security.consume_command_guard(
+                raw_session,
+                rollback_csrf,
+                "https://localhost:3443",
+            )
+            with psycopg.connect(DATABASE_URL) as connection:
+                after_success = connection.execute(
+                    "SELECT last_seen_at,idle_expires_at,revoked_at FROM operator_sessions "
+                    "WHERE session_digest=%s",
+                    (session_digest,),
+                ).fetchone()
+            clock[0] += timedelta(minutes=1)
+            with pytest.raises(CommandGuardRejected):
+                security.consume_command_guard(
+                    raw_session,
+                    rollback_csrf,
+                    "https://localhost:3443",
+                )
+            with psycopg.connect(DATABASE_URL) as connection:
+                assert (
+                    connection.execute(
+                        "SELECT last_seen_at,idle_expires_at,revoked_at FROM operator_sessions "
+                        "WHERE session_digest=%s",
+                        (session_digest,),
+                    ).fetchone()
+                    == after_success
+                )
         finally:
             run("docker", "compose", "down", "-v")

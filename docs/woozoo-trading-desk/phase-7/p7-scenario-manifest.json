@@ -235,8 +235,9 @@
         "tests/unit/test_trading_room_security.py::test_auth_001_session_rotation_csrf_one_time_and_absolute_expiry",
         "tests/unit/test_trading_room_security.py::test_auth_002_foreign_or_missing_origin_has_effect_zero",
         "tests/unit/test_trading_room_security.py::test_logout_revokes_session_and_consumes_csrf",
-        "tests/unit/test_trading_room_security.py::test_in_memory_logout_wins_before_a_waiting_command_guard_atomically",
-        "tests/integration/test_trading_room_postgres_authority.py::test_postgres_logout_wins_before_a_waiting_command_guard_atomically",
+        "tests/unit/test_trading_room_security.py::test_in_memory_invalid_or_replayed_csrf_does_not_touch_session",
+        "tests/unit/test_trading_room_security.py::test_in_memory_command_guard_and_logout_serialize_in_both_orders",
+        "tests/integration/test_trading_room_postgres_authority.py::test_postgres_command_guard_and_logout_serialize_and_roll_back",
         "tests/contract/test_phase7_trading_contract.py::test_phase7_approval_chain_is_closed_hash_bound_and_nonce_distinct",
         "tests/property/test_trading_room_properties.py::test_phase7_preview_hash_is_mutation_sensitive_and_notional_is_policy_capped",
         "tests/failure/test_trading_room_authorization_failures.py::test_auth_002_stale_state_before_human_decision_has_zero_order_effect",
@@ -245,8 +246,8 @@
         "tests/integration/test_trading_room_command_ports.py::test_malformed_preconditions_have_zero_effect_and_do_not_consume_csrf"
       ],
       "source_sha256": [
-        "c2abd3580db92b2cd10772415fd5f9707b3066a30f179ff16fb2d53242091003",
-        "c1361cd9f1389b81f11aaa763a76a0017f25bb47acbdb641c13325e3fa48bd56",
+        "d477334cd1b479a723175d21192f993ad180858766ef0e1dcf7599a6530b64df",
+        "f4ddb1a8cb9f835f043ce03d2a0e2b51c97e16c336978a68225f02541e53e042",
         "1e6f45a5fc3c66fc4367eced009f53a2012dd624da0f4a71780e6dac1336a694",
         "799fbd11362ba754a2a385d84d01f0ac4a37ed283de66553be5876e3524d69c3",
         "9d5d32d65c8bf17db096b4ecd718969c96b4be5f613db594f8021b7ff2325abc",
