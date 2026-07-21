@@ -1212,10 +1212,12 @@ const actions = {
       "tests/integration/test_phase7_paper_first_attempt_authority.py::test_paper_lock_wait_crossing_expiry_uses_post_lock_wall_clock",
       "tests/integration/test_phase7_paper_first_attempt_authority.py::test_market_authority_lock_wait_crossing_expiry_uses_post_lock_wall_clock",
       "tests/integration/test_phase7_paper_first_attempt_authority.py::test_newer_book_commit_while_verifier_waits_blocks_stale_first_attempt",
+      "tests/integration/test_phase7_paper_first_attempt_authority.py::test_quality_writer_and_book_verifier_share_one_lock_order_without_healthy_gap",
       "tests/integration/test_phase7_paper_first_attempt_authority.py::test_expired_and_revoked_authorization_uses_expiry_precedence",
       "tests/integration/test_phase7_paper_first_attempt_authority.py::test_revoked_and_newer_denied_risk_uses_risk_precedence",
       "tests/integration/test_phase7_paper_first_attempt_authority.py::test_kill_and_expired_authorization_uses_kill_precedence_and_drains",
       "tests/integration/test_trading_room_migration_contract.py::test_approval_sql_authority_requires_allowed_risk_and_rechecks_worker_atomically",
+      "tests/integration/test_trading_room_migration_contract.py::test_market_quality_writer_matches_the_phase7_authority_lock_and_failure_contract",
       "tests/integration/test_phase7_paper_first_attempt_authority.py::test_approval_rejects_checkpoint_that_predates_a_paper_effect",
       "tests/integration/test_phase7_paper_first_attempt_authority.py::test_kill_first_attempt_stays_blocked_after_recovery_and_retry",
       "tests/integration/test_phase7_paper_first_attempt_authority.py::test_missing_reconciliation_consumes_authorization_without_financial_effects",
@@ -1245,10 +1247,13 @@ const actions = {
     ]);
     await dataScenario("failure", "DATA-006", [
       "tests/failure/test_market_data_failures.py::test_data_006_raw_append_failure_has_no_normalized_effect",
+      "tests/failure/test_market_data_failures.py::test_data_006_quality_append_failure_aborts_instead_of_leaving_a_healthy_gap",
+      "tests/unit/test_market_data_pipeline.py::test_quality_append_failure_is_invalid_and_propagates_to_stop_the_collector",
       "tests/unit/test_restart_recovery.py::test_restart_bootstraps_durable_state_and_recovers_pending_raw_once",
       "tests/integration/test_platform_infrastructure.py::test_market_raw_and_outbox_are_one_transaction",
       "tests/integration/test_platform_infrastructure.py::test_normalized_and_outbox_are_one_transaction",
       "tests/integration/test_platform_infrastructure.py::test_quality_and_outbox_are_one_transaction",
+      "tests/integration/test_platform_infrastructure.py::test_quality_writer_retries_only_bounded_transaction_conflicts",
       "tests/integration/test_platform_infrastructure.py::test_postgres_restart_recovers_pending_raw_and_preserves_trade_continuity",
       "tests/integration/test_platform_infrastructure.py::test_postgres_restart_restores_closed_kline_grid_continuity",
     ]);

@@ -17,6 +17,8 @@ from risk_engine import KillActivation, PostgresKillSwitch
 
 ROOT = Path(__file__).parents[2]
 MIGRATION = ROOT / "db/migrations/versions/20260720_0007_trading_room.py"
+MARKET_PERSISTENCE = ROOT / "services/market-data-worker/src/market_data_worker/persistence.py"
+MARKET_PIPELINE = ROOT / "services/market-data-worker/src/market_data_worker/pipeline.py"
 DATABASE_URL = "postgresql://postgres@127.0.0.1:5433/woozoo"
 PAPER_WRITER_URL = "postgresql://woozoo_paper_engine@127.0.0.1:5433/woozoo"
 PAPER_ACCOUNT_ID = "c71f45a74649ecfbc2f897ed1ced77309accd4dbbc069c9cd425754204c09b3e"
@@ -174,6 +176,44 @@ def test_phase7_migration_closes_auth_approval_authorization_and_recovery_bounda
     assert "GRANT INSERT ON paper_execution_authorizations TO woozoo_paper_engine" not in source
     assert "candidate.symbol=paper_order.symbol AND candidate.side=paper_order.side" in source
     assert 'op.execute(f"REVOKE ALL ON {view} FROM PUBLIC")' in source
+
+
+def test_market_quality_writer_matches_the_phase7_authority_lock_and_failure_contract() -> None:
+    persistence = MARKET_PERSISTENCE.read_text("utf-8")
+    quality_writer = persistence.split("    def append_quality(self, event: QualityEvent)", 1)[1]
+    writer_fence = "pg_advisory_xact_lock(hashtextextended('market-authority-v1',0))"
+    normalized_fence = "LOCK TABLE normalized_market_events IN ROW EXCLUSIVE MODE"
+    watermark_lock = "FROM stream_watermark_projections\n                    WHERE"
+    market_lock = "SELECT 1 FROM market_status_projections WHERE symbol=%s FOR UPDATE"
+    collector_lock = "SELECT 1 FROM collector_sessions WHERE id=%s FOR UPDATE"
+
+    assert quality_writer.index(writer_fence) < quality_writer.index(normalized_fence)
+    assert quality_writer.index(normalized_fence) < quality_writer.index(watermark_lock)
+    assert quality_writer.index(watermark_lock) < quality_writer.index(market_lock)
+    assert quality_writer.index(market_lock) < quality_writer.index(collector_lock)
+    assert quality_writer.index(collector_lock) < quality_writer.index("latest_session_id")
+    assert "ORDER BY session.started_at DESC, session.id DESC" in quality_writer
+    assert "ORDER BY started_at DESC, id DESC" in quality_writer
+
+    session_writer = persistence.split("    def create_session(", 1)[1].split(
+        "    def append_raw(", 1
+    )[0]
+    assert session_writer.index(writer_fence) < session_writer.index(normalized_fence)
+    assert session_writer.index(normalized_fence) < session_writer.index(
+        "INSERT INTO collector_sessions"
+    )
+
+    normalized_writer = persistence.split("    def append_normalized(", 1)[1].split(
+        "    def append_quality(", 1
+    )[0]
+    assert normalized_writer.index(writer_fence) < normalized_writer.index(
+        "INSERT INTO normalized_market_events"
+    )
+
+    pipeline = MARKET_PIPELINE.read_text("utf-8")
+    assert "class QualityPersistenceError(RuntimeError)" in pipeline
+    assert "raise QualityPersistenceError(" in pipeline
+    assert "collector continuation is unsafe" in pipeline
 
 
 def test_approval_sql_authority_requires_allowed_risk_and_rechecks_worker_atomically() -> None:

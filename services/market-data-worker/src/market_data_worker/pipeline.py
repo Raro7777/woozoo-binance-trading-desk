@@ -31,6 +31,10 @@ class RawDedupeConflict(RuntimeError):
     """The same source identity was observed with different immutable bytes."""
 
 
+class QualityPersistenceError(RuntimeError):
+    """A fail-closed quality transition could not be made durable."""
+
+
 class InMemoryMarketStore:
     def __init__(self) -> None:
         self.raw_events: list[RawMarketEvent] = []
@@ -211,9 +215,12 @@ class CollectorPipeline:
         self.quality_events.append(event)
         try:
             self.store.append_quality(event)
-        except Exception:
+        except Exception as error:
             self._stream_quality[stream] = (QualityStatus.INVALID, "quality_append_failed")
             self._refresh_state()
+            raise QualityPersistenceError(
+                "quality persistence failed; collector continuation is unsafe"
+            ) from error
 
     def ingest(
         self,

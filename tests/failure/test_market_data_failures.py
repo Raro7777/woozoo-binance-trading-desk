@@ -3,8 +3,13 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 from market_data_worker.failures import RateLimitGuard, ReconnectPolicy
-from market_data_worker.pipeline import CollectorPipeline, InMemoryMarketStore
+from market_data_worker.pipeline import (
+    CollectorPipeline,
+    InMemoryMarketStore,
+    QualityPersistenceError,
+)
 from market_data_worker.types import QualityStatus
+import pytest
 
 
 SESSION_ID = "018f7000-0000-7000-8000-000000000001"
@@ -14,6 +19,11 @@ NOW = datetime(2026, 7, 19, tzinfo=UTC)
 class FailingRawStore(InMemoryMarketStore):
     def append_raw(self, event: object) -> bool:
         raise OSError("injected durable append failure")
+
+
+class FailingRawAndQualityStore(FailingRawStore):
+    def append_quality(self, event: object) -> None:
+        raise OSError("injected durable quality failure")
 
 
 def test_data_003_shutdown_is_control_only_and_reconnect_is_bounded() -> None:
@@ -90,3 +100,30 @@ def test_data_006_raw_append_failure_has_no_normalized_effect() -> None:
     assert store.normalized_events == []
     assert pipeline.state.status is QualityStatus.INVALID
     assert store.quality_events[-1].raw_event_id is None
+
+
+def test_data_006_quality_append_failure_aborts_instead_of_leaving_a_healthy_gap() -> None:
+    store = FailingRawAndQualityStore()
+    pipeline = CollectorPipeline(store)
+
+    with pytest.raises(QualityPersistenceError, match="collector continuation is unsafe"):
+        pipeline.ingest(
+            SESSION_ID,
+            "btcusdt@trade",
+            {
+                "e": "trade",
+                "E": 1784419200000,
+                "s": "BTCUSDT",
+                "t": 1,
+                "p": "60000.1",
+                "q": "0.01",
+                "T": 1784419200000,
+                "m": False,
+                "M": True,
+            },
+            NOW,
+        )
+
+    assert pipeline.state.status is QualityStatus.INVALID
+    assert pipeline.state.reasons == ["quality_append_failed"]
+    assert store.normalized_events == []

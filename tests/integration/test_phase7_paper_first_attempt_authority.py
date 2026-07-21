@@ -29,6 +29,8 @@ from agent_orchestrator import (
     MockLlmProvider,
     bind_paper_risk_input,
 )
+from market_data_worker.persistence import PostgresMarketStore
+from market_data_worker.types import QualityEvent, QualityStatus
 from docker_infrastructure_lock import docker_infrastructure_lock
 from control_api.app import create_app
 from control_api.command_ports import PostgresRiskCommandPort
@@ -65,6 +67,7 @@ DATABASE_URL = "postgresql://postgres@127.0.0.1:5433/woozoo"
 CONTROL_URL = "postgresql://woozoo_control_api@127.0.0.1:5433/woozoo"
 RISK_WRITER_URL = "postgresql://woozoo_risk_engine@127.0.0.1:5433/woozoo"
 PAPER_WRITER_URL = "postgresql://woozoo_paper_engine@127.0.0.1:5433/woozoo"
+MARKET_WRITER_URL = "postgresql://woozoo_market_writer@127.0.0.1:5433/woozoo"
 ACCOUNT_ID = "c71f45a74649ecfbc2f897ed1ced77309accd4dbbc069c9cd425754204c09b3e"
 ENVIRONMENT = {"TRADING_MODE": "paper", "DATABASE_URL": DATABASE_URL}
 ORIGIN = "https://localhost:3443"
@@ -1640,6 +1643,125 @@ def test_newer_book_commit_while_verifier_waits_blocks_stale_first_attempt(
             (prior_book[0], newer_event_id),
         ).fetchone()
     assert authority == (False, True)
+
+
+def test_quality_writer_and_book_verifier_share_one_lock_order_without_healthy_gap(
+    postgres: None,
+) -> None:
+    authorization_id, _ = _seed_authorization(
+        "quality-writer-verifier-order", healthy_reconciliation=True
+    )
+    session_id = "00000000-0000-7000-8000-000000000777"
+    stream = "btcusdt@bookTicker"
+    quality_application = "phase7-quality-writer-lock-order"
+    verifier_application = "phase7-quality-verifier-lock-order"
+    quality_store = PostgresMarketStore(
+        f"{MARKET_WRITER_URL}?application_name={quality_application}"
+    )
+    paper_store = PostgresPaperStore(f"{PAPER_WRITER_URL}?application_name={verifier_application}")
+    quality_started = Event()
+    verifier_started = Event()
+
+    with psycopg.connect(DATABASE_URL) as connection:
+        selected_book = connection.execute(
+            "SELECT id FROM normalized_market_events "
+            "WHERE symbol='BTCUSDT' AND event_type='book_ticker' "
+            "ORDER BY event_time DESC,received_at DESC,id DESC LIMIT 1"
+        ).fetchone()
+    assert selected_book is not None
+
+    def append_invalid_quality() -> None:
+        quality_started.set()
+        quality_store.append_quality(
+            QualityEvent(
+                QualityStatus.INVALID,
+                "forced_quality_writer_failure",
+                stream,
+                datetime.now(UTC),
+                None,
+            )
+        )
+
+    def attempt_while_quality_writer_waits() -> CommitResult:
+        verifier_started.set()
+        return paper_store.attempt_phase7_authorization(authorization_id)
+
+    def wait_for_lock(application_name: str, future: object) -> None:
+        with psycopg.connect(DATABASE_URL, autocommit=True) as observer:
+            deadline = time.monotonic() + 20
+            while time.monotonic() < deadline:
+                if getattr(future, "done")():
+                    getattr(future, "result")()
+                    pytest.fail(f"{application_name} completed before the forced lock wait")
+                waiting = observer.execute(
+                    "SELECT wait_event_type FROM pg_stat_activity "
+                    "WHERE application_name=%s AND state='active'",
+                    (application_name,),
+                ).fetchone()
+                if waiting == ("Lock",):
+                    return
+                time.sleep(0.02)
+        pytest.fail(f"{application_name} did not reach the forced lock wait")
+
+    blocker = psycopg.connect(DATABASE_URL)
+    executor = ThreadPoolExecutor(max_workers=2)
+    quality_future = None
+    verifier_future = None
+    try:
+        locked = blocker.execute(
+            "SELECT id::text FROM collector_sessions WHERE id=%s FOR UPDATE",
+            (session_id,),
+        ).fetchone()
+        assert locked == (session_id,)
+        quality_future = executor.submit(append_invalid_quality)
+        assert quality_started.wait(timeout=5)
+        wait_for_lock(quality_application, quality_future)
+
+        verifier_future = executor.submit(attempt_while_quality_writer_waits)
+        assert verifier_started.wait(timeout=5)
+        wait_for_lock(verifier_application, verifier_future)
+    finally:
+        blocker.commit()
+        blocker.close()
+
+    assert quality_future is not None and verifier_future is not None
+    try:
+        quality_future.result(timeout=10)
+        result = verifier_future.result(timeout=10)
+    finally:
+        executor.shutdown(wait=True, cancel_futures=True)
+
+    assert result.response == {
+        "result": "BLOCKED",
+        "authorization_id": authorization_id,
+        "reason_code": "DATA_INVALID",
+    }
+    _assert_composite_block_is_terminal(authorization_id, "DATA_INVALID")
+    with psycopg.connect(DATABASE_URL) as connection:
+        assert connection.execute(
+            "SELECT paper_recorded_book_market_is_current_v1(%s)",
+            (selected_book[0],),
+        ).fetchone() == (False,)
+        assert connection.execute(
+            "SELECT quality_status FROM stream_watermark_projections "
+            "WHERE collector_session_id=%s AND stream=%s",
+            (session_id, stream),
+        ).fetchone() == ("invalid",)
+        assert connection.execute(
+            "SELECT quality_status FROM market_status_projections WHERE symbol='BTCUSDT'"
+        ).fetchone() == ("invalid",)
+        assert connection.execute(
+            "SELECT status FROM collector_sessions WHERE id=%s", (session_id,)
+        ).fetchone() == ("invalid",)
+        assert connection.execute(
+            "SELECT "
+            "(SELECT count(*) FROM paper_orders WHERE authorization_id=%s),"
+            "(SELECT count(*) FROM paper_fills),"
+            "(SELECT COALESCE(sum(held),0) FROM paper_asset_balances WHERE account_id=%s),"
+            "(SELECT count(*) FROM paper_ledger_transactions "
+            " WHERE account_id=%s AND business_event_type<>'paper.seed')",
+            (authorization_id, ACCOUNT_ID, ACCOUNT_ID),
+        ).fetchone() == (0, 0, Decimal(0), 0)
 
 
 def test_expired_and_revoked_authorization_uses_expiry_precedence(postgres: None) -> None:

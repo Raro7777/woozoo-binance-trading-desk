@@ -3,8 +3,14 @@ from __future__ import annotations
 from datetime import UTC, datetime
 import json
 
+import pytest
+
 from market_data_worker.normalization import make_raw_event
-from market_data_worker.pipeline import CollectorPipeline, InMemoryMarketStore
+from market_data_worker.pipeline import (
+    CollectorPipeline,
+    InMemoryMarketStore,
+    QualityPersistenceError,
+)
 from market_data_worker.types import QualityStatus
 
 
@@ -188,3 +194,17 @@ def test_unresolved_gap_cannot_be_healed_by_an_unrelated_stream() -> None:
 
     assert pipeline.state.status is QualityStatus.STALE
     assert "sequence_gap" in pipeline.state.reasons
+
+
+def test_quality_append_failure_is_invalid_and_propagates_to_stop_the_collector() -> None:
+    class FailingQualityStore(InMemoryMarketStore):
+        def append_quality(self, event: object) -> None:
+            raise OSError("injected quality persistence failure")
+
+    pipeline = CollectorPipeline(FailingQualityStore())
+
+    with pytest.raises(QualityPersistenceError, match="collector continuation is unsafe"):
+        pipeline.ingest(SESSION_ID, "btcusdt@trade", {"invalid": True}, received_at())
+
+    assert pipeline.state.status is QualityStatus.INVALID
+    assert pipeline.state.reasons == ["quality_append_failed"]

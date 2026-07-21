@@ -87,11 +87,20 @@ def _append_outbox(
 
 
 class PostgresMarketStore:
+    _QUALITY_WRITE_ATTEMPTS = 3
+    _QUALITY_RETRYABLE_SQLSTATES = frozenset({"40P01", "40001"})
+
     def __init__(self, database_url: str) -> None:
         self._database_url = database_url
 
     def create_session(self, session_id: str, connection_id: str, started_at: datetime) -> None:
         with psycopg.connect(self._database_url) as connection:
+            # Serialize market-authority writers first; the following table lock
+            # then conflicts with the Phase 7 verifier's normalized-table SHARE.
+            connection.execute(
+                "SELECT pg_advisory_xact_lock(hashtextextended('market-authority-v1',0))"
+            )
+            connection.execute("LOCK TABLE normalized_market_events IN ROW EXCLUSIVE MODE")
             connection.execute(
                 """
                 INSERT INTO collector_sessions
@@ -185,6 +194,9 @@ class PostgresMarketStore:
         }
         price = event.payload.get("price") or event.payload.get("close")
         with psycopg.connect(self._database_url) as connection:
+            connection.execute(
+                "SELECT pg_advisory_xact_lock(hashtextextended('market-authority-v1',0))"
+            )
             connection.execute(
                 """
                 INSERT INTO normalized_market_events
@@ -304,47 +316,101 @@ class PostgresMarketStore:
             )
 
     def append_quality(self, event: QualityEvent) -> None:
+        for attempt in range(self._QUALITY_WRITE_ATTEMPTS):
+            try:
+                self._append_quality_once(event)
+                return
+            except psycopg.Error as error:
+                retryable = error.sqlstate in self._QUALITY_RETRYABLE_SQLSTATES
+                if not retryable or attempt + 1 == self._QUALITY_WRITE_ATTEMPTS:
+                    raise
+
+    def _append_quality_once(self, event: QualityEvent) -> None:
         identity = json.dumps(
             [event.scope, event.reason, event.observed_at.isoformat(), event.raw_event_id],
             separators=(",", ":"),
         )
         event_id = hashlib.sha256(identity.encode("utf-8")).hexdigest()
         with psycopg.connect(self._database_url) as connection:
+            # The writer role cannot take SHARE without broader table privilege.
+            # A writer-only advisory fence serializes normalized/session/quality
+            # writers; ROW EXCLUSIVE then conflicts with the verifier's SHARE.
+            connection.execute(
+                "SELECT pg_advisory_xact_lock(hashtextextended('market-authority-v1',0))"
+            )
+            connection.execute("LOCK TABLE normalized_market_events IN ROW EXCLUSIVE MODE")
             previous_status = "degraded"
             correlation_id = event.scope
+            collector_session_id: str | None = None
+            stream = event.scope
+            symbol: str | None = None
             if event.raw_event_id is not None:
-                previous = connection.execute(
+                source = connection.execute(
                     """
-                    SELECT COALESCE(watermark.quality_status, 'degraded'), session.id::text
+                    SELECT raw.collector_session_id::text, raw.stream, raw.symbol
                     FROM raw_market_events AS raw
-                    JOIN collector_sessions AS session ON session.id=raw.collector_session_id
-                    LEFT JOIN stream_watermark_projections AS watermark
-                      ON watermark.collector_session_id=session.id
-                     AND watermark.stream=raw.stream
                     WHERE raw.id=%s
                     """,
                     (event.raw_event_id,),
                 ).fetchone()
-                if previous is not None:
-                    previous_status = str(previous[0])
-                    correlation_id = str(previous[1])
+                if source is not None:
+                    collector_session_id = str(source[0])
+                    stream = str(source[1])
+                    symbol = None if source[2] is None else str(source[2])
+                    correlation_id = collector_session_id
             else:
-                previous = connection.execute(
+                latest = connection.execute(
                     """
-                    SELECT COALESCE(watermark.quality_status, 'degraded'), session.id::text
+                    SELECT session.id::text
                     FROM collector_sessions AS session
-                    LEFT JOIN stream_watermark_projections AS watermark
-                      ON watermark.collector_session_id=session.id
-                     AND watermark.stream=%s
                     WHERE session.source='binance_spot_public'
-                    ORDER BY session.started_at DESC
+                    ORDER BY session.started_at DESC, session.id DESC
                     LIMIT 1
                     """,
-                    (event.scope,),
                 ).fetchone()
-                if previous is not None:
-                    previous_status = str(previous[0])
-                    correlation_id = str(previous[1])
+                if latest is not None:
+                    collector_session_id = str(latest[0])
+                    correlation_id = collector_session_id
+                candidate_symbol = event.scope.partition("@")[0].upper()
+                if candidate_symbol in {"BTCUSDT", "ETHUSDT"}:
+                    symbol = candidate_symbol
+
+            if collector_session_id is not None:
+                watermark = connection.execute(
+                    """
+                    SELECT quality_status
+                    FROM stream_watermark_projections
+                    WHERE collector_session_id=%s AND stream=%s
+                    FOR UPDATE
+                    """,
+                    (collector_session_id, stream),
+                ).fetchone()
+                if watermark is not None:
+                    previous_status = str(watermark[0])
+            if symbol is not None:
+                connection.execute(
+                    "SELECT 1 FROM market_status_projections WHERE symbol=%s FOR UPDATE",
+                    (symbol,),
+                ).fetchone()
+            if collector_session_id is not None:
+                connection.execute(
+                    "SELECT 1 FROM collector_sessions WHERE id=%s FOR UPDATE",
+                    (collector_session_id,),
+                ).fetchone()
+                latest_session = connection.execute(
+                    """
+                    SELECT id::text
+                    FROM collector_sessions
+                    WHERE source='binance_spot_public'
+                    ORDER BY started_at DESC, id DESC
+                    LIMIT 1
+                    """
+                ).fetchone()
+                latest_session_id = None if latest_session is None else str(latest_session[0])
+                authority_bound = latest_session_id == collector_session_id
+            else:
+                authority_bound = False
+
             connection.execute(
                 """
                 INSERT INTO data_quality_events
@@ -361,82 +427,37 @@ class PostgresMarketStore:
                     event.raw_event_id,
                 ),
             )
-            if event.raw_event_id is not None:
-                connection.execute(
-                    """
-                    UPDATE stream_watermark_projections AS watermark
-                    SET quality_status=%s
-                    FROM raw_market_events AS raw
-                    WHERE raw.id=%s
-                      AND watermark.collector_session_id=raw.collector_session_id
-                      AND watermark.stream=raw.stream
-                    """,
-                    (event.status.value, event.raw_event_id),
-                )
-                connection.execute(
-                    """
-                    UPDATE market_status_projections AS projection
-                    SET quality_status=%s, quality_reasons=%s
-                    FROM raw_market_events AS raw
-                    WHERE raw.id=%s
-                      AND raw.symbol=projection.symbol
-                      AND projection.received_at <= %s
-                    """,
-                    (
-                        event.status.value,
-                        Jsonb([event.reason]),
-                        event.raw_event_id,
-                        event.observed_at,
-                    ),
-                )
-                connection.execute(
-                    """
-                    UPDATE collector_sessions AS session
-                    SET status=%s
-                    FROM raw_market_events AS raw
-                    WHERE raw.id=%s AND raw.collector_session_id=session.id
-                    """,
-                    (event.status.value, event.raw_event_id),
-                )
-            else:
-                symbol = event.scope.partition("@")[0].upper()
-                if symbol in {"BTCUSDT", "ETHUSDT"}:
-                    connection.execute(
-                        """
-                        UPDATE market_status_projections
-                        SET quality_status=%s, quality_reasons=%s
-                        WHERE symbol=%s AND received_at <= %s
-                        """,
-                        (
-                            event.status.value,
-                            Jsonb([event.reason]),
-                            symbol,
-                            event.observed_at,
-                        ),
-                    )
-                connection.execute(
-                    """
-                    UPDATE collector_sessions
-                    SET status=%s
-                    WHERE id=(
-                        SELECT id FROM collector_sessions
-                        WHERE source='binance_spot_public'
-                        ORDER BY started_at DESC LIMIT 1
-                    )
-                    """,
-                    (event.status.value,),
-                )
+            if authority_bound:
                 connection.execute(
                     """
                     UPDATE stream_watermark_projections
                     SET quality_status=%s
-                    WHERE collector_session_id=(
-                        SELECT id FROM collector_sessions
-                        WHERE source='binance_spot_public'
-                        ORDER BY started_at DESC LIMIT 1
-                    ) AND stream=%s
+                    WHERE collector_session_id=%s AND stream=%s
                     """,
-                    (event.status.value, event.scope),
+                    (event.status.value, collector_session_id, stream),
+                )
+            if authority_bound and symbol is not None:
+                connection.execute(
+                    """
+                    UPDATE market_status_projections
+                    SET quality_status=%s, quality_reasons=%s
+                    WHERE symbol=%s AND received_at <= %s
+                    """,
+                    (
+                        event.status.value,
+                        Jsonb([event.reason]),
+                        symbol,
+                        event.observed_at,
+                    ),
+                )
+            if authority_bound:
+                connection.execute(
+                    """
+                    UPDATE collector_sessions
+                    SET status=%s
+                    WHERE id=%s
+                    """,
+                    (event.status.value, collector_session_id),
                 )
             _append_outbox(
                 connection,

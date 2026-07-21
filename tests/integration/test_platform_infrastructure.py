@@ -29,7 +29,7 @@ from market_data_worker.capabilities import KlineInterval, PublicRestRequest, Re
 from market_data_worker.persistence import PostgresMarketStore
 from market_data_worker.normalization import make_raw_event, normalize
 import market_data_worker.persistence as market_persistence
-from market_data_worker.pipeline import CollectorPipeline
+from market_data_worker.pipeline import CollectorPipeline, QualityPersistenceError
 from market_data_worker.recovery import PostgresRestartRepository, RestartCoordinator
 from market_data_worker.replay import load_recorded_events
 from market_data_worker.rest_collection import PublicRestCollector
@@ -717,6 +717,79 @@ def test_quality_and_outbox_are_one_transaction(monkeypatch: pytest.MonkeyPatch)
         assert connection.execute(
             "SELECT quality_status FROM market_status_projections WHERE symbol='BTCUSDT'"
         ).fetchone() == ("healthy",)
+
+    pipeline = CollectorPipeline(store)
+    with pytest.raises(QualityPersistenceError, match="collector continuation is unsafe"):
+        pipeline.mark_global_failure(
+            QualityStatus.INVALID,
+            "injected_quality_failure",
+            observed_at + timedelta(seconds=2),
+        )
+    assert pipeline.state.status is QualityStatus.INVALID
+    assert pipeline.state.reasons == ["quality_append_failed"]
+
+
+def test_quality_writer_retries_only_bounded_transaction_conflicts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = PostgresMarketStore(MARKET_WRITER_URL)
+    attempts: list[str] = []
+
+    def fail_twice_then_commit(event: QualityEvent) -> None:
+        attempts.append(event.reason)
+        if len(attempts) < 3:
+            raise psycopg.errors.DeadlockDetected("injected retryable conflict")
+
+    monkeypatch.setattr(store, "_append_quality_once", fail_twice_then_commit)
+    store.append_quality(
+        QualityEvent(
+            QualityStatus.INVALID,
+            "bounded_quality_retry",
+            "btcusdt@bookTicker",
+            datetime.now(tz=UTC),
+            None,
+        )
+    )
+
+    assert attempts == ["bounded_quality_retry"] * 3
+
+    exhausted_attempts: list[str] = []
+
+    def always_conflict(event: QualityEvent) -> None:
+        exhausted_attempts.append(event.reason)
+        raise psycopg.errors.SerializationFailure("injected exhausted conflict")
+
+    monkeypatch.setattr(store, "_append_quality_once", always_conflict)
+    with pytest.raises(psycopg.errors.SerializationFailure, match="exhausted conflict"):
+        store.append_quality(
+            QualityEvent(
+                QualityStatus.INVALID,
+                "exhausted_quality_retry",
+                "btcusdt@bookTicker",
+                datetime.now(tz=UTC),
+                None,
+            )
+        )
+    assert exhausted_attempts == ["exhausted_quality_retry"] * 3
+
+    nonretryable_attempts: list[str] = []
+
+    def fail_without_retry(event: QualityEvent) -> None:
+        nonretryable_attempts.append(event.reason)
+        raise psycopg.errors.InsufficientPrivilege("injected nonretryable failure")
+
+    monkeypatch.setattr(store, "_append_quality_once", fail_without_retry)
+    with pytest.raises(psycopg.errors.InsufficientPrivilege, match="nonretryable failure"):
+        store.append_quality(
+            QualityEvent(
+                QualityStatus.INVALID,
+                "nonretryable_quality_failure",
+                "btcusdt@bookTicker",
+                datetime.now(tz=UTC),
+                None,
+            )
+        )
+    assert nonretryable_attempts == ["nonretryable_quality_failure"]
 
 
 def test_global_disconnect_durably_downgrades_the_status_projection() -> None:

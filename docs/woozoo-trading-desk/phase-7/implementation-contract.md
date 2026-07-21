@@ -128,6 +128,21 @@ order/ledger, and outbox timestamps. Success writes receipt, attempt, order,
 holds/ledger and outbox atomically. Guard failure writes a blocked attempt,
 rejected receipt and outbox atomically with no order, hold, fill or ledger effect.
 
+Collector session creation, normalized writes and quality writes first take the
+same transaction-scoped `market-authority-v1` advisory writer fence. Their
+normalized-table `ROW EXCLUSIVE` fence conflicts with the verifier's `SHARE`
+fence without widening the least-privilege market writer grant. A quality write
+then binds one exact collector session and stream, locks watermark, market and
+collector in that order, and rechecks the latest session with the canonical
+`started_at DESC, id DESC` ordering before changing any projection. Consequently
+a rawless quality downgrade cannot expose an intermediate healthy projection or
+form the former market/collector/watermark deadlock with Risk, first attempt,
+recorded-book fill or Kill recovery. Quality events use a deterministic ID;
+only SQLSTATE `40P01` and `40001` are retried, at most three total attempts.
+Any final persistence failure marks the in-process stream invalid and raises a
+fail-stop error instead of allowing the collector to continue on memory-only
+quality state.
+
 The same inbound-less Paper runtime may consume only append-only, healthy Binance
 Spot public `book_ticker` rows received after an order was accepted. It selects
 the canonical order and recorded book in a deterministic sequence, revalidates
