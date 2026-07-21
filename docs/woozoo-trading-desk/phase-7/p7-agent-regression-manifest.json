@@ -123,7 +123,7 @@
       ],
       "source_sha256": [
         "28a5476c1ca12a29135a36316be5a0e4f2fbbcf8f0eb8d192a07ac286640db2d",
-        "97bd9a03fc6cff44a5d6d9845eb5b7d6df5ddbc98b62537ef87c28ea1e2cd2b5",
+        "42ce088642117056c4193f68c447328456c6af9e918a2ab4f91401aa3f4e7b07",
         "13795050779f7c56db07b846b603cd36192b29998f590c03566ec8e24920f8a5"
       ],
       "oracle": "Migration and persistence enforce authoritative snapshot metadata, parent-scoped citations, graph hashes, runtime-role access and ACL-preserving downgrade; full Proposal Evidence reaches only test Risk v2 and HOLD cannot enter Risk."

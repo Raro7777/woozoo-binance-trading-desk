@@ -19,7 +19,7 @@
   "regression_manifests": [
     {
       "path": "docs/woozoo-trading-desk/phase-7/p7-agent-regression-manifest.json",
-      "sha256": "2f2612b50bc03061fd44614fcb14d498ab72d867c5535ad623c2ecdf84346b8d"
+      "sha256": "1a71d33a1db0b6cd076042f7294b7df0c7225213b613bd622c49de3f4f2ab03e"
     },
     {
       "path": "docs/woozoo-trading-desk/phase-7/p7-risk-regression-manifest.json",

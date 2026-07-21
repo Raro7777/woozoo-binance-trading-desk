@@ -37,9 +37,10 @@ from control_api.command_ports import (
 )
 from control_api.trading_room import PostgresTradingRoom
 from docker_infrastructure_lock import docker_infrastructure_lock
+from paper_engine.authorization_worker import PostgresWorkerStateReporter
+from paper_engine.persistence import Phase7AuthorizationWorker, PostgresPaperStore
 from risk_engine import evaluate_risk
 from risk_engine.persistence import PostgresRiskStore
-from paper_engine.persistence import Phase7AuthorizationWorker, PostgresPaperStore
 from test_risk_engine import risk_input
 
 
@@ -47,6 +48,7 @@ ROOT = Path(__file__).parents[2]
 DATABASE_URL = "postgresql://postgres@127.0.0.1:5433/woozoo"
 AGENT_DATABASE_URL = "postgresql://woozoo_agent_orchestrator@127.0.0.1:5433/woozoo"
 RISK_DATABASE_URL = "postgresql://woozoo_risk_engine@127.0.0.1:5433/woozoo"
+PAPER_DATABASE_URL = "postgresql://woozoo_paper_engine@127.0.0.1:5433/woozoo"
 PAPER_ACCOUNT_ID = "c71f45a74649ecfbc2f897ed1ced77309accd4dbbc069c9cd425754204c09b3e"
 ENVIRONMENT = {"DATABASE_URL": DATABASE_URL, "TRADING_MODE": "paper"}
 NOW = "2026-07-20T00:00:00Z"
@@ -761,6 +763,10 @@ def test_phase7_postgres_evaluate_proposal_preserves_canonical_evidence_times() 
                 )
             preview = risk_input["order_preview"]
             assert isinstance(preview, dict)
+            PostgresWorkerStateReporter(
+                PAPER_DATABASE_URL,
+                instance_id="phase7-agent-persistence-approval-worker",
+            ).start()
             approval_parameters = (
                 "phase7-real-approval",
                 "4" * 64,
