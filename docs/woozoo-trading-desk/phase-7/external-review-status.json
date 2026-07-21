@@ -3,11 +3,11 @@
   "phase": 7,
   "status": "external-review-unavailable",
   "runner": "codex",
-  "target_commit": "cacdd0738d4c281dac475b8eb478ddba2b1447c0",
-  "target_tree": "800d2d1d1338b030298218c42377076a95e40778",
+  "target_commit": "c0baf4cedd56818da0cc9d5718950b15eaf48b2b",
+  "target_tree": "6f66d2f761a689ab4ed98924b1485f78f7c25478",
   "prompt_evidence": {
     "path": "_workspace/reviews/p7_mvp_prompt_external.md",
-    "sha256": "7dc72f34a7a114f0b5e9290f3cc7182171cafb0502ab0def9a68dd436d0612b2"
+    "sha256": "501faf5c7a36942ecba23ba22d44fda5535a50624734f1083dd8e358c3a8b916"
   },
   "selected_reviewers": [
     "agy"
@@ -49,5 +49,5 @@
   "same_engine_codex_is_external_pass": false,
   "user_approval_or_transition_authority": false,
   "claude_used": false,
-  "note": "No external PASS was produced. The policy-selected agy route exhausted its permitted attempt and one retry without usable review text. Binary discovery is not a review result. Safety QA and same-engine Codex cross-review remain separate internal evidence and do not satisfy external independence."
+  "note": "No external PASS was produced. The policy-selected agy route exhausted its permitted attempt and one retry without usable review text. Binary discovery is not a review result. Safety QA and same-engine Codex cross-review are separate internal evidence and do not satisfy external independence."
 }

@@ -1,19 +1,19 @@
 {
   "schema_version": 1,
   "phase": 7,
-  "status": "PENDING_FINAL_REVIEW_EVIDENCE",
-  "frozen_code_commit": "cacdd0738d4c281dac475b8eb478ddba2b1447c0",
-  "frozen_code_tree": "800d2d1d1338b030298218c42377076a95e40778",
+  "status": "PENDING_EXACT_SUPPORT_CHECKS",
+  "frozen_code_commit": "c0baf4cedd56818da0cc9d5718950b15eaf48b2b",
+  "frozen_code_tree": "6f66d2f761a689ab4ed98924b1485f78f7c25478",
   "review_evidence_commit": null,
   "branch": "codex/phase-7-trading-room",
   "base": "main",
   "push": {
     "status": "PASS",
     "remote": "origin",
-    "remote_head": "cacdd0738d4c281dac475b8eb478ddba2b1447c0"
+    "remote_head": "c0baf4cedd56818da0cc9d5718950b15eaf48b2b"
   },
   "draft_pr": {
-    "status": "PENDING_FINAL_REVIEW_EVIDENCE",
+    "status": "PENDING_EXACT_SUPPORT_CHECKS",
     "url": "https://github.com/Raro7777/woozoo-binance-trading-desk/pull/8",
     "number": 8,
     "state": "open",
@@ -21,7 +21,7 @@
     "mergeable": true,
     "base": "main",
     "head": "codex/phase-7-trading-room",
-    "verified_head_sha": "cacdd0738d4c281dac475b8eb478ddba2b1447c0",
+    "verified_head_sha": "c0baf4cedd56818da0cc9d5718950b15eaf48b2b",
     "created_at": "2026-07-20T12:42:28Z"
   },
   "verification": {
@@ -30,5 +30,5 @@
     "push_check": "IN_PROGRESS",
     "pull_request_check": "IN_PROGRESS"
   },
-  "gate_effect": "PENDING. The frozen implementation is pushed and PR #8 remains Draft, but exact-candidate role-separated reviews, their tracked evidence commit, and both exact-head GitHub checks must complete before this gate can become PASS."
+  "gate_effect": "PENDING. The frozen implementation is pushed and PR #8 is an open mergeable Draft. This document and the exact-candidate review records must first be committed, pushed, and pass both exact-head GitHub checks before the Git gate can become PASS."
 }
