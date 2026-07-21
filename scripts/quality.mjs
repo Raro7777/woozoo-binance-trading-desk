@@ -1208,7 +1208,7 @@ const actions = {
       "tests/integration/test_agent_postgres_persistence.py::test_authoritative_risk_context_requires_latest_raw_bound_books",
       "tests/integration/test_phase7_paper_first_attempt_authority.py::test_first_attempt_blocks_normalized_only_newest_books_without_financial_effects",
       "tests/integration/test_phase7_paper_first_attempt_authority.py::test_first_attempt_does_not_fall_back_from_newest_unverified_book",
-      "tests/integration/test_phase7_paper_first_attempt_authority.py::test_account_lock_wait_crossing_expiry_uses_post_lock_wall_clock",
+      "tests/integration/test_phase7_paper_first_attempt_authority.py::test_paper_lock_wait_crossing_expiry_uses_post_lock_wall_clock",
       "tests/integration/test_phase7_paper_first_attempt_authority.py::test_expired_and_revoked_authorization_uses_expiry_precedence",
       "tests/integration/test_phase7_paper_first_attempt_authority.py::test_revoked_and_newer_denied_risk_uses_risk_precedence",
       "tests/integration/test_phase7_paper_first_attempt_authority.py::test_kill_and_expired_authorization_uses_kill_precedence_and_drains",

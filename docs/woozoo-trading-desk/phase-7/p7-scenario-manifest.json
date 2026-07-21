@@ -279,7 +279,7 @@
         "tests/integration/test_agent_postgres_persistence.py::test_authoritative_risk_context_requires_latest_raw_bound_books",
         "tests/integration/test_phase7_paper_first_attempt_authority.py::test_first_attempt_blocks_normalized_only_newest_books_without_financial_effects",
         "tests/integration/test_phase7_paper_first_attempt_authority.py::test_first_attempt_does_not_fall_back_from_newest_unverified_book",
-        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_account_lock_wait_crossing_expiry_uses_post_lock_wall_clock",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_paper_lock_wait_crossing_expiry_uses_post_lock_wall_clock",
         "tests/integration/test_phase7_paper_first_attempt_authority.py::test_expired_and_revoked_authorization_uses_expiry_precedence",
         "tests/integration/test_phase7_paper_first_attempt_authority.py::test_revoked_and_newer_denied_risk_uses_risk_precedence",
         "tests/integration/test_phase7_paper_first_attempt_authority.py::test_kill_and_expired_authorization_uses_kill_precedence_and_drains",
@@ -296,7 +296,7 @@
       ],
       "source_sha256": [
         "9d5d32d65c8bf17db096b4ecd718969c96b4be5f613db594f8021b7ff2325abc",
-        "0fdca606febbd91304a5c90615801312f435eb4a2da333780b0b411a860eaf1d",
+        "b6f15c726ff51b08328383e680119edb614ed89adaf3187f3e3b4d045f5ddca2",
         "d872eb3e9060624ea526d68d5f249fa096d94a285f9e97e24257d54e9465faf4",
         "ecb53c9be2ea559227b7932a164e171e7e86f159b347a852a8a98f601494a59d",
         "5df68171d47cfbf6dc19e8c6672e326380dc7ab60a978905e09941cab81fad42"
@@ -331,7 +331,7 @@
       "source_sha256": [
         "90a31939b5325fb4ec774edd91789ef40b51c70ff35d97206f2393e6f756d3ef",
         "dd85d3264e1a7374d1e34e8f7fde5a083fd8ae115b927d453941c5a4be9942d3",
-        "0fdca606febbd91304a5c90615801312f435eb4a2da333780b0b411a860eaf1d",
+        "b6f15c726ff51b08328383e680119edb614ed89adaf3187f3e3b4d045f5ddca2",
         "07cb535db57cca0e4f13b44a2ad75a2716461abe283517bb6cfe67d0409757c6",
         "5769abf0ed4b9a57c849a168da2536cb6397d2b24dc514d06b8c45e54633c7a8",
         "ecb53c9be2ea559227b7932a164e171e7e86f159b347a852a8a98f601494a59d"
@@ -470,7 +470,7 @@
       "source_sha256": [
         "90a31939b5325fb4ec774edd91789ef40b51c70ff35d97206f2393e6f756d3ef",
         "dd85d3264e1a7374d1e34e8f7fde5a083fd8ae115b927d453941c5a4be9942d3",
-        "0fdca606febbd91304a5c90615801312f435eb4a2da333780b0b411a860eaf1d",
+        "b6f15c726ff51b08328383e680119edb614ed89adaf3187f3e3b4d045f5ddca2",
         "5769abf0ed4b9a57c849a168da2536cb6397d2b24dc514d06b8c45e54633c7a8"
       ],
       "configuration_sources": [

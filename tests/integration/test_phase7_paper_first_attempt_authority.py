@@ -1209,7 +1209,7 @@ def test_first_attempt_does_not_fall_back_from_newest_unverified_book(
     _assert_composite_block_is_terminal(authorization_id, "DATA_INVALID")
 
 
-def test_account_lock_wait_crossing_expiry_uses_post_lock_wall_clock(postgres: None) -> None:
+def test_paper_lock_wait_crossing_expiry_uses_post_lock_wall_clock(postgres: None) -> None:
     authorization_id, _ = _seed_authorization(
         "account-lock-expiry",
         healthy_reconciliation=True,
