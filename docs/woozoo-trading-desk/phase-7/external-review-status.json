@@ -1,35 +1,53 @@
 {
+  "schema_version": 1,
+  "phase": 7,
   "status": "external-review-unavailable",
   "runner": "codex",
+  "target_commit": "8bfc8850b26de83d0162f84c2e03b43de827bae4",
+  "target_tree": "9b12ed46236552516361682ac3222a5682b5ff08",
+  "prompt_evidence": {
+    "path": "_workspace/reviews/p7_mvp_prompt_external.md",
+    "sha256": "4c575e444fbbb4886a369a3de2c5be1637be79c2ab113f490729542fbc30cd75"
+  },
   "selected_reviewers": [
     "agy"
   ],
   "external_gate_satisfied": false,
-  "tool_status": "unavailable-after-recorded-attempts-and-final-inventory-check",
+  "tool_status": "unavailable-after-permitted-attempt-and-one-retry",
   "attempts": [
     {
       "attempt": 1,
       "result": "headless-command-permission-auto-denied",
-      "artifact": "_workspace/reviews/p7_mvp_agy.md"
+      "artifact": "_workspace/reviews/p7_mvp_agy.md",
+      "scope": "pre-freeze capability attempt; no candidate review produced"
     },
     {
       "attempt": 2,
       "result": "timeout-empty-output",
       "timeout_seconds": 600,
-      "artifact": "_workspace/reviews/p7_mvp_agy_retry.md"
+      "artifact": "_workspace/reviews/p7_mvp_agy_retry.md",
+      "scope": "permitted retry; no candidate review produced"
     }
   ],
   "final_inventory_check": {
-    "checked_at": "2026-07-20T23:22:43Z",
+    "checked_at": "2026-07-21T02:03:09Z",
+    "project_selector_result": "EXTERNAL_REVIEWERS: agy",
     "allowed_external_reviewers": [
       "agy",
       "Gemini"
     ],
-    "callable_tools": [],
+    "detected_binaries": [
+      "agy",
+      "gemini"
+    ],
+    "selected_callable_tools": [
+      "agy"
+    ],
+    "usable_review_outputs": [],
     "result": "external-review-unavailable"
   },
   "same_engine_codex_is_external_pass": false,
   "user_approval_or_transition_authority": false,
   "claude_used": false,
-  "note": "No external PASS was produced. Earlier permitted agy attempts failed, and the final callable-tool inventory exposed neither agy nor Gemini. The required unavailability evidence is recorded without treating internal Codex review as external independence."
+  "note": "No external PASS was produced. The policy-selected agy route exhausted its permitted attempt and one retry without usable review text. Binary discovery is not a review result. This exact target is therefore recorded as external-review-unavailable without treating internal Codex review as external independence."
 }
