@@ -6,6 +6,7 @@ import { resolve } from "node:path";
 import test from "node:test";
 
 import { approvalActionIssues, renderedPreviewFields } from "../../apps/trading-room-web/src/lib/approval-preview";
+import { approvalActionAvailability } from "../../apps/trading-room-web/src/components/approval-view";
 import { localizedNarrative } from "../../apps/trading-room-web/src/components/analysis-view";
 import { killSwitchPresentation } from "../../apps/trading-room-web/src/components/operations-console";
 import { diagnosticLabel, statusLabel, statusTone } from "../../apps/trading-room-web/src/components/ui";
@@ -37,6 +38,8 @@ test("PLAT-UI-STATUS translates Phase 7 failure states and fails unknown values 
 const canonicalApprovalView = {
   status: "READY",
   approval_action_allowed: true,
+  approve_action_allowed: true,
+  reject_action_allowed: true,
   view_version: 1,
   proposal_id: "a".repeat(64),
   proposal_hash: "b".repeat(64),
@@ -89,6 +92,34 @@ test("PLAT-UI-APPROVAL renders only a complete closed canonical Paper preview", 
   const mismatchedHash = structuredClone(canonicalApprovalView) as Record<string, any>;
   mismatchedHash.paper_order_preview.paper_order_preview_hash = "0".repeat(64);
   assert.ok(approvalActionIssues(mismatchedHash).some((issue) => issue.includes("해시")));
+});
+
+test("PLAT-UI-REJECT keeps the Korean Reject control usable when only worker readiness blocks Approve", () => {
+  for (const reason of [
+    "PAPER_WORKER_STALE",
+    "PAPER_WORKER_FAILED",
+    "PAPER_WORKER_STATE_MISSING",
+    "PAPER_WORKER_STATE_UNAVAILABLE",
+  ]) {
+    const workerBlocked = {
+      ...canonicalApprovalView,
+      status: "BLOCKED",
+      approval_action_allowed: false,
+      approve_action_allowed: false,
+      reject_action_allowed: true,
+      reason_codes: [reason],
+    } as const;
+    assert.deepEqual(approvalActionAvailability(workerBlocked), {
+      approve: false,
+      reject: true,
+    });
+    assert.notEqual(diagnosticLabel(reason), "알 수 없는 진단 정보");
+  }
+  const source = readFileSync(
+    resolve(root, "apps/trading-room-web/src/components/approval-view.tsx"),
+    "utf8",
+  );
+  assert.match(source, />거절<\/button>/);
 });
 
 test("PLAT-UI-DIALOGS use localized in-app forms and ship both App Router error boundaries", () => {

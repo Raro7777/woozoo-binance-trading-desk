@@ -6,7 +6,7 @@
   "additionalProperties": false,
   "x-creation-phase": 7,
   "x-activation-phase": 7,
-  "required": ["proposal_id", "proposal_hash", "status", "reason_codes", "risk_decision_id", "risk_decision_hash", "risk_input_digest", "risk_policy_version", "risk_verdict", "paper_order_preview", "paper_order_preview_hash", "approval_id", "approval_status", "approval_expires_at", "approval_ttl_seconds", "approval_action_allowed", "authorization_id", "authorization_status", "view_version", "served_at"],
+  "required": ["proposal_id", "proposal_hash", "status", "reason_codes", "risk_decision_id", "risk_decision_hash", "risk_input_digest", "risk_policy_version", "risk_verdict", "paper_order_preview", "paper_order_preview_hash", "approval_id", "approval_status", "approval_expires_at", "approval_ttl_seconds", "approval_action_allowed", "approve_action_allowed", "reject_action_allowed", "authorization_id", "authorization_status", "view_version", "served_at"],
   "properties": {
     "proposal_id": {"$ref": "#/$defs/hash"},
     "proposal_hash": {"$ref": "#/$defs/hash"},
@@ -24,14 +24,18 @@
     "approval_expires_at": {"type": ["string", "null"], "format": "date-time"},
     "approval_ttl_seconds": {"const": 300},
     "approval_action_allowed": {"type": "boolean"},
+    "approve_action_allowed": {"type": "boolean"},
+    "reject_action_allowed": {"type": "boolean"},
     "authorization_id": {"$ref": "#/$defs/nullableHash"},
     "authorization_status": {"enum": ["ISSUED", "BLOCKED", "CONSUMED", "EXPIRED", "REVOKED", "INVALIDATED", null]},
     "view_version": {"type": "integer", "minimum": 1},
     "served_at": {"type": "string", "format": "date-time"}
   },
   "allOf": [
-    {"if": {"properties": {"status": {"const": "READY"}}, "required": ["status"]}, "then": {"properties": {"approval_action_allowed": {"const": true}}}},
-    {"if": {"properties": {"status": {"enum": ["PENDING_RISK", "PENDING_APPROVAL", "APPROVED", "AUTHORIZATION_ISSUED", "BLOCKED", "INVALID"]}}, "required": ["status"]}, "then": {"properties": {"approval_action_allowed": {"const": false}}}}
+    {"if": {"properties": {"status": {"const": "READY"}}, "required": ["status"]}, "then": {"properties": {"approval_action_allowed": {"const": true}, "approve_action_allowed": {"const": true}, "reject_action_allowed": {"const": true}}}},
+    {"if": {"properties": {"status": {"enum": ["PENDING_RISK", "PENDING_APPROVAL", "APPROVED", "AUTHORIZATION_ISSUED", "BLOCKED", "INVALID"]}}, "required": ["status"]}, "then": {"properties": {"approval_action_allowed": {"const": false}, "approve_action_allowed": {"const": false}}}},
+    {"if": {"properties": {"status": {"enum": ["PENDING_RISK", "PENDING_APPROVAL", "APPROVED", "AUTHORIZATION_ISSUED", "INVALID"]}}, "required": ["status"]}, "then": {"properties": {"reject_action_allowed": {"const": false}}}},
+    {"if": {"properties": {"reject_action_allowed": {"const": true}}, "required": ["reject_action_allowed"]}, "then": {"properties": {"status": {"enum": ["READY", "BLOCKED"]}, "risk_verdict": {"const": "ALLOWED"}, "approval_status": {"type": "null"}}}}
   ],
   "$defs": {
     "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},

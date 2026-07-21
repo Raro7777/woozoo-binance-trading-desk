@@ -2,9 +2,11 @@ import asyncio
 from dataclasses import dataclass
 from datetime import datetime
 from threading import RLock
+from unittest.mock import patch
 
 import httpx
 import psycopg
+import pytest
 
 from control_api.app import create_app
 from control_api.command_ports import (
@@ -24,6 +26,7 @@ from control_api.security import LocalOperatorSecurity, make_password_verifier
 from control_api.trading_room import (
     PaperWorkerReadinessAuthority,
     PostgresTradingRoom,
+    TradingRoomError,
     canonical_hash,
 )
 
@@ -163,8 +166,64 @@ class RunningWorkerReadinessAuthority:
 
 
 class UnavailableWorkerReadinessAuthority:
+    def __init__(self) -> None:
+        self.calls = 0
+
     def snapshot(self) -> dict[str, object]:
+        self.calls += 1
         raise psycopg.OperationalError("worker state projection unavailable")
+
+
+class MissingWorkerReadinessAuthority:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def snapshot(self) -> dict[str, object]:
+        self.calls += 1
+        raise TradingRoomError(
+            "PAPER_WORKER_STATE_MISSING", "Paper worker state is unavailable", 503
+        )
+
+
+class FixedWorkerReadinessAuthority:
+    def __init__(self, status: str) -> None:
+        self.status = status
+        self.calls = 0
+
+    def snapshot(self) -> dict[str, object]:
+        self.calls += 1
+        return {"status": self.status, "ready": False}
+
+
+class ApprovalViewConnection:
+    def __enter__(self) -> "ApprovalViewConnection":
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        return None
+
+    def execute(self, _query: str, _parameters: object) -> "ApprovalViewConnection":
+        return self
+
+    def fetchone(self) -> tuple[object, ...]:
+        return (
+            "1" * 64,
+            "3" * 64,
+            "READY",
+            "4" * 64,
+            "5" * 64,
+            "6" * 64,
+            "woozoo.risk-policy/v1",
+            "ALLOWED",
+            {"paper_order_preview_hash": "2" * 64},
+            "2" * 64,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
 
 
 def build(
@@ -386,6 +445,98 @@ def test_unavailable_worker_readiness_blocks_before_risk_command() -> None:
             assert paper.effects == 0
 
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize(
+    ("worker", "approve_status", "approve_code"),
+    [
+        (FixedWorkerReadinessAuthority("STALE"), 409, "PAPER_WORKER_NOT_READY"),
+        (FixedWorkerReadinessAuthority("FAILED"), 409, "PAPER_WORKER_NOT_READY"),
+        (MissingWorkerReadinessAuthority(), 503, "PAPER_WORKER_STATE_MISSING"),
+        (UnavailableWorkerReadinessAuthority(), 503, "PAPER_WORKER_STATE_UNAVAILABLE"),
+    ],
+    ids=("stale", "failed", "missing", "unavailable"),
+)
+def test_unready_worker_blocks_approve_but_permits_one_idempotent_reject_without_authorization(
+    worker: PaperWorkerReadinessAuthority,
+    approve_status: int,
+    approve_code: str,
+) -> None:
+    risk = DurableRiskPort()
+    paper = DurablePaperPort(risk)
+    app = build(risk, paper, worker_readiness=worker)
+
+    async def scenario() -> None:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url=ORIGIN
+        ) as client:
+            await login(client)
+            blocked = await client.post(
+                "/api/v1/paper-approvals",
+                headers=approval_headers(await csrf(client)),
+                json=APPROVAL_BODY,
+            )
+            assert blocked.status_code == approve_status
+            assert blocked.json()["error"]["code"] == approve_code
+            calls_after_approve = worker.calls  # type: ignore[attr-defined]
+
+            reject_body = {
+                **APPROVAL_BODY,
+                "decision": "REJECT",
+                "reason": "operator rejects while execution worker is unavailable",
+            }
+            created = await client.post(
+                "/api/v1/paper-approvals",
+                headers=approval_headers(await csrf(client)),
+                json=reject_body,
+            )
+            replayed = await client.post(
+                "/api/v1/paper-approvals",
+                headers=approval_headers(await csrf(client)),
+                json=reject_body,
+            )
+            assert (created.status_code, replayed.status_code) == (201, 200)
+            assert created.json() == replayed.json()
+            assert created.json()["result"] == "REJECTED"
+            assert created.json()["approval_status"] == "REJECTED"
+            assert created.json()["authorization_status"] is None
+            assert created.json()["order_id"] is None
+            assert worker.calls == calls_after_approve  # type: ignore[attr-defined]
+            assert risk.decision_effects == 1
+            assert paper.effects == 0
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize(
+    ("worker", "reason_code"),
+    [
+        (FixedWorkerReadinessAuthority("STALE"), "PAPER_WORKER_STALE"),
+        (FixedWorkerReadinessAuthority("FAILED"), "PAPER_WORKER_FAILED"),
+        (MissingWorkerReadinessAuthority(), "PAPER_WORKER_STATE_MISSING"),
+        (UnavailableWorkerReadinessAuthority(), "PAPER_WORKER_STATE_UNAVAILABLE"),
+    ],
+    ids=("stale", "failed", "missing", "unavailable"),
+)
+def test_approval_view_projects_worker_failure_as_approve_only_block(
+    worker: PaperWorkerReadinessAuthority, reason_code: str
+) -> None:
+    risk = DurableRiskPort()
+    room = PostgresTradingRoom(
+        "postgresql://control.invalid/woozoo",
+        risk_commands=risk,
+        paper_commands=DurablePaperPort(risk),
+        worker_readiness=worker,
+    )
+
+    with patch("control_api.trading_room.psycopg.connect", return_value=ApprovalViewConnection()):
+        view = room.approval_view("1" * 64)
+
+    assert view["status"] == "BLOCKED"
+    assert view["reason_codes"] == [reason_code]
+    assert view["approval_action_allowed"] is False
+    assert view["approve_action_allowed"] is False
+    assert view["reject_action_allowed"] is True
 
 
 def test_malformed_preconditions_have_zero_effect_and_do_not_consume_csrf() -> None:

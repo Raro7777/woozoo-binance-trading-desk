@@ -1,6 +1,9 @@
 import json
 from pathlib import Path
 
+import pytest
+from jsonschema import Draft202012Validator, ValidationError
+
 
 ROOT = Path(__file__).parents[2]
 SPEC = ROOT / "packages" / "contracts" / "spec"
@@ -97,6 +100,14 @@ def test_phase7_approval_chain_is_closed_hash_bound_and_nonce_distinct() -> None
         "BLOCKED",
         "INVALID",
     }
+    assert {
+        "approval_action_allowed",
+        "approve_action_allowed",
+        "reject_action_allowed",
+    } <= set(view["required"])
+    assert view["properties"]["approval_action_allowed"] == {"type": "boolean"}
+    assert view["properties"]["approve_action_allowed"] == {"type": "boolean"}
+    assert view["properties"]["reject_action_allowed"] == {"type": "boolean"}
     preview = view["$defs"]["preview"]
     assert preview["additionalProperties"] is False
     assert set(preview["properties"]) == set(preview["required"])
@@ -104,6 +115,55 @@ def test_phase7_approval_chain_is_closed_hash_bound_and_nonce_distinct() -> None
     slippage = preview["properties"]["expected_slippage_inputs"]
     assert slippage["additionalProperties"] is False
     assert set(slippage["properties"]) == set(slippage["required"]) == {"method"}
+
+    hash_value = "a" * 64
+    blocked_worker_view = {
+        "proposal_id": hash_value,
+        "proposal_hash": hash_value,
+        "status": "BLOCKED",
+        "reason_codes": ["PAPER_WORKER_FAILED"],
+        "risk_decision_id": hash_value,
+        "risk_decision_hash": hash_value,
+        "risk_input_digest": hash_value,
+        "risk_policy_version": "woozoo.risk-policy/v1",
+        "risk_verdict": "ALLOWED",
+        "paper_order_preview": {
+            "symbol": "BTCUSDT",
+            "side": "BUY",
+            "order_type": "LIMIT",
+            "time_in_force": "GTC",
+            "quantity": "0.001",
+            "limit_price": "60001.00",
+            "worst_case_fee": "0.060001",
+            "worst_case_hold": "60.061001",
+            "worst_case_notional": "60.061001",
+            "best_bid": "60000.00",
+            "best_ask": "60001.00",
+            "expected_slippage_inputs": {"method": "limit-vs-book-v1"},
+            "paper_order_preview_hash": hash_value,
+        },
+        "paper_order_preview_hash": hash_value,
+        "approval_id": None,
+        "approval_status": None,
+        "approval_expires_at": None,
+        "approval_ttl_seconds": 300,
+        "approval_action_allowed": False,
+        "approve_action_allowed": False,
+        "reject_action_allowed": True,
+        "authorization_id": None,
+        "authorization_status": None,
+        "view_version": 1,
+        "served_at": "2026-07-21T00:00:00Z",
+    }
+    validator = Draft202012Validator(view)
+    validator.validate(blocked_worker_view)
+    for impossible in (
+        {**blocked_worker_view, "status": "PENDING_RISK"},
+        {**blocked_worker_view, "risk_verdict": "DENIED"},
+        {**blocked_worker_view, "approval_status": "APPROVED"},
+    ):
+        with pytest.raises(ValidationError):
+            validator.validate(impossible)
 
 
 def test_phase7_session_and_event_contracts_close_secret_and_recovery_boundaries() -> None:

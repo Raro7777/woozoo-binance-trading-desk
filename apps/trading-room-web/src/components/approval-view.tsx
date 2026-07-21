@@ -26,6 +26,24 @@ function approvalBody(view: JsonRecord, decision: "APPROVE" | "REJECT", reason: 
   };
 }
 
+export function approvalActionAvailability(view: JsonRecord): Readonly<{
+  approve: boolean;
+  reject: boolean;
+}> {
+  const viewStatus = textValue(view, "status") ?? "INVALID";
+  const riskStatus = textValue(view, "risk_verdict") ?? "UNKNOWN";
+  const resourceVersion = versionValue(view, "view_version");
+  const commonBindingsValid = riskStatus === "ALLOWED"
+    && resourceVersion !== undefined
+    && approvalActionIssues(view).length === 0;
+  return {
+    approve: commonBindingsValid
+      && viewStatus === "READY"
+      && view.approve_action_allowed === true,
+    reject: commonBindingsValid && view.reject_action_allowed === true,
+  };
+}
+
 export function ApprovalView({ proposalId }: Readonly<{ proposalId: string }>) {
   const resource = useResource<JsonRecord>(`/api/v1/proposals/${encodeURIComponent(proposalId)}/approval-view`);
   const [pending, setPending] = useState(false);
@@ -88,11 +106,11 @@ export function ApprovalView({ proposalId }: Readonly<{ proposalId: string }>) {
       const authorizationStatus = textValue(view, "authorization_status") ?? "NOT_ISSUED";
       const resourceVersion = versionValue(view, "view_version");
       const previewIssues = approvalActionIssues(view);
-      const actionEnabled = viewStatus === "READY" && view.approval_action_allowed === true && riskStatus === "ALLOWED" && resourceVersion !== undefined && previewIssues.length === 0;
+      const actionAvailability = approvalActionAvailability(view);
       const reasons = stringReasons(view);
       return (
         <>
-          {!actionEnabled && <Hold>이 제안은 승인 준비 상태가 아닙니다. 서버의 사유와 안전 상태를 따릅니다.</Hold>}
+          {!actionAvailability.approve && <Hold>이 제안은 승인 준비 상태가 아닙니다. 서버의 사유와 안전 상태를 따릅니다.</Hold>}
           {previewIssues.length > 0 && <Hold>정확한 미리보기 검증 실패: {previewIssues.join("; ")}</Hold>}
           <div className="grid">
             <Panel title="결정 상태">
@@ -143,8 +161,8 @@ export function ApprovalView({ proposalId }: Readonly<{ proposalId: string }>) {
             <section className="panel full" aria-labelledby="operator-decision">
               <h2 id="operator-decision">운영자 결정</h2>
               <div className="actions">
-                <button disabled={pending || !actionEnabled} onClick={() => setDialog({ action: "APPROVE", view })}>정확한 미리보기 승인</button>
-                <button className="secondary" disabled={pending || !actionEnabled} onClick={() => setDialog({ action: "REJECT", view })}>거절</button>
+                <button disabled={pending || !actionAvailability.approve} onClick={() => setDialog({ action: "APPROVE", view })}>정확한 미리보기 승인</button>
+                <button className="secondary" disabled={pending || !actionAvailability.reject} onClick={() => setDialog({ action: "REJECT", view })}>거절</button>
                 <button className="danger" disabled={pending || approvalStatus !== "APPROVED" || resourceVersion === undefined} onClick={() => setDialog({ action: "REVOKE", view })}>승인 철회</button>
               </div>
               <p className={`command-result${error ? " error" : ""}`} role="status" aria-live="polite">{pending ? "서버 확정 명령 처리 결과를 기다리는 중…" : message}</p>

@@ -800,6 +800,14 @@ const actions = {
       "tests/integration/test_trading_room_command_ports.py::test_concurrent_same_request_issues_once_without_browser_paper_effect",
       "tests/integration/test_trading_room_command_ports.py::test_revocation_can_win_after_authorization_issue_before_first_paper_attempt",
       "tests/integration/test_trading_room_command_ports.py::test_malformed_preconditions_have_zero_effect_and_do_not_consume_csrf",
+      "tests/integration/test_trading_room_command_ports.py::test_unready_worker_blocks_approve_but_permits_one_idempotent_reject_without_authorization[stale]",
+      "tests/integration/test_trading_room_command_ports.py::test_unready_worker_blocks_approve_but_permits_one_idempotent_reject_without_authorization[failed]",
+      "tests/integration/test_trading_room_command_ports.py::test_unready_worker_blocks_approve_but_permits_one_idempotent_reject_without_authorization[missing]",
+      "tests/integration/test_trading_room_command_ports.py::test_unready_worker_blocks_approve_but_permits_one_idempotent_reject_without_authorization[unavailable]",
+      "tests/integration/test_trading_room_command_ports.py::test_approval_view_projects_worker_failure_as_approve_only_block[stale]",
+      "tests/integration/test_trading_room_command_ports.py::test_approval_view_projects_worker_failure_as_approve_only_block[failed]",
+      "tests/integration/test_trading_room_command_ports.py::test_approval_view_projects_worker_failure_as_approve_only_block[missing]",
+      "tests/integration/test_trading_room_command_ports.py::test_approval_view_projects_worker_failure_as_approve_only_block[unavailable]",
     ]);
     await dataScenario("unit", "EVID-001", [
       "tests/unit/test_evidence_features.py::test_derives_approved_decimal_features_with_ordered_provenance",

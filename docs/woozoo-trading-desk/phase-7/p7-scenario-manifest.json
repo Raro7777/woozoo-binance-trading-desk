@@ -8,7 +8,7 @@
   "phase_schedule_amendment": "docs/woozoo-trading-desk/phase-5/phase-0-contract-amendment.md",
   "phase_schedule_amendment_sha256": "faab0952b4c60d6cc432bd699d549f52d9c9b43f75e4e7050b30e01bb70b6c68",
   "implementation_contract": "docs/woozoo-trading-desk/phase-7/implementation-contract.md",
-  "implementation_contract_sha256": "bdd451e971be9806abcdd7e55f360a386db728218a297e0e7d48ab9336bb9ad1",
+  "implementation_contract_sha256": "399c231531f3464ccd6f5cb1e22c14af9f12d4a71a10198e2d98c9a6d5b7b52d",
   "fixed_seed": 0,
   "timezone": "UTC",
   "trading_mode": "paper",
@@ -219,7 +219,7 @@
       ],
       "source_sha256": [
         "c69138d0379deaa38656b20c1ef50fe08d586d2da3348f0b9b1a8d9117bf0026",
-        "9aee089bc0aa944c9a96eec974f6cf583218bfdf99c34e6ca7dfdd04acf74738",
+        "6078015923359e3a5217a389ab7d13f532723fb36916ed66fdec6b5b6982344c",
         "16c4257805a95a32de14f5f9286c35176aa32eff888287289c1d1e6b1805a3ec"
       ],
       "oracle": "A committed response lost before acknowledgement is replayed after restart with zero additional order, fill, posting or event effect."
@@ -243,17 +243,25 @@
         "tests/failure/test_trading_room_authorization_failures.py::test_auth_002_stale_state_before_human_decision_has_zero_order_effect",
         "tests/integration/test_trading_room_command_ports.py::test_concurrent_same_request_issues_once_without_browser_paper_effect",
         "tests/integration/test_trading_room_command_ports.py::test_revocation_can_win_after_authorization_issue_before_first_paper_attempt",
-        "tests/integration/test_trading_room_command_ports.py::test_malformed_preconditions_have_zero_effect_and_do_not_consume_csrf"
+        "tests/integration/test_trading_room_command_ports.py::test_malformed_preconditions_have_zero_effect_and_do_not_consume_csrf",
+        "tests/integration/test_trading_room_command_ports.py::test_unready_worker_blocks_approve_but_permits_one_idempotent_reject_without_authorization[stale]",
+        "tests/integration/test_trading_room_command_ports.py::test_unready_worker_blocks_approve_but_permits_one_idempotent_reject_without_authorization[failed]",
+        "tests/integration/test_trading_room_command_ports.py::test_unready_worker_blocks_approve_but_permits_one_idempotent_reject_without_authorization[missing]",
+        "tests/integration/test_trading_room_command_ports.py::test_unready_worker_blocks_approve_but_permits_one_idempotent_reject_without_authorization[unavailable]",
+        "tests/integration/test_trading_room_command_ports.py::test_approval_view_projects_worker_failure_as_approve_only_block[stale]",
+        "tests/integration/test_trading_room_command_ports.py::test_approval_view_projects_worker_failure_as_approve_only_block[failed]",
+        "tests/integration/test_trading_room_command_ports.py::test_approval_view_projects_worker_failure_as_approve_only_block[missing]",
+        "tests/integration/test_trading_room_command_ports.py::test_approval_view_projects_worker_failure_as_approve_only_block[unavailable]"
       ],
       "source_sha256": [
         "d477334cd1b479a723175d21192f993ad180858766ef0e1dcf7599a6530b64df",
         "f4ddb1a8cb9f835f043ce03d2a0e2b51c97e16c336978a68225f02541e53e042",
-        "1e6f45a5fc3c66fc4367eced009f53a2012dd624da0f4a71780e6dac1336a694",
+        "44c0dc4522b30b389ed80ab115d3dc58d841436d5cebdaafa365c69f9dced673",
         "799fbd11362ba754a2a385d84d01f0ac4a37ed283de66553be5876e3524d69c3",
         "9d5d32d65c8bf17db096b4ecd718969c96b4be5f613db594f8021b7ff2325abc",
-        "9aee089bc0aa944c9a96eec974f6cf583218bfdf99c34e6ca7dfdd04acf74738"
+        "6078015923359e3a5217a389ab7d13f532723fb36916ed66fdec6b5b6982344c"
       ],
-      "oracle": "Session, Origin, one-time CSRF, exact preview hashes, approval version and distinct authorization nonce are all valid. Session validation, idle touch, one-time CSRF consumption and logout revocation serialize atomically; when logout wins, a waiting command is rejected without consuming its CSRF or creating a financial effect. Every stale, replayed, foreign or malformed counterexample has zero new financial effect."
+      "oracle": "Session, Origin, one-time CSRF, exact preview hashes, approval version and distinct authorization nonce are all valid. Session validation, idle touch, one-time CSRF consumption and logout revocation serialize atomically; when logout wins, a waiting command is rejected without consuming its CSRF or creating a financial effect. Worker failure blocks APPROVE while one immutable, idempotent REJECT remains available and creates no authorization or Paper effect. Every stale, replayed, foreign or malformed counterexample has zero new financial effect."
     },
     {
       "id": "AUTH-002",
@@ -275,7 +283,7 @@
       "source_sha256": [
         "9d5d32d65c8bf17db096b4ecd718969c96b4be5f613db594f8021b7ff2325abc",
         "9038342c0343567dd339168dc77a1dc54c3eccb1b35adf5c06bfd693196491c5",
-        "9aee089bc0aa944c9a96eec974f6cf583218bfdf99c34e6ca7dfdd04acf74738"
+        "6078015923359e3a5217a389ab7d13f532723fb36916ed66fdec6b5b6982344c"
       ],
       "oracle": "Approval issuance rejects a reconciliation checkpoint whose stamped authority sequence predates any committed Paper effect. Kill, reconciliation, revocation, stale books and execution-quality drift are revalidated at the first Paper attempt; any failure consumes or blocks the authorization terminally with no order, hold, fill or ledger effect."
     },
@@ -305,7 +313,7 @@
         "tests/integration/test_trading_room_migration_contract.py::test_phase7_migration_upgrades_with_digest_only_storage_and_least_privilege"
       ],
       "source_sha256": [
-        "9f93757c6e5c131a0a40a00109bce87170d87c6b742ac546cc748bf2e5214f57",
+        "90a31939b5325fb4ec774edd91789ef40b51c70ff35d97206f2393e6f756d3ef",
         "dd85d3264e1a7374d1e34e8f7fde5a083fd8ae115b927d453941c5a4be9942d3",
         "9038342c0343567dd339168dc77a1dc54c3eccb1b35adf5c06bfd693196491c5",
         "07cb535db57cca0e4f13b44a2ad75a2716461abe283517bb6cfe67d0409757c6",
@@ -339,7 +347,7 @@
         "tests/integration/test_trading_room_api.py::test_e2e_002_stale_data_consumes_csrf_and_blocks_without_order"
       ],
       "source_sha256": [
-        "9f93757c6e5c131a0a40a00109bce87170d87c6b742ac546cc748bf2e5214f57",
+        "90a31939b5325fb4ec774edd91789ef40b51c70ff35d97206f2393e6f756d3ef",
         "dd85d3264e1a7374d1e34e8f7fde5a083fd8ae115b927d453941c5a4be9942d3"
       ],
       "configuration_sources": [
@@ -372,9 +380,9 @@
         "tests/integration/test_trading_room_command_ports.py::test_concurrent_same_request_issues_once_without_browser_paper_effect"
       ],
       "source_sha256": [
-        "9f93757c6e5c131a0a40a00109bce87170d87c6b742ac546cc748bf2e5214f57",
+        "90a31939b5325fb4ec774edd91789ef40b51c70ff35d97206f2393e6f756d3ef",
         "799fbd11362ba754a2a385d84d01f0ac4a37ed283de66553be5876e3524d69c3",
-        "9aee089bc0aa944c9a96eec974f6cf583218bfdf99c34e6ca7dfdd04acf74738"
+        "6078015923359e3a5217a389ab7d13f532723fb36916ed66fdec6b5b6982344c"
       ],
       "configuration_sources": [
         {
@@ -408,7 +416,7 @@
         "tests/unit/test_paper_authorization_worker_runtime.py::test_runner_drains_pending_authorization_before_kill_completion"
       ],
       "source_sha256": [
-        "9f93757c6e5c131a0a40a00109bce87170d87c6b742ac546cc748bf2e5214f57",
+        "90a31939b5325fb4ec774edd91789ef40b51c70ff35d97206f2393e6f756d3ef",
         "dd85d3264e1a7374d1e34e8f7fde5a083fd8ae115b927d453941c5a4be9942d3",
         "9038342c0343567dd339168dc77a1dc54c3eccb1b35adf5c06bfd693196491c5",
         "5769abf0ed4b9a57c849a168da2536cb6397d2b24dc514d06b8c45e54633c7a8"
@@ -440,7 +448,7 @@
         "tests/integration/test_trading_room_api.py::test_audit_api_preserves_provenance_and_recursively_redacts_command_secrets"
       ],
       "source_sha256": [
-        "9f93757c6e5c131a0a40a00109bce87170d87c6b742ac546cc748bf2e5214f57",
+        "90a31939b5325fb4ec774edd91789ef40b51c70ff35d97206f2393e6f756d3ef",
         "dd85d3264e1a7374d1e34e8f7fde5a083fd8ae115b927d453941c5a4be9942d3"
       ],
       "configuration_sources": [

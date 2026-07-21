@@ -38,6 +38,10 @@ immutable Evidence
   success or domain rejection.
 - Approval and authorization nonces are distinct. The first Paper attempt is
   terminal whether it creates one order or records `BLOCKED`.
+- Paper authorization-worker readiness gates only `APPROVE` and authorization
+  issuance. A session-, Origin-, CSRF-, version-, preview-hash-, and
+  idempotency-bound human `REJECT` remains available and persists exactly one
+  immutable rejection audit decision without creating an authorization.
 - Approval issuance and Kill recovery hold the Paper account lock and require
   the latest reconciliation checkpoint's stamped authority sequence to equal
   the current Paper outbox sequence. Any committed Paper effect therefore

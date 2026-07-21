@@ -625,6 +625,8 @@ class InMemoryTradingRoom:
                 ),
                 "authorization_status": authorization_status,
                 "approval_action_allowed": status == "READY",
+                "approve_action_allowed": status == "READY",
+                "reject_action_allowed": status == "READY",
                 "approval_ttl_seconds": 300,
                 "approval_expires_at": (approval["expires_at"] if approval is not None else None),
                 "view_version": proposal["version"],
@@ -1496,15 +1498,24 @@ class PostgresTradingRoom:
         authorization_status = None
         if authorization_row is not None:
             authorization_status = authorization_row[0]
-        worker = self._worker_state()
-        status = row[2]
-        if status == "READY" and not worker["ready"]:
-            status = "BLOCKED"
-            reason_codes.append(
-                f"PAPER_WORKER_{worker['status']}"
-                if worker["status"] != "HEALTHY"
-                else "PAPER_WORKER_NOT_READY"
-            )
+        base_status = row[2]
+        status = base_status
+        if base_status == "READY":
+            try:
+                worker = self._worker_state()
+            except TradingRoomError as exc:
+                if not exc.code.startswith("PAPER_WORKER_STATE_"):
+                    raise
+                status = "BLOCKED"
+                reason_codes.append(exc.code)
+            else:
+                if not worker["ready"]:
+                    status = "BLOCKED"
+                    reason_codes.append(
+                        f"PAPER_WORKER_{worker['status']}"
+                        if worker["status"] != "HEALTHY"
+                        else "PAPER_WORKER_NOT_READY"
+                    )
         return {
             "proposal_id": row[0],
             "proposal_hash": row[1],
@@ -1522,6 +1533,8 @@ class PostgresTradingRoom:
             "authorization_id": row[14],
             "authorization_status": authorization_status,
             "approval_action_allowed": status == "READY",
+            "approve_action_allowed": status == "READY",
+            "reject_action_allowed": base_status == "READY",
             "approval_ttl_seconds": 300,
             "approval_expires_at": (
                 row[12].isoformat().replace("+00:00", "Z") if row[12] is not None else None
@@ -1543,13 +1556,14 @@ class PostgresTradingRoom:
         csrf_binding_hash: str | None = None,
         origin_hash: str | None = None,
     ) -> CommandResult:
-        worker = self._worker_state()
-        if not worker["ready"]:
-            raise TradingRoomError(
-                "PAPER_WORKER_NOT_READY",
-                "Paper authorization worker is not ready",
-                409,
-            )
+        if decision == "APPROVE":
+            worker = self._worker_state()
+            if not worker["ready"]:
+                raise TradingRoomError(
+                    "PAPER_WORKER_NOT_READY",
+                    "Paper authorization worker is not ready",
+                    409,
+                )
         body = {
             "proposal_id": proposal_id,
             "decision": decision,

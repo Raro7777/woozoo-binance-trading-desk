@@ -122,6 +122,8 @@ const approvalView = {
   approval_ttl_seconds: 300,
   approval_expires_at: null,
   approval_action_allowed: true,
+  approve_action_allowed: true,
+  reject_action_allowed: true,
   risk_decision_id: "c".repeat(64),
   risk_decision_hash: "d".repeat(64),
   risk_input_digest: "e".repeat(64),
@@ -670,11 +672,18 @@ test("[live] E2E-005 desktop and mobile journey is keyboard accessible, Axe-clea
   expect(approvalViewResponse.ok()).toBe(true);
   const approvalState = await approvalViewResponse.json() as {
     approval_action_allowed?: boolean;
+    approve_action_allowed?: boolean;
+    reject_action_allowed?: boolean;
     reason_codes?: string[];
     risk_decision_id?: string;
     status?: string;
   };
-  expect(approvalState).toMatchObject({ status: "READY", approval_action_allowed: true });
+  expect(approvalState).toMatchObject({
+    status: "READY",
+    approval_action_allowed: true,
+    approve_action_allowed: true,
+    reject_action_allowed: true,
+  });
   await expect(approveButton).toBeEnabled();
   await focusByKeyboard(page, approveButton, "정확한 미리보기 승인");
   await page.keyboard.press("Space");
