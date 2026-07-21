@@ -529,6 +529,7 @@ class PostgresPaperStore:
                 expected_data_hash,
                 expected_data_as_of,
                 expected_knowledge_cutoff,
+                risk_authority_current,
                 expected_books,
             ) = authorization
             revoked = connection.execute(
@@ -674,7 +675,9 @@ class PostgresPaperStore:
                             data_block_reason = "HASH_MISMATCH"
 
             block_reason: str | None = None
-            if barrier is None or barrier[0]:
+            if not risk_authority_current:
+                block_reason = "HASH_MISMATCH"
+            elif barrier is None or barrier[0]:
                 block_reason = "KILL_SWITCH_ACTIVE"
             elif barrier[1] != expected_kill_version:
                 block_reason = "KILL_VERSION_MISMATCH"

@@ -3,6 +3,12 @@ import { createHash } from "node:crypto";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
+import {
+  assertResultBoundExecution,
+  bindExecutionRun,
+  summarizeExecutionGates,
+} from "./quality-evidence.mjs";
+
 const root = resolve(import.meta.dirname, "..");
 const pnpm = "pnpm";
 const target = process.argv[2];
@@ -67,7 +73,8 @@ async function runPlaywrightWithResultGate(expectedTestCount) {
   await mkdir(resolve(resultPath, ".."), { recursive: true });
   const command = [process.execPath, [resolve(root, "node_modules", "@playwright", "test", "cli.js"), "test", "--reporter=junit"]];
   run(command[0], command[1], { PLAYWRIGHT_JUNIT_OUTPUT_NAME: resultPath });
-  const xml = await readFile(resultPath, "utf8");
+  const resultBytes = await readFile(resultPath);
+  const xml = resultBytes.toString("utf8");
   const suites = xml.match(/<testsuites\b([^>]*)>/);
   const counts = suites === null
     ? {}
@@ -100,13 +107,13 @@ async function runPlaywrightWithResultGate(expectedTestCount) {
   return {
     command,
     testCount: counts.tests,
-    gate: {
+    gate: bindExecutionRun("phase7-playwright", command, resultBytes, {
       framework: "playwright-junit",
       tests: counts.tests,
       errors: counts.errors,
       failures: counts.failures,
       skipped: counts.skipped,
-    },
+    }),
   };
 }
 
@@ -118,7 +125,8 @@ async function runPytestWithResultGate(testPath, expectedTestCount) {
     ["-m", "uv", "run", "--locked", "pytest", "-q", testPath, `--junitxml=${resultPath}`],
   ];
   run(command[0], command[1]);
-  const xml = await readFile(resultPath, "utf8");
+  const resultBytes = await readFile(resultPath);
+  const xml = resultBytes.toString("utf8");
   const suite = xml.match(/<testsuite\b([^>]*)>/);
   const counts = suite === null
     ? {}
@@ -135,13 +143,13 @@ async function runPytestWithResultGate(testPath, expectedTestCount) {
   return {
     command,
     testCount: counts.tests,
-    gate: {
+    gate: bindExecutionRun("phase7-api", command, resultBytes, {
       framework: "pytest-junit",
       tests: counts.tests,
       errors: counts.errors,
       failures: counts.failures,
       skipped: counts.skipped,
-    },
+    }),
   };
 }
 
@@ -156,7 +164,8 @@ async function runPytestNodesWithResultGate(resultLabel, nodeIds) {
     ],
   ];
   run(command[0], command[1]);
-  const xml = await readFile(resultPath, "utf8");
+  const resultBytes = await readFile(resultPath);
+  const xml = resultBytes.toString("utf8");
   const suite = xml.match(/<testsuite\b([^>]*)>/);
   const counts = suite === null
     ? {}
@@ -173,13 +182,13 @@ async function runPytestNodesWithResultGate(resultLabel, nodeIds) {
   return {
     command,
     testCount: counts.tests,
-    gate: {
+    gate: bindExecutionRun(resultLabel, command, resultBytes, {
       framework: "pytest-junit",
       tests: counts.tests,
       errors: counts.errors,
       failures: counts.failures,
       skipped: counts.skipped,
-    },
+    }),
   };
 }
 
@@ -194,7 +203,8 @@ async function runPytestSuiteWithResultGate(resultLabel, testPaths) {
     ],
   ];
   run(command[0], command[1]);
-  const xml = await readFile(resultPath, "utf8");
+  const resultBytes = await readFile(resultPath);
+  const xml = resultBytes.toString("utf8");
   const suite = xml.match(/<testsuite\b([^>]*)>/);
   const counts = suite === null
     ? {}
@@ -212,13 +222,13 @@ async function runPytestSuiteWithResultGate(resultLabel, testPaths) {
   return {
     command,
     testCount: counts.tests,
-    gate: {
+    gate: bindExecutionRun(resultLabel, command, resultBytes, {
       framework: "pytest-junit",
       tests: counts.tests,
       errors: counts.errors,
       failures: counts.failures,
       skipped: counts.skipped,
-    },
+    }),
   };
 }
 
@@ -234,7 +244,8 @@ async function runNodeTestsWithResultGate(resultLabel, testPaths) {
     ],
   ];
   run(command[0], command[1]);
-  const xml = await readFile(resultPath, "utf8");
+  const resultBytes = await readFile(resultPath);
+  const xml = resultBytes.toString("utf8");
   const testCount = (xml.match(/<testcase\b/g) ?? []).length;
   const commentCount = (name) => {
     const match = xml.match(new RegExp(`<!--\\s*${name}\\s+(\\d+)\\s*-->`));
@@ -259,7 +270,11 @@ async function runNodeTestsWithResultGate(resultLabel, testPaths) {
   ) {
     throw new Error(`${resultLabel} must execute a non-empty Node suite with zero failure, error, skip, cancellation, or todo`);
   }
-  return { command, testCount, gate };
+  return {
+    command,
+    testCount,
+    gate: bindExecutionRun(resultLabel, command, resultBytes, gate),
+  };
 }
 
 function combineExecutionGates(gates) {
@@ -682,6 +697,8 @@ function assertExecutionGate(gate, label) {
     if (componentTests !== gate.tests) {
       throw new Error(`${label} combined result gate count is inconsistent`);
     }
+  } else {
+    assertResultBoundExecution(gate, `${label} leaf result gate`);
   }
 }
 
@@ -716,6 +733,7 @@ async function validatePhase7AcceptanceArtifacts() {
     ...(manifest.scenarios ?? []),
   ].map((scenario) => [scenario.id, scenario]));
   const verifiedArtifacts = [];
+  const verifiedExecutionGates = [];
   for (const id of requiredIds) {
     const relativePath = requiredArtifacts[id];
     const bytes = await readFile(resolve(root, relativePath));
@@ -761,6 +779,7 @@ async function validatePhase7AcceptanceArtifacts() {
       sha256: createHash("sha256").update(bytes).digest("hex"),
       test_count: artifact.test_count,
     });
+    verifiedExecutionGates.push(artifact.execution_gate);
   }
 
   for (const scenario of scenarioById.values()) {
@@ -786,6 +805,7 @@ async function validatePhase7AcceptanceArtifacts() {
     }
   }
 
+  const executionSummary = summarizeExecutionGates(verifiedExecutionGates);
   const result = {
     schema_version: "woozoo.phase-7-acceptance-denominator/v1",
     phase: 7,
@@ -793,6 +813,7 @@ async function validatePhase7AcceptanceArtifacts() {
     required_count: 43,
     passed_count: verifiedArtifacts.length,
     scenario_manifest_sha256: manifestDigest,
+    ...executionSummary,
     artifacts: verifiedArtifacts,
     ...revision,
   };
@@ -820,6 +841,7 @@ const actions = {
     const unitPytest = await runPytestSuiteWithResultGate("bulk-unit", ["tests/unit"]);
     const unitNode = await runNodeTestsWithResultGate("bulk-unit-node", [
       "tests/unit/e2e-infrastructure-lifecycle.test.ts",
+      "tests/unit/quality-evidence.test.mjs",
     ]);
     const unitGate = combineExecutionGates([unitPytest.gate, unitNode.gate]);
     await scenarios(
@@ -843,10 +865,11 @@ const actions = {
       "tests/integration/test_trading_room_command_ports.py::test_concurrent_same_request_issues_once_without_browser_paper_effect",
       "tests/integration/test_trading_room_command_ports.py::test_revocation_can_win_after_authorization_issue_before_first_paper_attempt",
       "tests/integration/test_trading_room_command_ports.py::test_malformed_preconditions_have_zero_effect_and_do_not_consume_csrf",
-      "tests/integration/test_trading_room_command_ports.py::test_unready_worker_blocks_approve_but_permits_one_idempotent_reject_without_authorization[stale]",
-      "tests/integration/test_trading_room_command_ports.py::test_unready_worker_blocks_approve_but_permits_one_idempotent_reject_without_authorization[failed]",
-      "tests/integration/test_trading_room_command_ports.py::test_unready_worker_blocks_approve_but_permits_one_idempotent_reject_without_authorization[missing]",
-      "tests/integration/test_trading_room_command_ports.py::test_unready_worker_blocks_approve_but_permits_one_idempotent_reject_without_authorization[unavailable]",
+      "tests/integration/test_trading_room_command_ports.py::test_reject_does_not_consult_unavailable_worker_projection",
+      "tests/integration/test_trading_room_command_ports.py::test_approve_delegates_to_risk_authority_without_mutable_worker_preflight[stale]",
+      "tests/integration/test_trading_room_command_ports.py::test_approve_delegates_to_risk_authority_without_mutable_worker_preflight[failed]",
+      "tests/integration/test_trading_room_command_ports.py::test_approve_delegates_to_risk_authority_without_mutable_worker_preflight[missing]",
+      "tests/integration/test_trading_room_command_ports.py::test_approve_delegates_to_risk_authority_without_mutable_worker_preflight[unavailable]",
       "tests/integration/test_trading_room_command_ports.py::test_approval_view_projects_worker_failure_as_approve_only_block[stale]",
       "tests/integration/test_trading_room_command_ports.py::test_approval_view_projects_worker_failure_as_approve_only_block[failed]",
       "tests/integration/test_trading_room_command_ports.py::test_approval_view_projects_worker_failure_as_approve_only_block[missing]",
@@ -1072,7 +1095,7 @@ const actions = {
         "tests/e2e/trading-room.spec.ts::[live] E2E-003",
         "tests/property/test_trading_room_properties.py::test_phase7_preview_hash_is_mutation_sensitive_and_notional_is_policy_capped",
         "tests/property/test_trading_room_properties.py::test_phase7_idempotency_same_hash_replays_and_changed_hash_conflicts",
-        "tests/integration/test_trading_room_command_ports.py::test_ack_loss_restart_replays_durable_receipts_without_second_paper_effect",
+        "tests/integration/test_trading_room_command_ports.py::test_approval_ack_loss_replays_receipt_after_worker_failure",
         "tests/integration/test_trading_room_command_ports.py::test_concurrent_same_request_issues_once_without_browser_paper_effect",
       ],
       "E2E-004": [
@@ -1162,7 +1185,7 @@ const actions = {
     ], await paperMetadata());
     await dataScenario("replay", "ATOM-002", [
       "tests/replay/test_paper_restart_replay.py::test_atom_002_ack_loss_retry_returns_same_order_without_new_effect",
-      "tests/integration/test_trading_room_command_ports.py::test_ack_loss_restart_replays_durable_receipts_without_second_paper_effect",
+      "tests/integration/test_trading_room_command_ports.py::test_approval_ack_loss_replays_receipt_after_worker_failure",
       "tests/integration/test_paper_postgres_persistence.py::test_concurrent_command_and_observation_retries_return_one_stored_effect",
     ], await paperMetadata());
     await riskDataScenario("replay", "RISK-001", [
@@ -1179,7 +1202,9 @@ const actions = {
     await phase7DataScenario("failure", "AUTH-002", [
       "tests/failure/test_trading_room_authorization_failures.py::test_auth_002_stale_state_before_human_decision_has_zero_order_effect",
       "tests/integration/test_phase7_paper_first_attempt_authority.py::test_denied_and_error_risk_reject_commands_have_no_db_or_api_effects",
-      "tests/integration/test_phase7_paper_first_attempt_authority.py::test_sql_worker_recheck_blocks_approve_after_healthy_api_snapshot_without_effects",
+      "tests/integration/test_phase7_paper_first_attempt_authority.py::test_sql_worker_authority_blocks_failed_worker_without_effects",
+      "tests/integration/test_phase7_paper_first_attempt_authority.py::test_newer_denied_risk_serializes_before_waiting_approval_without_stale_effects",
+      "tests/integration/test_phase7_paper_first_attempt_authority.py::test_first_attempt_rejects_authorization_superseded_by_newer_denied_risk",
       "tests/integration/test_trading_room_migration_contract.py::test_approval_sql_authority_requires_allowed_risk_and_rechecks_worker_atomically",
       "tests/integration/test_phase7_paper_first_attempt_authority.py::test_approval_rejects_checkpoint_that_predates_a_paper_effect",
       "tests/integration/test_phase7_paper_first_attempt_authority.py::test_kill_first_attempt_stays_blocked_after_recovery_and_retry",
@@ -1236,7 +1261,7 @@ const actions = {
     ], await paperMetadata());
     await phase7DataScenario("failure", "ATOM-002", [
       "tests/replay/test_paper_restart_replay.py::test_atom_002_ack_loss_retry_returns_same_order_without_new_effect",
-      "tests/integration/test_trading_room_command_ports.py::test_ack_loss_restart_replays_durable_receipts_without_second_paper_effect",
+      "tests/integration/test_trading_room_command_ports.py::test_approval_ack_loss_replays_receipt_after_worker_failure",
       "tests/integration/test_paper_postgres_persistence.py::test_atomic_write_is_durable_idempotent_and_restart_stable",
       "tests/integration/test_paper_postgres_persistence.py::test_concurrent_command_and_observation_retries_return_one_stored_effect",
     ], await paperMetadata());

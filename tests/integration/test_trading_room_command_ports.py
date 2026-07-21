@@ -295,7 +295,7 @@ APPROVAL_BODY = {
 }
 
 
-def test_ack_loss_restart_replays_durable_receipts_without_second_paper_effect() -> None:
+def test_approval_ack_loss_replays_receipt_after_worker_failure() -> None:
     risk = DurableRiskPort()
     paper = DurablePaperPort(risk)
 
@@ -312,7 +312,8 @@ def test_ack_loss_restart_replays_durable_receipts_without_second_paper_effect()
             )
             assert created.status_code == 201
 
-        restarted_app = build(risk, paper)
+        failed_worker = FixedWorkerReadinessAuthority("FAILED")
+        restarted_app = build(risk, paper, worker_readiness=failed_worker)
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=restarted_app), base_url=ORIGIN
         ) as restarted:
@@ -325,6 +326,19 @@ def test_ack_loss_restart_replays_durable_receipts_without_second_paper_effect()
             assert replay.status_code == 200
             assert replay.json() == created.json()
 
+            changed_body = {
+                **APPROVAL_BODY,
+                "reason": "changed after the authorization receipt was committed",
+            }
+            conflict = await restarted.post(
+                "/api/v1/paper-approvals",
+                headers=approval_headers(await csrf(restarted)),
+                json=changed_body,
+            )
+            assert conflict.status_code == 409
+            assert conflict.json()["error"]["code"] == "IDEMPOTENCY_CONFLICT"
+
+        assert failed_worker.calls == 0
         assert risk.decision_effects == 1
         assert paper.effects == 0
         authorization_id = canonical_hash(
@@ -438,10 +452,11 @@ def test_missing_dedicated_command_adapters_returns_503_fail_closed() -> None:
     asyncio.run(scenario())
 
 
-def test_unavailable_worker_readiness_blocks_before_risk_command() -> None:
+def test_reject_does_not_consult_unavailable_worker_projection() -> None:
     risk = DurableRiskPort()
     paper = DurablePaperPort(risk)
-    app = build(risk, paper, worker_readiness=UnavailableWorkerReadinessAuthority())
+    worker = UnavailableWorkerReadinessAuthority()
+    app = build(risk, paper, worker_readiness=worker)
 
     async def scenario() -> None:
         async with httpx.AsyncClient(
@@ -451,30 +466,33 @@ def test_unavailable_worker_readiness_blocks_before_risk_command() -> None:
             response = await client.post(
                 "/api/v1/paper-approvals",
                 headers=approval_headers(await csrf(client)),
-                json=APPROVAL_BODY,
+                json={
+                    **APPROVAL_BODY,
+                    "decision": "REJECT",
+                    "reason": "operator rejects without execution worker readiness",
+                },
             )
-            assert response.status_code == 503
-            assert response.json()["error"]["code"] == "PAPER_WORKER_STATE_UNAVAILABLE"
-            assert risk.decision_effects == 0
+            assert response.status_code == 201
+            assert response.json()["result"] == "REJECTED"
+            assert worker.calls == 0
+            assert risk.decision_effects == 1
             assert paper.effects == 0
 
     asyncio.run(scenario())
 
 
 @pytest.mark.parametrize(
-    ("worker", "approve_status", "approve_code"),
+    "worker",
     [
-        (FixedWorkerReadinessAuthority("STALE"), 409, "PAPER_WORKER_NOT_READY"),
-        (FixedWorkerReadinessAuthority("FAILED"), 409, "PAPER_WORKER_NOT_READY"),
-        (MissingWorkerReadinessAuthority(), 503, "PAPER_WORKER_STATE_MISSING"),
-        (UnavailableWorkerReadinessAuthority(), 503, "PAPER_WORKER_STATE_UNAVAILABLE"),
+        FixedWorkerReadinessAuthority("STALE"),
+        FixedWorkerReadinessAuthority("FAILED"),
+        MissingWorkerReadinessAuthority(),
+        UnavailableWorkerReadinessAuthority(),
     ],
     ids=("stale", "failed", "missing", "unavailable"),
 )
-def test_unready_worker_blocks_approve_but_permits_one_idempotent_reject_without_authorization(
+def test_approve_delegates_to_risk_authority_without_mutable_worker_preflight(
     worker: PaperWorkerReadinessAuthority,
-    approve_status: int,
-    approve_code: str,
 ) -> None:
     risk = DurableRiskPort()
     paper = DurablePaperPort(risk)
@@ -485,37 +503,14 @@ def test_unready_worker_blocks_approve_but_permits_one_idempotent_reject_without
             transport=httpx.ASGITransport(app=app), base_url=ORIGIN
         ) as client:
             await login(client)
-            blocked = await client.post(
+            created = await client.post(
                 "/api/v1/paper-approvals",
                 headers=approval_headers(await csrf(client)),
                 json=APPROVAL_BODY,
             )
-            assert blocked.status_code == approve_status
-            assert blocked.json()["error"]["code"] == approve_code
-            calls_after_approve = worker.calls  # type: ignore[attr-defined]
-
-            reject_body = {
-                **APPROVAL_BODY,
-                "decision": "REJECT",
-                "reason": "operator rejects while execution worker is unavailable",
-            }
-            created = await client.post(
-                "/api/v1/paper-approvals",
-                headers=approval_headers(await csrf(client)),
-                json=reject_body,
-            )
-            replayed = await client.post(
-                "/api/v1/paper-approvals",
-                headers=approval_headers(await csrf(client)),
-                json=reject_body,
-            )
-            assert (created.status_code, replayed.status_code) == (201, 200)
-            assert created.json() == replayed.json()
-            assert created.json()["result"] == "REJECTED"
-            assert created.json()["approval_status"] == "REJECTED"
-            assert created.json()["authorization_status"] is None
-            assert created.json()["order_id"] is None
-            assert worker.calls == calls_after_approve  # type: ignore[attr-defined]
+            assert created.status_code == 201
+            assert created.json()["result"] == "AUTHORIZATION_ISSUED"
+            assert worker.calls == 0  # type: ignore[attr-defined]
             assert risk.decision_effects == 1
             assert paper.effects == 0
 

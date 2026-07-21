@@ -824,6 +824,10 @@ def upgrade() -> None:
               AND decision.risk_input->>'namespace'='paper'
               AND decision.kill_switch_version=NEW.expected_kill_switch_version
               AND decision.verdict='ALLOWED'
+              AND decision.decision_id=(
+                SELECT latest.decision_id FROM risk_decisions latest
+                WHERE latest.proposal_id=proposal.proposal_id
+                ORDER BY latest.recorded_at DESC,latest.decision_id DESC LIMIT 1)
               AND session.actor_id=NEW.actor_id
               AND session.issued_at<=NEW.decided_at
               AND session.last_seen_at<=NEW.decided_at
@@ -947,6 +951,10 @@ def upgrade() -> None:
               AND decision.policy_version=NEW.risk_policy_version
               AND decision.proposal_hash=NEW.proposal_hash
               AND decision.paper_order_preview_hash=NEW.paper_order_preview_hash
+              AND decision.decision_id=(
+                SELECT latest.decision_id FROM risk_decisions latest
+                WHERE latest.proposal_id=approval.proposal_id
+                ORDER BY latest.recorded_at DESC,latest.decision_id DESC LIMIT 1)
               AND account.namespace='paper'
           ) THEN
             RAISE EXCEPTION 'Paper execution authorization binding is incomplete';
@@ -999,6 +1007,8 @@ def upgrade() -> None:
           END IF;
           PERFORM pg_advisory_xact_lock(hashtextextended(
             'paper-account:{PAPER_DEFAULT_ACCOUNT_ID}',0));
+          PERFORM pg_advisory_xact_lock(hashtextextended(
+            'risk-proposal:'||p_proposal_id,0));
           SELECT * INTO proposal_row FROM trade_proposals
             WHERE proposal_id=p_proposal_id FOR SHARE;
           IF NOT FOUND OR proposal_row.risk_eligible IS NOT true
@@ -1039,9 +1049,10 @@ def upgrade() -> None:
                  <>decision_row.reconciliation_checkpoint_hash
           THEN RAISE EXCEPTION 'RECONCILIATION_DRIFT'; END IF;
           IF p_decision='APPROVED' THEN
-            -- Lock order is Paper account advisory -> Kill row -> worker row.
-            -- Risk, Kill and reconciliation retain their deterministic rejection
-            -- precedence; this lock still precedes every approval-side write.
+            -- Lock order is Paper account advisory -> Risk Proposal advisory ->
+            -- Proposal row -> Kill row -> worker row.  The latest Risk and
+            -- reconciliation reads occur after the Proposal scope is serialized;
+            -- deterministic rejection precedence is unchanged.
             SELECT * INTO worker_row FROM paper_authorization_worker_state
               WHERE worker_name='phase7-paper-authorization' FOR SHARE;
             IF NOT FOUND OR worker_row.status<>'RUNNING'
@@ -1302,15 +1313,27 @@ def upgrade() -> None:
           risk_decision_hash varchar,paper_order_preview jsonb,
           paper_order_preview_hash varchar,current_data_state_hash varchar,
           current_data_as_of timestamptz,current_knowledge_cutoff timestamptz,
-          risk_market_books jsonb
+          risk_authority_current boolean,risk_market_books jsonb
         ) AS $$
-          SELECT authz.authorization_nonce,authz.paper_account_id,
+        DECLARE locked_proposal_id varchar;
+        BEGIN
+          SELECT authz.proposal_id INTO locked_proposal_id
+          FROM paper_execution_authorizations authz
+          WHERE authz.authorization_id=p_authorization_id AND authz.namespace='paper';
+          IF NOT FOUND THEN RETURN; END IF;
+          PERFORM pg_advisory_xact_lock(hashtextextended(
+            'risk-proposal:'||locked_proposal_id,0));
+          RETURN QUERY SELECT authz.authorization_nonce,authz.paper_account_id,
             authz.authorization_input_digest,authz.kill_switch_version,
             authz.reconciliation_checkpoint_hash,authz.ledger_snapshot_hash,
             authz.expires_at,authz.approval_id,authz.proposal_hash,
             authz.risk_decision_hash,approval.paper_order_preview,
             approval.paper_order_preview_hash,authz.current_data_state_hash,
             authz.current_data_as_of,authz.current_knowledge_cutoff,
+            decision.verdict='ALLOWED' AND decision.decision_id=(
+              SELECT latest.decision_id FROM risk_decisions latest
+              WHERE latest.proposal_id=authz.proposal_id
+              ORDER BY latest.recorded_at DESC,latest.decision_id DESC LIMIT 1),
             decision.risk_input->'market_books'
           FROM paper_execution_authorizations authz JOIN paper_approvals approval
             ON approval.approval_id=authz.approval_id
@@ -1323,8 +1346,9 @@ def upgrade() -> None:
             AND decision.risk_input->'market_books' ?& array['BTCUSDT','ETHUSDT']
             AND (decision.risk_input->'market_books')
               - array['BTCUSDT','ETHUSDT']='{}'::jsonb
-          FOR KEY SHARE OF authz,approval,decision
-        $$ LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, public
+          FOR KEY SHARE OF authz,approval,decision;
+        END;
+        $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public
     """)
     op.execute("REVOKE ALL ON FUNCTION paper_lock_execution_authorization_v1(varchar) FROM PUBLIC")
     op.execute(r"""
@@ -1534,6 +1558,15 @@ def upgrade() -> None:
                    SELECT 1 FROM paper_approval_revocations revocation
                    WHERE revocation.approval_id=authorized_row.approval_id)
                  AND (NEW.outcome<>'BLOCKED' OR NEW.reason_code<>'AUTHORIZATION_REVOKED'))
+             OR ((NOT EXISTS (
+                    SELECT 1 FROM risk_decisions decision
+                    WHERE decision.decision_id=authorized_row.risk_decision_id
+                      AND decision.verdict='ALLOWED')
+                  OR authorized_row.risk_decision_id<>(
+                    SELECT latest.decision_id FROM risk_decisions latest
+                    WHERE latest.proposal_id=authorized_row.proposal_id
+                    ORDER BY latest.recorded_at DESC,latest.decision_id DESC LIMIT 1))
+                 AND (NEW.outcome<>'BLOCKED' OR NEW.reason_code<>'HASH_MISMATCH'))
           THEN
             RAISE EXCEPTION 'Paper authorization attempt is not bound to one current authorization';
           END IF;
@@ -2001,6 +2034,10 @@ def upgrade() -> None:
           THEN
             RAISE EXCEPTION 'Risk decision command is invalid';
           END IF;
+          IF decision_record->>'proposal_id' IS NOT NULL THEN
+            PERFORM pg_advisory_xact_lock(hashtextextended(
+              'risk-proposal:'||(decision_record->>'proposal_id'),0));
+          END IF;
           PERFORM pg_advisory_xact_lock(hashtextextended(
             'risk-input:'||(decision_record->>'risk_input_digest'),0));
           SELECT jsonb_build_object(
@@ -2072,6 +2109,8 @@ def upgrade() -> None:
           THEN RAISE EXCEPTION 'RISK_CONTEXT_ID_INVALID'; END IF;
           PERFORM pg_advisory_xact_lock(hashtextextended(
             'paper-account:'||p_paper_account_id,0));
+          PERFORM pg_advisory_xact_lock(hashtextextended(
+            'risk-proposal:'||p_proposal_id,0));
           IF NOT EXISTS (SELECT 1 FROM paper_accounts account
                          WHERE account.account_id=p_paper_account_id
                            AND account.namespace='paper')

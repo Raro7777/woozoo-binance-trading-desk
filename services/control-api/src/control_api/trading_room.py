@@ -1560,14 +1560,6 @@ class PostgresTradingRoom:
         csrf_binding_hash: str | None = None,
         origin_hash: str | None = None,
     ) -> CommandResult:
-        if decision == "APPROVE":
-            worker = self._worker_state()
-            if not worker["ready"]:
-                raise TradingRoomError(
-                    "PAPER_WORKER_NOT_READY",
-                    "Paper authorization worker is not ready",
-                    409,
-                )
         body = {
             "proposal_id": proposal_id,
             "decision": decision,

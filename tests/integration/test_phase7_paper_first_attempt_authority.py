@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
+from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from hashlib import sha256
@@ -11,7 +12,7 @@ from pathlib import Path
 import subprocess
 import sys
 from threading import Event
-from typing import Iterator
+from typing import cast, Iterator
 
 import psycopg
 from psycopg.types.json import Jsonb
@@ -49,7 +50,7 @@ from platform_core.generated_contracts import (
     PAPER_DOMAIN_EVENTS_V2_SCHEMA,
     PAPER_ORDER_V2_SCHEMA,
 )
-from risk_engine import KillActivation, PostgresKillSwitch, evaluate_risk
+from risk_engine import KillActivation, PostgresKillSwitch, PostgresRiskStore, evaluate_risk
 from test_risk_engine import risk_input as base_risk_input
 
 
@@ -389,23 +390,23 @@ def _seed_authorization(
             "VALUES (%s,'risk-decision',%s)",
             (risk_event_id, risk_id),
         )
+        connection.execute(
+            "INSERT INTO trade_proposals"
+            "(proposal_id,run_id,evidence_id,proposal_version,side,risk_eligible,"
+            "proposal_hash,payload,created_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+            (
+                proposal_id,
+                proposal["analysis_run_id"],
+                proposal["evidence_id"],
+                proposal["proposal_version"],
+                proposal["side"],
+                proposal["risk_eligible"],
+                proposal_hash,
+                Jsonb(proposal),
+                now,
+            ),
+        )
         if not insert_authority:
-            connection.execute(
-                "INSERT INTO trade_proposals"
-                "(proposal_id,run_id,evidence_id,proposal_version,side,risk_eligible,"
-                "proposal_hash,payload,created_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                (
-                    proposal_id,
-                    proposal["analysis_run_id"],
-                    proposal["evidence_id"],
-                    proposal["proposal_version"],
-                    proposal["side"],
-                    proposal["risk_eligible"],
-                    proposal_hash,
-                    Jsonb(proposal),
-                    now,
-                ),
-            )
             connection.execute("SET session_replication_role='origin'")
             return authorization_id, request_hash
         connection.execute(
@@ -565,6 +566,39 @@ def _seed_approval_candidate(suffix: str, verdict: str = "ALLOWED") -> tuple[str
     return candidate[0], candidate[1]
 
 
+def _persist_newer_denied_risk(
+    proposal_id: str,
+    connection: psycopg.Connection[object],
+) -> str:
+    prior = cast(
+        tuple[object, ...] | None,
+        connection.execute(
+            "SELECT risk_input,recorded_at FROM risk_decisions WHERE proposal_id=%s "
+            "ORDER BY recorded_at DESC,decision_id DESC LIMIT 1",
+            (proposal_id,),
+        ).fetchone(),
+    )
+    assert prior is not None and isinstance(prior[0], dict)
+    risk_input = cast(dict[str, object], deepcopy(prior[0]))
+    data = risk_input["data"]
+    clock = risk_input["decision_clock"]
+    assert isinstance(data, dict) and isinstance(clock, dict)
+    assert isinstance(prior[1], datetime)
+    recorded_at = max(datetime.now(UTC), prior[1] + timedelta(microseconds=1))
+    data["freshness"] = "STALE"
+    clock["decision_as_of"] = recorded_at.isoformat()
+    decision = evaluate_risk(risk_input)
+    assert decision.verdict == "DENIED"
+    persisted = PostgresRiskStore(RISK_WRITER_URL).persist_decision(
+        risk_input,
+        decision,
+        recorded_at=recorded_at,
+        _connection=connection,
+    )
+    assert persisted.created is True
+    return persisted.decision_id
+
+
 def _approval_effect_counts(proposal_id: str, idempotency_key: str) -> tuple[int, ...]:
     with psycopg.connect(DATABASE_URL) as connection:
         counts = connection.execute(
@@ -622,22 +656,6 @@ async def _login_and_csrf(client: httpx.AsyncClient) -> str:
     return token
 
 
-class _WorkerFailsAfterHealthyApiSnapshot:
-    def __init__(self, reporter: PostgresWorkerStateReporter) -> None:
-        self._reporter = reporter
-        self.calls = 0
-
-    def snapshot(self) -> dict[str, object]:
-        self.calls += 1
-        with psycopg.connect(DATABASE_URL) as connection:
-            before = connection.execute(
-                "SELECT status,ready FROM paper_authorization_worker_reader_v1"
-            ).fetchone()
-        assert before == ("HEALTHY", True)
-        self._reporter.fail("INJECTED_AFTER_API_SNAPSHOT")
-        return {"status": "HEALTHY", "ready": True}
-
-
 def test_denied_and_error_risk_reject_commands_have_no_db_or_api_effects(
     postgres: None,
 ) -> None:
@@ -692,14 +710,16 @@ def test_denied_and_error_risk_reject_commands_have_no_db_or_api_effects(
     asyncio.run(scenario())
 
 
-def test_sql_worker_recheck_blocks_approve_after_healthy_api_snapshot_without_effects(
+def test_sql_worker_authority_blocks_failed_worker_without_effects(
     postgres: None,
 ) -> None:
     proposal_id, preview_hash = _seed_approval_candidate("worker-snapshot-race")
     reporter = PostgresWorkerStateReporter(PAPER_WRITER_URL, instance_id="snapshot-race-worker")
     reporter.start()
-    race = _WorkerFailsAfterHealthyApiSnapshot(reporter)
-    app = _postgres_approval_app(worker_readiness=race)
+    reporter.fail("INJECTED_BEFORE_SQL_AUTHORITY")
+    app = _postgres_approval_app(
+        worker_readiness=PostgresPaperWorkerReadinessAuthority(CONTROL_URL)
+    )
     idempotency_key = "phase7-worker-snapshot-race"
 
     async def scenario() -> None:
@@ -727,8 +747,111 @@ def test_sql_worker_recheck_blocks_approve_after_healthy_api_snapshot_without_ef
             assert response.json()["error"]["code"] == "PAPER_WORKER_NOT_READY"
 
     asyncio.run(scenario())
-    assert race.calls == 1
     assert _approval_effect_counts(proposal_id, idempotency_key) == (0,) * 6
+
+
+def test_newer_denied_risk_serializes_before_waiting_approval_without_stale_effects(
+    postgres: None,
+) -> None:
+    proposal_id, preview_hash = _seed_approval_candidate("proposal-risk-serialization")
+    with psycopg.connect(DATABASE_URL) as connection:
+        decision_as_of = connection.execute(
+            "SELECT decision_as_of FROM risk_decisions WHERE proposal_id=%s",
+            (proposal_id,),
+        ).fetchone()
+    assert decision_as_of is not None
+    decided_at = max(datetime.now(UTC), decision_as_of[0] + timedelta(microseconds=2))
+    session_digest, csrf_digest = _seed_operator_csrf("proposal-risk-serialization", decided_at)
+    idempotency_key = "phase7-proposal-risk-serialization"
+    approval_started = Event()
+
+    def issue_waiting_approval() -> tuple[object, ...] | None:
+        with psycopg.connect(RISK_WRITER_URL) as connection:
+            approval_started.set()
+            return connection.execute(
+                "SELECT created,response FROM issue_paper_approval_v1("
+                "%s,%s,%s,'APPROVED',1,%s,'operator-local-1',%s,%s,%s,%s,%s,%s)",
+                (
+                    idempotency_key,
+                    canonical_hash({"approval": proposal_id}),
+                    proposal_id,
+                    preview_hash,
+                    session_digest,
+                    csrf_digest,
+                    canonical_hash({"origin": "proposal-risk-serialization"}),
+                    "approval-proposal-risk-serialization-0001",
+                    "authorization-proposal-risk-serialization-01",
+                    decided_at,
+                ),
+            ).fetchone()
+
+    risk_connection = psycopg.connect(RISK_WRITER_URL)
+    try:
+        risk_connection.execute(
+            "SELECT pg_advisory_xact_lock(hashtextextended(%s,0))",
+            (f"risk-proposal:{proposal_id}",),
+        )
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            approval = executor.submit(issue_waiting_approval)
+            assert approval_started.wait(timeout=5)
+            with pytest.raises(FutureTimeoutError):
+                approval.result(timeout=0.25)
+            denied_id = _persist_newer_denied_risk(proposal_id, risk_connection)
+            risk_connection.commit()
+            with pytest.raises(psycopg.errors.RaiseException, match="RISK_DECISION_DRIFT"):
+                approval.result(timeout=5)
+    finally:
+        risk_connection.close()
+
+    with psycopg.connect(DATABASE_URL) as connection:
+        latest = connection.execute(
+            "SELECT decision_id,verdict FROM risk_decisions WHERE proposal_id=%s "
+            "ORDER BY recorded_at DESC,decision_id DESC LIMIT 1",
+            (proposal_id,),
+        ).fetchone()
+    assert latest == (denied_id, "DENIED")
+    assert _approval_effect_counts(proposal_id, idempotency_key) == (0,) * 6
+
+
+def test_first_attempt_rejects_authorization_superseded_by_newer_denied_risk(
+    postgres: None,
+) -> None:
+    authorization_id, _ = _seed_authorization(
+        "stale-risk-first-attempt", healthy_reconciliation=True
+    )
+    with psycopg.connect(DATABASE_URL) as connection:
+        proposal = connection.execute(
+            "SELECT proposal_id FROM paper_execution_authorizations WHERE authorization_id=%s",
+            (authorization_id,),
+        ).fetchone()
+    assert proposal is not None
+    with psycopg.connect(RISK_WRITER_URL) as connection:
+        denied_id = _persist_newer_denied_risk(proposal[0], connection)
+
+    blocked = PostgresPaperStore(PAPER_WRITER_URL).attempt_phase7_authorization(authorization_id)
+    assert blocked.created is True
+    assert blocked.response == {
+        "result": "BLOCKED",
+        "authorization_id": authorization_id,
+        "reason_code": "HASH_MISMATCH",
+    }
+    with psycopg.connect(DATABASE_URL) as connection:
+        latest = connection.execute(
+            "SELECT decision_id,verdict FROM risk_decisions WHERE proposal_id=%s "
+            "ORDER BY recorded_at DESC,decision_id DESC LIMIT 1",
+            (proposal[0],),
+        ).fetchone()
+        effects = connection.execute(
+            "SELECT "
+            "(SELECT count(*) FROM paper_authorization_attempts "
+            " WHERE paper_execution_authorization_id=%s),"
+            "(SELECT count(*) FROM paper_orders WHERE authorization_id=%s),"
+            "(SELECT count(*) FROM paper_broker_inputs "
+            " WHERE paper_execution_authorization_id=%s)",
+            (authorization_id, authorization_id, authorization_id),
+        ).fetchone()
+    assert latest == (denied_id, "DENIED")
+    assert effects == (1, 0, 1)
 
 
 def _record_current_public_book(

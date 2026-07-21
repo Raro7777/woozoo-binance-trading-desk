@@ -213,16 +213,16 @@
       "artifact": "artifacts/failure/ATOM-002.json",
       "test_nodes": [
         "tests/replay/test_paper_restart_replay.py::test_atom_002_ack_loss_retry_returns_same_order_without_new_effect",
-        "tests/integration/test_trading_room_command_ports.py::test_ack_loss_restart_replays_durable_receipts_without_second_paper_effect",
+        "tests/integration/test_trading_room_command_ports.py::test_approval_ack_loss_replays_receipt_after_worker_failure",
         "tests/integration/test_paper_postgres_persistence.py::test_atomic_write_is_durable_idempotent_and_restart_stable",
         "tests/integration/test_paper_postgres_persistence.py::test_concurrent_command_and_observation_retries_return_one_stored_effect"
       ],
       "source_sha256": [
         "c69138d0379deaa38656b20c1ef50fe08d586d2da3348f0b9b1a8d9117bf0026",
-        "f498ade35a16cbb73750f6e2ce92abca837fd743d0d8eb34bb348b30f2f292fc",
+        "5df68171d47cfbf6dc19e8c6672e326380dc7ab60a978905e09941cab81fad42",
         "16c4257805a95a32de14f5f9286c35176aa32eff888287289c1d1e6b1805a3ec"
       ],
-      "oracle": "A committed response lost before acknowledgement is replayed after restart with zero additional order, fill, posting or event effect."
+      "oracle": "A committed response lost before acknowledgement is replayed after restart with zero additional order, fill, posting or event effect. A durable approval receipt is replayed before mutable worker-health checks, while a changed body under the same idempotency key conflicts."
     }
   ],
   "scenarios": [
@@ -244,10 +244,11 @@
         "tests/integration/test_trading_room_command_ports.py::test_concurrent_same_request_issues_once_without_browser_paper_effect",
         "tests/integration/test_trading_room_command_ports.py::test_revocation_can_win_after_authorization_issue_before_first_paper_attempt",
         "tests/integration/test_trading_room_command_ports.py::test_malformed_preconditions_have_zero_effect_and_do_not_consume_csrf",
-        "tests/integration/test_trading_room_command_ports.py::test_unready_worker_blocks_approve_but_permits_one_idempotent_reject_without_authorization[stale]",
-        "tests/integration/test_trading_room_command_ports.py::test_unready_worker_blocks_approve_but_permits_one_idempotent_reject_without_authorization[failed]",
-        "tests/integration/test_trading_room_command_ports.py::test_unready_worker_blocks_approve_but_permits_one_idempotent_reject_without_authorization[missing]",
-        "tests/integration/test_trading_room_command_ports.py::test_unready_worker_blocks_approve_but_permits_one_idempotent_reject_without_authorization[unavailable]",
+        "tests/integration/test_trading_room_command_ports.py::test_reject_does_not_consult_unavailable_worker_projection",
+        "tests/integration/test_trading_room_command_ports.py::test_approve_delegates_to_risk_authority_without_mutable_worker_preflight[stale]",
+        "tests/integration/test_trading_room_command_ports.py::test_approve_delegates_to_risk_authority_without_mutable_worker_preflight[failed]",
+        "tests/integration/test_trading_room_command_ports.py::test_approve_delegates_to_risk_authority_without_mutable_worker_preflight[missing]",
+        "tests/integration/test_trading_room_command_ports.py::test_approve_delegates_to_risk_authority_without_mutable_worker_preflight[unavailable]",
         "tests/integration/test_trading_room_command_ports.py::test_approval_view_projects_worker_failure_as_approve_only_block[stale]",
         "tests/integration/test_trading_room_command_ports.py::test_approval_view_projects_worker_failure_as_approve_only_block[failed]",
         "tests/integration/test_trading_room_command_ports.py::test_approval_view_projects_worker_failure_as_approve_only_block[missing]",
@@ -260,9 +261,9 @@
         "dab3213f194c3bc1161f9279fe200b66bd810c09ef6482a1c3d526ebd0835fec",
         "799fbd11362ba754a2a385d84d01f0ac4a37ed283de66553be5876e3524d69c3",
         "9d5d32d65c8bf17db096b4ecd718969c96b4be5f613db594f8021b7ff2325abc",
-        "f498ade35a16cbb73750f6e2ce92abca837fd743d0d8eb34bb348b30f2f292fc"
+        "5df68171d47cfbf6dc19e8c6672e326380dc7ab60a978905e09941cab81fad42"
       ],
-      "oracle": "Session, Origin, one-time CSRF, exact preview hashes, approval version and distinct authorization nonce are all valid. Session validation, idle touch, one-time CSRF consumption and logout revocation serialize atomically; when logout wins, a waiting command is rejected without consuming its CSRF or creating a financial effect. Worker failure blocks APPROVE while one immutable, idempotent REJECT remains available and creates no authorization or Paper effect. Every stale, replayed, foreign or malformed counterexample has zero new financial effect."
+      "oracle": "Session, Origin, one-time CSRF, exact preview hashes, approval version and distinct authorization nonce are all valid. Session validation, idle touch, one-time CSRF consumption and logout revocation serialize atomically; when logout wins, a waiting command is rejected without consuming its CSRF or creating a financial effect. Worker failure is projected as APPROVE-only disabled while one immutable, idempotent REJECT remains available; the command API does not use that mutable projection as authority and delegates new approval enforcement to the database Risk boundary. Every stale, replayed, foreign or malformed counterexample has zero new financial effect."
     },
     {
       "id": "AUTH-002",
@@ -272,7 +273,9 @@
       "test_nodes": [
         "tests/failure/test_trading_room_authorization_failures.py::test_auth_002_stale_state_before_human_decision_has_zero_order_effect",
         "tests/integration/test_phase7_paper_first_attempt_authority.py::test_denied_and_error_risk_reject_commands_have_no_db_or_api_effects",
-        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_sql_worker_recheck_blocks_approve_after_healthy_api_snapshot_without_effects",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_sql_worker_authority_blocks_failed_worker_without_effects",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_newer_denied_risk_serializes_before_waiting_approval_without_stale_effects",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_first_attempt_rejects_authorization_superseded_by_newer_denied_risk",
         "tests/integration/test_trading_room_migration_contract.py::test_approval_sql_authority_requires_allowed_risk_and_rechecks_worker_atomically",
         "tests/integration/test_phase7_paper_first_attempt_authority.py::test_approval_rejects_checkpoint_that_predates_a_paper_effect",
         "tests/integration/test_phase7_paper_first_attempt_authority.py::test_kill_first_attempt_stays_blocked_after_recovery_and_retry",
@@ -286,11 +289,11 @@
       ],
       "source_sha256": [
         "9d5d32d65c8bf17db096b4ecd718969c96b4be5f613db594f8021b7ff2325abc",
-        "9b2ea9e45f4dc66682608e514220369de94d1fe23e5d55a44e0ea962a747d860",
-        "3b75cf54f9d2d2c120cf9d6c349e6dfe8e61be8b5c3b514df466af4884b31c28",
-        "f498ade35a16cbb73750f6e2ce92abca837fd743d0d8eb34bb348b30f2f292fc"
+        "e41b1cc45ebf787c31b0000a740fd3029d81f0705ea250998bb4a88dbcda18e5",
+        "ad51f22e213b4b5a10c93563f2d29a6a430b07494a183a73cfbd14ec9195f21d",
+        "5df68171d47cfbf6dc19e8c6672e326380dc7ab60a978905e09941cab81fad42"
       ],
-      "oracle": "A direct human decision is recorded only for a complete latest ALLOWED Risk decision: DENIED or ERROR blocks both APPROVE and REJECT with zero approval, receipt, outbox, authorization, attempt or order effect. APPROVE rechecks and locks the authoritative worker row inside the issuance transaction, so a worker failure after the API snapshot also has zero effect; worker readiness never blocks a valid human REJECT. Approval issuance rejects a reconciliation checkpoint whose stamped authority sequence predates any committed Paper effect. Kill, reconciliation, revocation, stale books and execution-quality drift are revalidated at the first Paper attempt; any failure consumes or blocks the authorization terminally with no order, hold, fill or ledger effect."
+      "oracle": "A direct human decision is recorded only for a complete latest ALLOWED Risk decision: DENIED or ERROR blocks both APPROVE and REJECT with zero approval, receipt, outbox, authorization, attempt or order effect. New APPROVE locks and rechecks the authoritative worker row inside the issuance transaction; worker readiness never blocks a valid human REJECT. Risk persistence, approval and the first Paper attempt share one proposal authority lock: a newer DENIED decision wins before a waiting approval and supersedes an already-issued authorization at first attempt without an order. Approval issuance rejects a reconciliation checkpoint whose stamped authority sequence predates any committed Paper effect. Kill, reconciliation, revocation, stale books and execution-quality drift are revalidated at the first Paper attempt; any failure consumes or blocks the authorization terminally with no order, hold, fill or ledger effect."
     },
     {
       "id": "E2E-001",
@@ -320,10 +323,10 @@
       "source_sha256": [
         "90a31939b5325fb4ec774edd91789ef40b51c70ff35d97206f2393e6f756d3ef",
         "dd85d3264e1a7374d1e34e8f7fde5a083fd8ae115b927d453941c5a4be9942d3",
-        "9b2ea9e45f4dc66682608e514220369de94d1fe23e5d55a44e0ea962a747d860",
+        "e41b1cc45ebf787c31b0000a740fd3029d81f0705ea250998bb4a88dbcda18e5",
         "07cb535db57cca0e4f13b44a2ad75a2716461abe283517bb6cfe67d0409757c6",
         "5769abf0ed4b9a57c849a168da2536cb6397d2b24dc514d06b8c45e54633c7a8",
-        "3b75cf54f9d2d2c120cf9d6c349e6dfe8e61be8b5c3b514df466af4884b31c28"
+        "ad51f22e213b4b5a10c93563f2d29a6a430b07494a183a73cfbd14ec9195f21d"
       ],
       "configuration_sources": [
         {
@@ -405,13 +408,13 @@
         "tests/e2e/trading-room.spec.ts::[live] E2E-003",
         "tests/property/test_trading_room_properties.py::test_phase7_preview_hash_is_mutation_sensitive_and_notional_is_policy_capped",
         "tests/property/test_trading_room_properties.py::test_phase7_idempotency_same_hash_replays_and_changed_hash_conflicts",
-        "tests/integration/test_trading_room_command_ports.py::test_ack_loss_restart_replays_durable_receipts_without_second_paper_effect",
+        "tests/integration/test_trading_room_command_ports.py::test_approval_ack_loss_replays_receipt_after_worker_failure",
         "tests/integration/test_trading_room_command_ports.py::test_concurrent_same_request_issues_once_without_browser_paper_effect"
       ],
       "source_sha256": [
         "90a31939b5325fb4ec774edd91789ef40b51c70ff35d97206f2393e6f756d3ef",
         "799fbd11362ba754a2a385d84d01f0ac4a37ed283de66553be5876e3524d69c3",
-        "f498ade35a16cbb73750f6e2ce92abca837fd743d0d8eb34bb348b30f2f292fc"
+        "5df68171d47cfbf6dc19e8c6672e326380dc7ab60a978905e09941cab81fad42"
       ],
       "configuration_sources": [
         {
@@ -439,7 +442,7 @@
           "sha256": "f70d2fd33a33dded6a8a112e66ec6ea065acd9927d3a04ebd39ee50dc8930c48"
         }
       ],
-      "oracle": "Concurrent click, retry, reload and restart replay one durable response and one effect; any preview or request-hash mutation conflicts or blocks without financial effect."
+      "oracle": "Concurrent click, retry, reload and restart replay one durable response and one effect. A committed approval receipt is replayed before mutable worker-health checks after ACK loss, while any preview or request-hash mutation conflicts or blocks without financial effect."
     },
     {
       "id": "E2E-004",
@@ -459,7 +462,7 @@
       "source_sha256": [
         "90a31939b5325fb4ec774edd91789ef40b51c70ff35d97206f2393e6f756d3ef",
         "dd85d3264e1a7374d1e34e8f7fde5a083fd8ae115b927d453941c5a4be9942d3",
-        "9b2ea9e45f4dc66682608e514220369de94d1fe23e5d55a44e0ea962a747d860",
+        "e41b1cc45ebf787c31b0000a740fd3029d81f0705ea250998bb4a88dbcda18e5",
         "5769abf0ed4b9a57c849a168da2536cb6397d2b24dc514d06b8c45e54633c7a8"
       ],
       "configuration_sources": [

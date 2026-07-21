@@ -167,8 +167,38 @@ def test_approval_sql_authority_requires_allowed_risk_and_rechecks_worker_atomic
     approval_command = source.split("CREATE FUNCTION issue_paper_approval_v1", 1)[1].split(
         "CREATE FUNCTION revoke_paper_approval_v1", 1
     )[0]
+    risk_persistence = source.split("CREATE FUNCTION persist_risk_decision_v1", 1)[1].split(
+        "CREATE FUNCTION load_authoritative_risk_context_v1", 1
+    )[0]
+    risk_evaluation = source.split("CREATE FUNCTION load_authoritative_risk_context_v1", 1)[
+        1
+    ].split("CREATE FUNCTION recover_kill_switch_v1", 1)[0]
+    first_attempt = source.split("CREATE FUNCTION paper_lock_execution_authorization_v1", 1)[
+        1
+    ].split("CREATE FUNCTION paper_validate_kill_activation_v1", 1)[0]
+    attempt_binding = source.split("CREATE FUNCTION enforce_phase7_attempt_binding", 1)[1].split(
+        "CREATE FUNCTION enforce_phase7_broker_input_binding", 1
+    )[0]
 
     assert "AND decision.verdict='ALLOWED'" in approval_binding
+    assert "risk-proposal:" in risk_persistence
+    assert "risk-proposal:" in risk_evaluation
+    assert "risk-proposal:" in approval_command
+    assert "risk-proposal:" in first_attempt
+    assert approval_command.index(
+        "'paper-account:{PAPER_DEFAULT_ACCOUNT_ID}',0"
+    ) < approval_command.index("'risk-proposal:'||p_proposal_id")
+    assert approval_command.index("'risk-proposal:'||p_proposal_id") < approval_command.index(
+        "SELECT * INTO proposal_row FROM trade_proposals"
+    )
+    assert approval_command.index(
+        "SELECT * INTO proposal_row FROM trade_proposals"
+    ) < approval_command.index("SELECT * INTO kill_row FROM kill_switch_state")
+    assert approval_command.index(
+        "SELECT * INTO kill_row FROM kill_switch_state"
+    ) < approval_command.index("FROM paper_authorization_worker_state")
+    for latest_guard in (approval_binding, first_attempt, attempt_binding):
+        assert "ORDER BY latest.recorded_at DESC,latest.decision_id DESC LIMIT 1" in latest_guard
     assert "NEW.decision='REJECTED' OR decision.verdict='ALLOWED'" not in approval_binding
     assert "OR decision_row.verdict<>'ALLOWED'" in approval_command
     assert "p_decision='APPROVED' AND decision_row.verdict<>'ALLOWED'" not in approval_command
