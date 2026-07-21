@@ -132,16 +132,18 @@ def test_phase7_migration_closes_auth_approval_authorization_and_recovery_bounda
     assert "attempt.paper_execution_authorization_id=authz.authorization_id" in completion_guard
     assert "paper_recorded_book_market_is_current_v1(latest.id)" in recovery_guard
     assert "paper_recorded_book_market_is_current_v1(latest.id)" in recovery_reader
-    for writer_guard in (approval_guard, recovery_guard):
+    for writer_guard, authority_comparison in (
+        (approval_guard, "checkpoint_row.authority_sequence<>COALESCE(("),
+        (recovery_guard, "checkpoint_row.authority_sequence=COALESCE(("),
+    ):
         assert writer_guard.index(
             "'paper-account:{PAPER_DEFAULT_ACCOUNT_ID}',0"
-        ) < writer_guard.index("checkpoint_row.authority_sequence<>COALESCE((")
-        assert "checkpoint_row.authority_sequence<>COALESCE((" in writer_guard
+        ) < writer_guard.index(authority_comparison)
         assert "FROM paper_outbox_links link" in writer_guard
         assert "JOIN outbox_events event USING(event_id)" in writer_guard
         assert "WHERE link.account_id='{PAPER_DEFAULT_ACCOUNT_ID}'),0)" in writer_guard
     assert "AND health.reconciliation_status='HEALTHY'" in recovery_reader
-    assert "checkpoint_row.input_digest<>completion_row.state_digest" in recovery_guard
+    assert "checkpoint_row.input_digest=completion_row.state_digest" in recovery_guard
     assert "checkpoint.input_digest=completion.state_digest" in recovery_reader
     assert "checkpoint.authority_sequence<>authority.current_sequence" in source
     assert "SECURITY DEFINER SET search_path = pg_catalog, public" in source
