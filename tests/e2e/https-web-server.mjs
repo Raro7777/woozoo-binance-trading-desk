@@ -1,12 +1,19 @@
 import { spawn, spawnSync } from "node:child_process";
-import { readFile, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { readFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer as createHttpsServer } from "node:https";
 import { request as httpRequest } from "node:http";
 import { connect } from "node:net";
 import { tmpdir } from "node:os";
-import { basename, delimiter, join, resolve, sep } from "node:path";
+import { basename, delimiter, dirname, join, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { cleanupRecordedCertificate, recordTemporaryCertificate } from "./ephemeral-certificate.mjs";
+import {
+  E2E_COMPOSE_PROJECT,
+  E2E_POSTGRES_VOLUME,
+  removeInfrastructure,
+  startFreshInfrastructure,
+} from "./infrastructure-lifecycle.mjs";
 
 const root = resolve(import.meta.dirname, "../..");
 const app = resolve(root, "apps/trading-room-web");
@@ -14,8 +21,9 @@ await cleanupRecordedCertificate();
 const temporaryRoot = await mkdtemp(join(tmpdir(), "woozoo-e2e-https-"));
 await recordTemporaryCertificate(temporaryRoot);
 const originalDirectory = process.cwd();
-const composeProject = "woozoo-e2e";
+const composeProject = E2E_COMPOSE_PROJECT;
 const composeFile = resolve(root, "tests/e2e/compose.yaml");
+const infrastructureEvidencePath = resolve(root, "artifacts/e2e/E2E-INFRA-001.json");
 const verifierFile = resolve(temporaryRoot, "operator.argon2id");
 const secretFile = resolve(temporaryRoot, "operator.secret");
 const pythonPath = [
@@ -46,9 +54,11 @@ function checked(command, args, options = {}) {
 }
 
 function stopInfrastructure() {
-  spawnSync("docker", ["compose", "-f", composeFile, "-p", composeProject, "down", "-v"], {
-    cwd: root,
-    stdio: "inherit",
+  return removeInfrastructure({
+    composeFile,
+    composeProject,
+    root,
+    volumeName: E2E_POSTGRES_VOLUME,
   });
 }
 
@@ -89,34 +99,62 @@ try {
     "--secret-file", secretFile,
     "--verifier-file", verifierFile,
   ]);
-  stopInfrastructure();
-  checked("docker", [
-    "compose", "-f", composeFile, "-p", composeProject,
-    "up", "-d", "--wait", "postgres", "redis",
-  ]);
-  const postgresPort = publishedPort("postgres", 5432);
-  const redisPort = publishedPort("redis", 6379);
-  Object.assign(serviceEnvironment, {
-    DATABASE_URL: `postgresql://woozoo_control_reader@127.0.0.1:${postgresPort}/woozoo`,
-    CONTROL_DATABASE_URL: `postgresql://woozoo_control_api@127.0.0.1:${postgresPort}/woozoo`,
-    AGENT_DATABASE_URL: `postgresql://woozoo_agent_orchestrator@127.0.0.1:${postgresPort}/woozoo`,
-    RISK_DATABASE_URL: `postgresql://woozoo_risk_engine@127.0.0.1:${postgresPort}/woozoo`,
-    PAPER_DATABASE_URL: `postgresql://woozoo_paper_engine@127.0.0.1:${postgresPort}/woozoo`,
-    MARKET_DATABASE_URL: `postgresql://woozoo_market_writer@127.0.0.1:${postgresPort}/woozoo`,
-    EVIDENCE_DATABASE_URL: `postgresql://woozoo_evidence_writer@127.0.0.1:${postgresPort}/woozoo`,
-    REDIS_URL: `redis://127.0.0.1:${redisPort}/0`,
+  await rm(infrastructureEvidencePath, { force: true });
+  const lifecycleEvidence = startFreshInfrastructure({
+    afterStart: () => {
+      const postgresPort = publishedPort("postgres", 5432);
+      const redisPort = publishedPort("redis", 6379);
+      Object.assign(serviceEnvironment, {
+        DATABASE_URL: `postgresql://woozoo_control_reader@127.0.0.1:${postgresPort}/woozoo`,
+        CONTROL_DATABASE_URL: `postgresql://woozoo_control_api@127.0.0.1:${postgresPort}/woozoo`,
+        AGENT_DATABASE_URL: `postgresql://woozoo_agent_orchestrator@127.0.0.1:${postgresPort}/woozoo`,
+        RISK_DATABASE_URL: `postgresql://woozoo_risk_engine@127.0.0.1:${postgresPort}/woozoo`,
+        PAPER_DATABASE_URL: `postgresql://woozoo_paper_engine@127.0.0.1:${postgresPort}/woozoo`,
+        MARKET_DATABASE_URL: `postgresql://woozoo_market_writer@127.0.0.1:${postgresPort}/woozoo`,
+        EVIDENCE_DATABASE_URL: `postgresql://woozoo_evidence_writer@127.0.0.1:${postgresPort}/woozoo`,
+        REDIS_URL: `redis://127.0.0.1:${redisPort}/0`,
+      });
+      const adminDatabaseUrl = `postgresql://postgres@127.0.0.1:${postgresPort}/woozoo`;
+      checked("python", ["-m", "uv", "run", "--locked", "alembic", "upgrade", "head"], {
+        env: { ...process.env, TRADING_MODE: "paper", DATABASE_URL: adminDatabaseUrl },
+      });
+      checked("python", [
+        "-m", "uv", "run", "--locked", "python", "tests/e2e/live_control_api.py",
+        "--bootstrap-public-data",
+      ], { env: serviceEnvironment });
+      return {
+        migration: { status: "PASS", target: "head" },
+        public_data_bootstrap: { status: "PASS", source: "recorded" },
+      };
+    },
+    composeFile,
+    composeProject,
+    root,
+    volumeName: E2E_POSTGRES_VOLUME,
   });
-  const adminDatabaseUrl = `postgresql://postgres@127.0.0.1:${postgresPort}/woozoo`;
-  checked("python", ["-m", "uv", "run", "--locked", "alembic", "upgrade", "head"], {
-    env: { ...process.env, TRADING_MODE: "paper", DATABASE_URL: adminDatabaseUrl },
-  });
-  checked("python", [
-    "-m", "uv", "run", "--locked", "python", "tests/e2e/live_control_api.py",
-    "--bootstrap-public-data",
-  ], { env: serviceEnvironment });
+  const evidence = {
+    schema_version: "woozoo.e2e-infrastructure-preflight/v1",
+    id: "E2E-INFRA-001",
+    status: "PASS",
+    compose_project: composeProject,
+    postgres_volume: E2E_POSTGRES_VOLUME,
+    compose_sha256: createHash("sha256").update(await readFile(composeFile)).digest("hex"),
+    postgres_health_transport: "tcp://127.0.0.1",
+    ...lifecycleEvidence,
+  };
+  const outputDigest = createHash("sha256").update(JSON.stringify(evidence)).digest("hex");
+  await mkdir(dirname(infrastructureEvidencePath), { recursive: true });
+  await writeFile(
+    infrastructureEvidencePath,
+    `${JSON.stringify({ ...evidence, output_digest: outputDigest }, null, 2)}\n`,
+    "utf8",
+  );
 } catch (error) {
-  stopInfrastructure();
-  await removeTemporaryCertificate();
+  try {
+    stopInfrastructure();
+  } finally {
+    await removeTemporaryCertificate();
+  }
   throw error;
 }
 

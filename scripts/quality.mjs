@@ -529,6 +529,45 @@ async function phase7DataScenario(area, id, nodeIds, metadata = {}) {
   await dataScenario(area, id, nodeIds, { ...metadata, ...phase7Metadata });
 }
 
+async function e2eInfrastructurePreflightEvidence() {
+  const relativePath = "artifacts/e2e/E2E-INFRA-001.json";
+  const bytes = await readFile(resolve(root, relativePath));
+  const artifact = JSON.parse(bytes.toString("utf8"));
+  const { output_digest: outputDigest, ...digestInput } = artifact;
+  const composeBytes = await readFile(resolve(root, "tests/e2e/compose.yaml"));
+  if (
+    artifact.schema_version !== "woozoo.e2e-infrastructure-preflight/v1"
+    || artifact.id !== "E2E-INFRA-001"
+    || artifact.status !== "PASS"
+    || artifact.compose_project !== "woozoo-e2e"
+    || artifact.postgres_volume !== "woozoo-e2e_postgres_data"
+    || artifact.compose_sha256 !== createHash("sha256").update(composeBytes).digest("hex")
+    || artifact.postgres_health_transport !== "tcp://127.0.0.1"
+    || artifact.cleanup?.status !== "PASS"
+    || artifact.cleanup?.remove_volumes !== true
+    || artifact.cleanup?.remove_orphans !== true
+    || artifact.volume_absence?.status !== "PASS"
+    || artifact.volume_absence?.expected_volume !== "woozoo-e2e_postgres_data"
+    || !Array.isArray(artifact.volume_absence?.observed_volume_names)
+    || artifact.volume_absence.observed_volume_names.length !== 0
+    || artifact.startup?.status !== "PASS"
+    || artifact.startup?.wait_for_health !== true
+    || JSON.stringify(artifact.startup?.services) !== JSON.stringify(["postgres", "redis"])
+    || artifact.migration?.status !== "PASS"
+    || artifact.migration?.target !== "head"
+    || artifact.public_data_bootstrap?.status !== "PASS"
+    || artifact.public_data_bootstrap?.source !== "recorded"
+    || outputDigest !== createHash("sha256").update(JSON.stringify(digestInput)).digest("hex")
+  ) {
+    throw new Error("E2E infrastructure preflight evidence is stale or incomplete");
+  }
+  return {
+    path: relativePath,
+    sha256: createHash("sha256").update(bytes).digest("hex"),
+    output_digest: outputDigest,
+  };
+}
+
 async function revisionEvidence() {
   const commit = spawnSync("git", ["rev-parse", "HEAD"], {
     cwd: root,
@@ -778,14 +817,18 @@ const actions = {
     runPnpm(["-r", "--if-present", "run", "typecheck"]);
   },
   "test:unit": async () => {
-    const unitSuite = await runPytestSuiteWithResultGate("bulk-unit", ["tests/unit"]);
+    const unitPytest = await runPytestSuiteWithResultGate("bulk-unit", ["tests/unit"]);
+    const unitNode = await runNodeTestsWithResultGate("bulk-unit-node", [
+      "tests/unit/e2e-infrastructure-lifecycle.test.ts",
+    ]);
+    const unitGate = combineExecutionGates([unitPytest.gate, unitNode.gate]);
     await scenarios(
       "unit",
       ["CORE-001"],
-      [unitSuite.command],
-      unitSuite.testCount,
+      [unitPytest.command, unitNode.command],
+      unitGate.tests,
       true,
-      { execution_gate: unitSuite.gate },
+      { execution_gate: unitGate },
     );
     await phase7DataScenario("unit", "AUTH-001", [
       "tests/unit/test_trading_room_security.py::test_auth_001_session_rotation_csrf_one_time_and_absolute_expiry",
@@ -1000,6 +1043,7 @@ const actions = {
   "test:e2e": async () => {
     const api = await runPytestWithResultGate("tests/integration/test_trading_room_api.py", 7);
     const playwright = await runPlaywrightWithResultGate(19);
+    const infrastructurePreflight = await e2eInfrastructurePreflightEvidence();
     const scenarioNodes = {
       "E2E-001": [
         "tests/e2e/trading-room.spec.ts::[live] E2E-001",
@@ -1061,6 +1105,7 @@ const actions = {
         true,
         {
           ...metadata,
+          infrastructure_preflight: infrastructurePreflight,
           declared_browser_scenario: nodeIds[0],
           declared_pytest_count: supplemental.testCount,
           execution_gate: executionGate,

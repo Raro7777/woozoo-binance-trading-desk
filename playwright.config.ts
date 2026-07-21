@@ -27,7 +27,7 @@ export default defineConfig({
     command: "node tests/e2e/https-web-server.mjs",
     url: `https://localhost:${httpsPort}`,
     ignoreHTTPSErrors: true,
-    reuseExistingServer: process.env.CI === undefined,
+    reuseExistingServer: false,
     timeout: 120_000,
   },
 });
