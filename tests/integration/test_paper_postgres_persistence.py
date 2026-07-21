@@ -2310,6 +2310,18 @@ def test_rejected_command_is_durable_orderless_and_restart_idempotent() -> None:
         "INSUFFICIENT_FUNDS"
     )
     with psycopg.connect(DATABASE_URL) as connection:
+        connection.execute("SET session_replication_role='replica'")
+        connection.execute(
+            "UPDATE paper_authorization_attempts SET request_hash=%s WHERE authorization_id=%s",
+            (
+                digest("corrupt-legacy-rejected-receipt"),
+                write.authorization_attempt.authorization_id,
+            ),
+        )
+        connection.execute("SET session_replication_role='origin'")
+    with pytest.raises(RuntimeError, match="PAPER_REJECTED_RECEIPT_CORRUPT"):
+        PostgresPaperStore(PAPER_WRITER_URL).hydrate_engine(write.account_id)
+    with psycopg.connect(DATABASE_URL) as connection:
         assert connection.execute(
             "SELECT count(*) FROM paper_orders WHERE account_id=%s", (write.account_id,)
         ).fetchone() == (0,)

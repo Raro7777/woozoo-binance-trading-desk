@@ -2858,10 +2858,13 @@ class PostgresPaperStore:
                 outcome,
                 order_id,
                 response,
+                attempt_request_hash,
+                attempt_outcome,
                 attempt_reason_code,
             ) in connection.execute(
                 "SELECT receipt.scope,receipt.idempotency_key,receipt.request_hash,"
-                "receipt.outcome,receipt.paper_order_id,receipt.response,attempt.reason_code "
+                "receipt.outcome,receipt.paper_order_id,receipt.response,attempt.request_hash,"
+                "attempt.outcome,attempt.reason_code "
                 "FROM paper_command_receipts receipt LEFT JOIN paper_authorization_attempts attempt "
                 "ON attempt.authorization_id=receipt.authorization_id "
                 "AND attempt.account_id=receipt.account_id "
@@ -2880,6 +2883,8 @@ class PostgresPaperStore:
                         len(serialized_codes) != 1
                         or not isinstance(serialized_codes[0], str)
                         or not serialized_codes[0]
+                        or attempt_request_hash != request_hash
+                        or attempt_outcome != "BLOCKED"
                         or serialized_codes[0] != attempt_reason_code
                     ):
                         raise RuntimeError("PAPER_REJECTED_RECEIPT_CORRUPT")

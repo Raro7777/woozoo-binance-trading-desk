@@ -855,6 +855,32 @@ def test_kill_first_attempt_stays_blocked_after_recovery_and_retry(
         connection.execute("SET session_replication_role='origin'")
     with pytest.raises(RuntimeError, match="PAPER_REJECTED_RECEIPT_CORRUPT"):
         store.hydrate_engine(ACCOUNT_ID)
+    with psycopg.connect(DATABASE_URL) as connection:
+        connection.execute("SET session_replication_role='replica'")
+        connection.execute(
+            "UPDATE paper_command_receipts "
+            "SET response=jsonb_set(response,'{reason_code}','\"KILL_SWITCH_ACTIVE\"'::jsonb) "
+            "WHERE authorization_id=%s",
+            (authorization_id,),
+        )
+        connection.execute(
+            "UPDATE paper_authorization_attempts SET request_hash=%s WHERE authorization_id=%s",
+            (canonical_hash({"corrupt": authorization_id}), authorization_id),
+        )
+        connection.execute("SET session_replication_role='origin'")
+    with pytest.raises(RuntimeError, match="PAPER_REJECTED_RECEIPT_CORRUPT"):
+        store.hydrate_engine(ACCOUNT_ID)
+    with psycopg.connect(DATABASE_URL) as connection:
+        connection.execute("SET session_replication_role='replica'")
+        connection.execute(
+            "UPDATE paper_authorization_attempts "
+            "SET request_hash=%s,outcome='CONSUMED_ORDER_CREATED',reason_code=NULL "
+            "WHERE authorization_id=%s",
+            (_request_hash, authorization_id),
+        )
+        connection.execute("SET session_replication_role='origin'")
+    with pytest.raises(RuntimeError, match="PAPER_REJECTED_RECEIPT_CORRUPT"):
+        store.hydrate_engine(ACCOUNT_ID)
 
 
 def test_missing_reconciliation_consumes_authorization_without_financial_effects(
