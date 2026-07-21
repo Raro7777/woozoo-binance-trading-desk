@@ -72,7 +72,14 @@ class SecurityRepository(Protocol):
 
     def save_csrf(self, record: CsrfRecord) -> None: ...
 
-    def consume_csrf(self, digest: str, session_digest: str, now: datetime) -> bool: ...
+    def consume_command_guard(
+        self,
+        session_digest: str,
+        csrf_digest: str,
+        now: datetime,
+        *,
+        revoke_session: bool,
+    ) -> SessionRecord: ...
 
 
 class InMemorySecurityRepository:
@@ -104,18 +111,41 @@ class InMemorySecurityRepository:
         with self._lock:
             self._csrf[record.digest] = record
 
-    def consume_csrf(self, digest: str, session_digest: str, now: datetime) -> bool:
+    def consume_command_guard(
+        self,
+        session_digest: str,
+        csrf_digest: str,
+        now: datetime,
+        *,
+        revoke_session: bool,
+    ) -> SessionRecord:
         with self._lock:
-            record = self._csrf.get(digest)
+            session = self._sessions.get(session_digest)
             if (
-                record is None
-                or record.session_digest != session_digest
-                or record.consumed_at is not None
-                or now >= record.expires_at
+                session is None
+                or session.revoked_at is not None
+                or now >= session.idle_expires_at
+                or now >= session.absolute_expires_at
+                or session.actor_id != ACTOR_ID
             ):
-                return False
-            self._csrf[digest] = replace(record, consumed_at=now)
-            return True
+                raise SessionRejected("session is unavailable")
+            csrf = self._csrf.get(csrf_digest)
+            if (
+                csrf is None
+                or csrf.session_digest != session_digest
+                or csrf.consumed_at is not None
+                or now >= csrf.expires_at
+            ):
+                raise CommandGuardRejected("CSRF token unavailable")
+            next_session = replace(
+                session,
+                last_seen_at=now,
+                idle_expires_at=min(now + SESSION_IDLE_TTL, session.absolute_expires_at),
+                revoked_at=now if revoke_session else None,
+            )
+            self._csrf[csrf_digest] = replace(csrf, consumed_at=now)
+            self._sessions[session_digest] = next_session
+            return next_session
 
 
 class PostgresSecurityRepository:
@@ -195,15 +225,58 @@ class PostgresSecurityRepository:
                 (record.digest, record.session_digest, record.issued_at, record.expires_at),
             )
 
-    def consume_csrf(self, digest: str, session_digest: str, now: datetime) -> bool:
+    def consume_command_guard(
+        self,
+        session_digest: str,
+        csrf_digest: str,
+        now: datetime,
+        *,
+        revoke_session: bool,
+    ) -> SessionRecord:
         with psycopg.connect(self._database_url) as connection:
-            row = connection.execute(
+            session_row = connection.execute(
+                "SELECT session_digest,actor_id,issued_at,last_seen_at,idle_expires_at,"
+                "absolute_expires_at,revoked_at FROM operator_sessions "
+                "WHERE session_digest=%s FOR UPDATE",
+                (session_digest,),
+            ).fetchone()
+            session = SessionRecord(*session_row) if session_row is not None else None
+            if (
+                session is None
+                or session.revoked_at is not None
+                or now >= session.idle_expires_at
+                or now >= session.absolute_expires_at
+                or session.actor_id != ACTOR_ID
+            ):
+                raise SessionRejected("session is unavailable")
+            consumed = connection.execute(
                 "UPDATE session_csrf_tokens SET consumed_at=%s WHERE csrf_token_digest=%s "
                 "AND session_digest=%s AND consumed_at IS NULL AND expires_at>%s "
                 "RETURNING csrf_token_digest",
-                (now, digest, session_digest, now),
+                (now, csrf_digest, session_digest, now),
             ).fetchone()
-        return row is not None
+            if consumed is None:
+                raise CommandGuardRejected("CSRF token unavailable")
+            next_idle = min(now + SESSION_IDLE_TTL, session.absolute_expires_at)
+            if revoke_session:
+                updated = connection.execute(
+                    "UPDATE operator_sessions SET last_seen_at=%s,idle_expires_at=%s,"
+                    "revoked_at=%s WHERE session_digest=%s AND revoked_at IS NULL "
+                    "RETURNING session_digest,actor_id,issued_at,last_seen_at,idle_expires_at,"
+                    "absolute_expires_at,revoked_at",
+                    (now, next_idle, now, session_digest),
+                ).fetchone()
+            else:
+                updated = connection.execute(
+                    "UPDATE operator_sessions SET last_seen_at=%s,idle_expires_at=%s "
+                    "WHERE session_digest=%s AND revoked_at IS NULL "
+                    "RETURNING session_digest,actor_id,issued_at,last_seen_at,idle_expires_at,"
+                    "absolute_expires_at,revoked_at",
+                    (now, next_idle, session_digest),
+                ).fetchone()
+            if updated is None:
+                raise SessionRejected("session is unavailable")
+        return SessionRecord(*updated)
 
 
 class LocalOperatorSecurity:
@@ -301,18 +374,41 @@ class LocalOperatorSecurity:
     def consume_command_guard(
         self, raw_session: str | None, raw_csrf: str | None, request_origin: str | None
     ) -> SessionRecord:
+        return self._consume_command_guard(
+            raw_session,
+            raw_csrf,
+            request_origin,
+            revoke_session=False,
+        )
+
+    def _consume_command_guard(
+        self,
+        raw_session: str | None,
+        raw_csrf: str | None,
+        request_origin: str | None,
+        *,
+        revoke_session: bool,
+    ) -> SessionRecord:
         if request_origin != self._origin or not raw_csrf:
             raise CommandGuardRejected("origin and CSRF token required")
-        session = self.authenticate(raw_session)
-        if not self._repository.consume_csrf(token_digest(raw_csrf), session.digest, self._now()):
-            raise CommandGuardRejected("CSRF token unavailable")
-        return session
+        if not raw_session:
+            raise SessionRejected("authentication required")
+        return self._repository.consume_command_guard(
+            token_digest(raw_session),
+            token_digest(raw_csrf),
+            self._now(),
+            revoke_session=revoke_session,
+        )
 
     def logout(
         self, raw_session: str | None, raw_csrf: str | None, request_origin: str | None
     ) -> None:
-        session = self.consume_command_guard(raw_session, raw_csrf, request_origin)
-        self._repository.save_session(replace(session, revoked_at=self._now()))
+        self._consume_command_guard(
+            raw_session,
+            raw_csrf,
+            request_origin,
+            revoke_session=True,
+        )
 
 
 def make_password_verifier(password: str) -> str:

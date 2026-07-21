@@ -14,10 +14,12 @@ from referencing.jsonschema import DRAFT202012
 
 from control_api.security import (
     ACTOR_ID,
+    LocalOperatorSecurity,
     PostgresSecurityRepository,
     SessionRecord,
     SessionRejected,
     make_password_verifier,
+    token_digest,
 )
 from control_api.trading_room import PostgresTradingRoom, TradingRoomError, canonical_hash
 from paper_engine.authorization_worker import PostgresWorkerStateReporter
@@ -255,5 +257,93 @@ def test_stale_concurrent_session_touch_cannot_resurrect_logged_out_session() ->
             assert persisted is not None
             assert persisted.revoked_at == datetime(2026, 7, 20, 5, 0, 30, tzinfo=UTC)
             assert persisted.last_seen_at == original.last_seen_at
+        finally:
+            run("docker", "compose", "down", "-v")
+
+
+def test_postgres_logout_wins_before_a_waiting_command_guard_atomically() -> None:
+    class PausingRepository(PostgresSecurityRepository):
+        def __init__(self, database_url: str, password_verifier: str) -> None:
+            super().__init__(database_url, password_verifier)
+            self.command_waiting = Event()
+            self.release_command = Event()
+
+        def consume_command_guard(
+            self,
+            session_digest: str,
+            csrf_digest: str,
+            now: datetime,
+            *,
+            revoke_session: bool,
+        ) -> SessionRecord:
+            if not revoke_session:
+                self.command_waiting.set()
+                if not self.release_command.wait(timeout=5):
+                    raise TimeoutError("command guard was not released")
+            return super().consume_command_guard(
+                session_digest,
+                csrf_digest,
+                now,
+                revoke_session=revoke_session,
+            )
+
+    with docker_infrastructure_lock():
+        run("docker", "compose", "down", "-v")
+        run("docker", "compose", "up", "-d", "--wait", "postgres")
+        try:
+            run(sys.executable, "-m", "alembic", "upgrade", "head")
+            verifier = make_password_verifier("postgres-command-race-password")
+            repository = PausingRepository(CONTROL_URL, verifier)
+            now = datetime(2026, 7, 20, 6, 0, tzinfo=UTC)
+            security = LocalOperatorSecurity(
+                verifier,
+                "https://localhost:3443",
+                repository=repository,
+                clock=lambda: now,
+            )
+            raw_session = security.login(
+                "postgres-command-race-password",
+                "https://localhost:3443",
+            )
+            command_csrf = security.issue_csrf(raw_session)
+            logout_csrf = security.issue_csrf(raw_session)
+            rejected: list[type[Exception]] = []
+
+            def command() -> None:
+                try:
+                    security.consume_command_guard(
+                        raw_session,
+                        command_csrf,
+                        "https://localhost:3443",
+                    )
+                except Exception as error:  # noqa: BLE001 - thread result is asserted below
+                    rejected.append(type(error))
+
+            command_thread = Thread(target=command)
+            command_thread.start()
+            assert repository.command_waiting.wait(timeout=5)
+            try:
+                security.logout(raw_session, logout_csrf, "https://localhost:3443")
+            finally:
+                repository.release_command.set()
+                command_thread.join(timeout=5)
+
+            assert not command_thread.is_alive()
+            assert rejected == [SessionRejected]
+            with psycopg.connect(DATABASE_URL) as connection:
+                session_row = connection.execute(
+                    "SELECT revoked_at FROM operator_sessions WHERE session_digest=%s",
+                    (token_digest(raw_session),),
+                ).fetchone()
+                csrf_rows = dict(
+                    connection.execute(
+                        "SELECT csrf_token_digest,consumed_at FROM session_csrf_tokens "
+                        "WHERE csrf_token_digest IN (%s,%s)",
+                        (token_digest(command_csrf), token_digest(logout_csrf)),
+                    ).fetchall()
+                )
+            assert session_row is not None and session_row[0] == now
+            assert csrf_rows[token_digest(logout_csrf)] == now
+            assert csrf_rows[token_digest(command_csrf)] is None
         finally:
             run("docker", "compose", "down", "-v")

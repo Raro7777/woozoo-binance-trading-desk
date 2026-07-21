@@ -791,6 +791,8 @@ const actions = {
       "tests/unit/test_trading_room_security.py::test_auth_001_session_rotation_csrf_one_time_and_absolute_expiry",
       "tests/unit/test_trading_room_security.py::test_auth_002_foreign_or_missing_origin_has_effect_zero",
       "tests/unit/test_trading_room_security.py::test_logout_revokes_session_and_consumes_csrf",
+      "tests/unit/test_trading_room_security.py::test_in_memory_logout_wins_before_a_waiting_command_guard_atomically",
+      "tests/integration/test_trading_room_postgres_authority.py::test_postgres_logout_wins_before_a_waiting_command_guard_atomically",
       "tests/contract/test_phase7_trading_contract.py::test_phase7_approval_chain_is_closed_hash_bound_and_nonce_distinct",
       "tests/property/test_trading_room_properties.py::test_phase7_preview_hash_is_mutation_sensitive_and_notional_is_policy_capped",
       "tests/failure/test_trading_room_authorization_failures.py::test_auth_002_stale_state_before_human_decision_has_zero_order_effect",
