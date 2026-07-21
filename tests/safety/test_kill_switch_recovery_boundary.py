@@ -120,7 +120,7 @@ def test_kill_002_scans_every_executable_config_and_tool_registry_for_recovery_w
     phase_state = json.loads(
         (ROOT / "docs/woozoo-trading-desk/phase-state.json").read_text(encoding="utf-8")
     )
-    assert phase_state["current_phase"] == 7
+    assert 7 <= phase_state["current_phase"] <= 9
     assert sorted(matches) == sorted(
         [
             "services/control-api/src/control_api/command_ports.py:recover_kill_switch",

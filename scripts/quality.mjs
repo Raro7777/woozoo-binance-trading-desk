@@ -8,10 +8,21 @@ import {
   bindExecutionRun,
   summarizeExecutionGates,
 } from "./quality-evidence.mjs";
+import {
+  assertEvidenceTargetAllowed,
+  phaseArtifactsRoot,
+  validateActivePhase,
+} from "./phase-quality-policy.mjs";
 
 const root = resolve(import.meta.dirname, "..");
+const activePhaseState = JSON.parse(
+  await readFile(resolve(root, "docs", "woozoo-trading-desk", "phase-state.json"), "utf8"),
+);
+const activePhase = validateActivePhase(activePhaseState.current_phase);
+const generatedArtifactsRoot = phaseArtifactsRoot(root, activePhase);
 const pnpm = "pnpm";
 const target = process.argv[2];
+assertEvidenceTargetAllowed(activePhase, target);
 const deterministicEnvironment = { ...process.env, TZ: "UTC", PYTHONHASHSEED: "0" };
 const sourceRevision = "binance-spot-api-docs@29c227d84058dd2be3fe3b42ab368d1d1ce910e5";
 const policyVersion = "woozoo.market.collector-policy/v1";
@@ -69,7 +80,7 @@ function run(command, args, environment = {}) {
 }
 
 async function runPlaywrightWithResultGate(expectedTestCount) {
-  const resultPath = resolve(root, "artifacts", ".playwright-results", "e2e.xml");
+  const resultPath = resolve(generatedArtifactsRoot, ".playwright-results", "e2e.xml");
   await mkdir(resolve(resultPath, ".."), { recursive: true });
   const command = [process.execPath, [resolve(root, "node_modules", "@playwright", "test", "cli.js"), "test", "--reporter=junit"]];
   run(command[0], command[1], { PLAYWRIGHT_JUNIT_OUTPUT_NAME: resultPath });
@@ -118,7 +129,7 @@ async function runPlaywrightWithResultGate(expectedTestCount) {
 }
 
 async function runPytestWithResultGate(testPath, expectedTestCount) {
-  const resultPath = resolve(root, "artifacts", ".pytest-results", "phase7-api.xml");
+  const resultPath = resolve(generatedArtifactsRoot, ".pytest-results", "phase7-api.xml");
   await mkdir(resolve(resultPath, ".."), { recursive: true });
   const command = [
     "python",
@@ -154,7 +165,7 @@ async function runPytestWithResultGate(testPath, expectedTestCount) {
 }
 
 async function runPytestNodesWithResultGate(resultLabel, nodeIds) {
-  const resultPath = resolve(root, "artifacts", ".pytest-results", `${resultLabel}.xml`);
+  const resultPath = resolve(generatedArtifactsRoot, ".pytest-results", `${resultLabel}.xml`);
   await mkdir(resolve(resultPath, ".."), { recursive: true });
   const command = [
     "python",
@@ -193,7 +204,7 @@ async function runPytestNodesWithResultGate(resultLabel, nodeIds) {
 }
 
 async function runPytestSuiteWithResultGate(resultLabel, testPaths) {
-  const resultPath = resolve(root, "artifacts", ".pytest-results", `${resultLabel}.xml`);
+  const resultPath = resolve(generatedArtifactsRoot, ".pytest-results", `${resultLabel}.xml`);
   await mkdir(resolve(resultPath, ".."), { recursive: true });
   const command = [
     "python",
@@ -233,7 +244,7 @@ async function runPytestSuiteWithResultGate(resultLabel, testPaths) {
 }
 
 async function runNodeTestsWithResultGate(resultLabel, testPaths) {
-  const resultPath = resolve(root, "artifacts", ".node-results", `${resultLabel}.xml`);
+  const resultPath = resolve(generatedArtifactsRoot, ".node-results", `${resultLabel}.xml`);
   await mkdir(resolve(resultPath, ".."), { recursive: true });
   const command = [
     "corepack",
@@ -312,7 +323,9 @@ async function paperMetadata() {
 }
 
 async function riskMetadata() {
-  const manifest = await readFile(resolve(root, "docs", "woozoo-trading-desk", "phase-7", "p7-risk-regression-manifest.json"));
+  const manifest = await readFile(activePhase >= 8
+    ? resolve(root, "docs", "woozoo-trading-desk", "phase-8", "p8-risk-regression-manifest.json")
+    : resolve(root, "docs", "woozoo-trading-desk", "phase-7", "p7-risk-regression-manifest.json"));
   return {
     schema_version: "woozoo.risk.replay-manifest/v1",
     risk_policy_version: "woozoo.risk-policy/v1",
@@ -324,14 +337,38 @@ async function riskMetadata() {
 }
 
 async function riskDataScenario(area, id, nodeIds) {
-  const manifestPath = resolve(root, "docs", "woozoo-trading-desk", "phase-7", "p7-risk-regression-manifest.json");
+  const manifestPath = activePhase >= 8
+    ? resolve(root, "docs", "woozoo-trading-desk", "phase-8", "p8-risk-regression-manifest.json")
+    : resolve(root, "docs", "woozoo-trading-desk", "phase-7", "p7-risk-regression-manifest.json");
   const manifestBytes = await readFile(manifestPath);
   const manifest = JSON.parse(manifestBytes.toString("utf8"));
+  if (activePhase >= 8) {
+    const topBindings = [
+      [manifest.fixture_source?.split("::", 1)[0], manifest.fixture_source_sha256],
+      [manifest.risk_input_schema, manifest.risk_input_schema_sha256],
+      [manifest.risk_decision_schema, manifest.risk_decision_schema_sha256],
+      [manifest.kill_switch_schema, manifest.kill_switch_schema_sha256],
+      [manifest.implementation_contract, manifest.implementation_contract_sha256],
+    ];
+    for (const [path, expectedDigest] of topBindings) {
+      if (typeof path !== "string" || typeof expectedDigest !== "string") {
+        throw new Error("Phase 8 risk manifest top-level source binding is incomplete");
+      }
+      const actualDigest = createHash("sha256")
+        .update(await readFile(resolve(root, path)))
+        .digest("hex");
+      if (actualDigest !== expectedDigest) {
+        throw new Error(`Phase 8 risk manifest top-level source digest is stale: ${path}`);
+      }
+    }
+  }
   const scenario = manifest.scenarios?.find((candidate) => candidate.id === id);
   if (
     scenario === undefined ||
     scenario.command !== `corepack pnpm test:${area === "contracts" ? "contracts" : area}` ||
-    scenario.artifact !== `artifacts/${area}/${id}.json` ||
+    scenario.artifact !== (activePhase >= 8
+      ? `artifacts/phase-${activePhase}/${area}/${id}.json`
+      : `artifacts/${area}/${id}.json`) ||
     JSON.stringify(scenario.test_nodes) !== JSON.stringify(nodeIds) ||
     typeof scenario.oracle !== "string" ||
     scenario.oracle.length === 0
@@ -642,7 +679,7 @@ async function scenarios(
   const fixture_manifest_sha256 = await fixtureManifestDigest();
   const revision = await revisionEvidence();
   for (const id of ids) {
-    const path = resolve(root, "artifacts", area, `${id}.json`);
+    const path = resolve(generatedArtifactsRoot, area, `${id}.json`);
     const result = {
       schema_version: "woozoo.market.replay-manifest/v1",
       id,
