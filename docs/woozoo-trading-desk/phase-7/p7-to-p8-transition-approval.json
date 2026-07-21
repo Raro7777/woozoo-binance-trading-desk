@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "approval_id": "P7-TO-P8-20260722-01",
+  "from_phase": 7,
+  "to_phase": 8,
+  "approval_status": "approved",
+  "evidence_manifest": "docs/woozoo-trading-desk/phase-7/p7-acceptance-evidence-manifest.json",
+  "acceptance_evidence_digest": "a7d13e1d04f80bbcee94bcdad997357aa191e6510739a7e3415edd5d25ad194f",
+  "approval_prompt": "Phase 8 transition approval: approve P7 acceptance digest a7d13e1d04f80bbcee94bcdad997357aa191e6510739a7e3415edd5d25ad194f",
+  "user_response": "P7 acceptance digest a7d13e1d04f80bbcee94bcdad997357aa191e6510739a7e3415edd5d25ad194f 승인",
+  "binding_interpretation": "The user explicitly approved the exact Phase 7 acceptance evidence digest. This envelope authorizes only the Phase 7 to Phase 8 transition and the approved Phase 8 Spot Testnet scope. It does not authorize Mainnet private or live trading, withdrawals, Futures, margin, leverage, short selling, browser or AI exchange access, or bypass of a separate digest-bound human Testnet order approval.",
+  "approved_by": "user",
+  "approved_at": "2026-07-21T18:54:34Z",
+  "recorded_by": "codex-orchestrator",
+  "recorded_at": "2026-07-21T18:54:34Z"
+}

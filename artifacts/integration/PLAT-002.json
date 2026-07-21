@@ -1,0 +1,114 @@
+{
+  "schema_version": "woozoo.market.replay-manifest/v1",
+  "id": "PLAT-002",
+  "status": "PASS",
+  "commands": [
+    [
+      "corepack",
+      [
+        "pnpm",
+        "--filter",
+        "@woozoo/trading-room-web",
+        "run",
+        "build"
+      ]
+    ],
+    [
+      "python",
+      [
+        "-m",
+        "uv",
+        "run",
+        "--locked",
+        "pytest",
+        "tests/integration",
+        "-q",
+        "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\bulk-integration-pytest.xml"
+      ]
+    ],
+    [
+      "corepack",
+      [
+        "pnpm",
+        "exec",
+        "tsx",
+        "--test",
+        "--test-reporter=junit",
+        "--test-reporter-destination=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.node-results\\bulk-integration-node.xml",
+        "tests/integration/trading-room-web.test.ts"
+      ]
+    ]
+  ],
+  "source_revision": "binance-spot-api-docs@29c227d84058dd2be3fe3b42ab368d1d1ce910e5",
+  "policy_version": "woozoo.market.collector-policy/v1",
+  "fixture_manifest_sha256": "7ad31ec79946ab383176360ae3ee069135ea9d8758ad2e16c13d3811cc05ce40",
+  "fixed_seed": 0,
+  "timezone": "UTC",
+  "test_count": 147,
+  "execution_gate": {
+    "framework": "combined-junit",
+    "tests": 147,
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "cancelled": 0,
+    "todo": 0,
+    "components": [
+      {
+        "framework": "pytest-junit",
+        "tests": 142,
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "invocation_id": "30486fb2-e7ab-4a8d-aeac-dfaee13fad87",
+        "result_label": "bulk-integration-pytest",
+        "command": [
+          "python",
+          [
+            "-m",
+            "uv",
+            "run",
+            "--locked",
+            "pytest",
+            "tests/integration",
+            "-q",
+            "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\bulk-integration-pytest.xml"
+          ]
+        ],
+        "result_digest": "362574ac3f9ede78660dc6858f6ca2ba7f7c6b73c04b46d6a0e0d67b47b8476f",
+        "run_id": "8af0d7b930e1dc259a40fbc22552165bdcbbc235ebebcb3b30b011c7b2d33119"
+      },
+      {
+        "framework": "node-junit",
+        "tests": 5,
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "cancelled": 0,
+        "todo": 0,
+        "invocation_id": "03a656cb-f375-4f93-9904-33c19605b9c1",
+        "result_label": "bulk-integration-node",
+        "command": [
+          "corepack",
+          [
+            "pnpm",
+            "exec",
+            "tsx",
+            "--test",
+            "--test-reporter=junit",
+            "--test-reporter-destination=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.node-results\\bulk-integration-node.xml",
+            "tests/integration/trading-room-web.test.ts"
+          ]
+        ],
+        "result_digest": "8c5dc82f54ba6c7b99b66853598df3b049bdcded08d02900d6d426b8328e926b",
+        "run_id": "117da8e25abba547f4074e492759508f59d89abcc46d69e16de29fbddffaeec6"
+      }
+    ]
+  },
+  "git_commit": "c0baf4cedd56818da0cc9d5718950b15eaf48b2b",
+  "git_tree": "6f66d2f761a689ab4ed98924b1485f78f7c25478",
+  "working_tree_digest": "fb55680be162ccb23ef0632e97c8880d0cb449b2bad59f1f6dc582d56d969bd4",
+  "frozen_file_count": 405,
+  "output_digest": "50492cf127510339d0d83b2815c0f4d894268c8cf282b02f9daa4c5cd192f26c",
+  "recorded_at": "2026-07-21T13:35:50.780Z"
+}

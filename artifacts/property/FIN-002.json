@@ -1,0 +1,59 @@
+{
+  "schema_version": "woozoo.paper.replay-manifest/v1",
+  "id": "FIN-002",
+  "status": "PASS",
+  "commands": [
+    [
+      "python",
+      [
+        "-m",
+        "uv",
+        "run",
+        "--locked",
+        "pytest",
+        "tests/property/test_paper_financial_properties.py::test_fin_002_insufficient_cash_or_long_inventory_has_zero_order_and_ledger_effect",
+        "-q",
+        "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\FIN-002.xml"
+      ]
+    ]
+  ],
+  "source_revision": "binance-spot-api-docs@29c227d84058dd2be3fe3b42ab368d1d1ce910e5",
+  "policy_version": "woozoo.market.collector-policy/v1",
+  "fixture_manifest_sha256": "7ad31ec79946ab383176360ae3ee069135ea9d8758ad2e16c13d3811cc05ce40",
+  "fixed_seed": 0,
+  "timezone": "UTC",
+  "test_count": 1,
+  "financial_policy_version": "woozoo.paper.financial-policy/v1",
+  "oracle_fixture_sha256": "25a307ac9e64bf39cf77609bbee42890b28453a219c57cf2203817514edd76fa",
+  "network_enabled": false,
+  "execution_gate": {
+    "framework": "pytest-junit",
+    "tests": 1,
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "invocation_id": "b2a2d48d-c6c4-44eb-b453-52e6916c270e",
+    "result_label": "FIN-002",
+    "command": [
+      "python",
+      [
+        "-m",
+        "uv",
+        "run",
+        "--locked",
+        "pytest",
+        "tests/property/test_paper_financial_properties.py::test_fin_002_insufficient_cash_or_long_inventory_has_zero_order_and_ledger_effect",
+        "-q",
+        "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\FIN-002.xml"
+      ]
+    ],
+    "result_digest": "4fde246594596a1fd4473296aef8d1b70146273373b7361272fa10da9c52e2ba",
+    "run_id": "d0b49643d2cc2553ee69272543e0007f7732c546832b88e778c5a0fa480ac683"
+  },
+  "git_commit": "c0baf4cedd56818da0cc9d5718950b15eaf48b2b",
+  "git_tree": "6f66d2f761a689ab4ed98924b1485f78f7c25478",
+  "working_tree_digest": "fb55680be162ccb23ef0632e97c8880d0cb449b2bad59f1f6dc582d56d969bd4",
+  "frozen_file_count": 405,
+  "output_digest": "fd131d9edec949da12e9d77763641966a1902333352265907d8ad3ddf72c35b4",
+  "recorded_at": "2026-07-21T13:37:45.101Z"
+}

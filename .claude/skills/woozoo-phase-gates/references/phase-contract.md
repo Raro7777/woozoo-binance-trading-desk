@@ -64,6 +64,42 @@ Phase 7은 로컬 단일 운영자를 위한 Paper 전용 Trading Room MVP를 �
 - 브랜치는 `codex/phase-7-trading-room`이고 `main` 대상 Draft PR이 존재해야 한다. 인수 후보의 정확한 revision이 원격에 push되고 그 revision의 push·PR 필수 검사가 성공하며, 검토·Git 증거가 인수 manifest에 결속되어야 한다.
 - 정렬된 인수 산출물의 정확한 SHA-256 digest를 사용자에게 제시하고 사용자가 그 digest를 명시적으로 승인한 뒤에만 Phase 7을 accepted로 기록한다. 승인 전에는 `phase-state.json`을 올리거나 Phase 8 구현을 시작하지 않는다.
 
+## Phase 8
+
+Phase 8은 Phase 7의 Paper 권위를 유지하면서 별도 최소 권한 Binance Spot Testnet Gateway로 외부 Testnet 수명주기와 대조를 검증한다. Gateway는 기본 비활성이고, 아래 기준은 모두 `PASS|FAIL|UNVERIFIED`와 증거 파일 경로·SHA-256을 가지며 `UNVERIFIED`는 PASS로 취급하지 않는다.
+
+### 허용 범위
+
+- 별도 package·process·environment의 Spot Testnet Gateway에서만 allowlist된 주문 제출·취소·조회, User Data 수신, timeout 결과 확인과 reconciliation을 구현한다.
+- Gateway inbound는 인증된 결정론적 execution service의 versioned command만 허용한다. 브라우저와 AI는 Gateway, 거래소, 계좌·잔고·비밀 도구를 직접 호출하지 않는다.
+- Gateway는 기본 `enabled=false`다. 명시적 Testnet 환경과 allowlist가 완전하고, 인증된 운영자가 별도 활성화했을 때만 시작한다. 누락·미지 값이나 host/path/method/capability 불일치는 시작과 명령을 fail-closed로 거절한다.
+- Spot Testnet credential은 Gateway 전용 최소 권한 secret path에서만 읽으며 브라우저·AI·prompt·tool·로그·trace·오류·fixture·공유 애플리케이션 환경으로 전달하지 않는다.
+
+### 승인·주문·대조 권위
+
+- Testnet 주문 승인은 Paper 승인과 별개다. Proposal hash, 최신 `ALLOWED` Risk Decision hash, policy/calculator version, Testnet account와 environment, symbol, side, quantity, price 또는 가격 규칙, time-in-force, 정확한 order preview, authenticated approver, `approved_at`, `expires_at`, revocation state, 최대 5분 TTL과 일회성 nonce를 canonical digest로 결속한다.
+- command 생성 직전에 같은 결속을 다시 검증하고 Kill Switch, 데이터 freshness·integrity, 원장·reconciliation health와 Gateway 상태를 재검사한다. 누락·만료·철회·hash 불일치·상태 악화가 하나라도 있으면 command와 외부 주문 효과는 0건이다.
+- 각 명령은 idempotency key, 각 외부 주문은 안정적인 고유 Client Order ID를 사용한다. 로컬 inbox·command receipt·domain state·outbox는 한 Postgres transaction으로 커밋하며 duplicate·replay·restart는 효과를 추가하지 않는다.
+- 제출 timeout과 연결 단절은 결과 불명이다. 새 Client Order ID나 새 승인으로 replacement하지 않고 동일 Client Order ID를 조회하고 User Data와 REST 결과를 대조해 `found|rejected|not-found-confirmed` 중 하나로 권위 있게 확정한다.
+- 외부 order·fill·cancel 이벤트는 중복·역순·재연결을 견디는 결정론적 상태 전이와 Decimal 의미론을 사용한다. 부분 체결 합은 주문 수량을 넘지 않고, 대조 실패·설명되지 않는 잔고·주문·fill 차이는 Kill Switch와 신규 명령 차단으로 이어진다.
+- Testnet의 주기적 reset을 정상 체결이나 손실로 추론하지 않는다. reset-aware reconciliation이 계좌 세대와 checkpoint를 명시적으로 구분하고 운영자 확인 전 신규 효과를 차단한다.
+
+### 금지 범위
+
+- Mainnet private/live, 실거래, 출금, Futures, 마진, 레버리지, 숏과 공개 파생시장 텔레메트리는 schema·config·dependency·URL·UI·fixture·예제까지 금지한다.
+- Mainnet으로의 fallback, Gateway 기본 활성화, wildcard host/path/method/capability, 비인증 inbound, 브라우저·AI 직접 주문·취소·조회·계좌 접근은 금지한다.
+- Paper 승인 재사용, 만료·철회·변조된 승인 사용, nonce 재사용, timeout 직후 신규 주문, reconciliation 전에 replacement를 만드는 동작은 금지한다.
+- AI 출력, UI 표시값, Redis cache, 거래소 응답 한 건을 Risk·승인·원장·최종 대조의 단독 권위로 사용하지 않는다.
+
+### 인수·검토·Git 게이트
+
+- default OFF, Testnet allowlist, secret 격리, 승인 결속, 주문·취소·조회·User Data·timeout·reset-aware reconciliation의 정상·negative E2E가 모두 PASS해야 한다.
+- 익명·만료·철회·hash mismatch·nonce replay·Kill active·stale/future data·reconciliation failure·timeout unknown·duplicate/out-of-order event·금지 host/path/method/capability에서 외부 효과 0건을 증명한다.
+- Decimal·상태 전이 unit, idempotency·원장·자산 보존 property, restart replay, 응답 유실·WebSocket 단절·DB/Redis 장애 failure-injection, 실제 Postgres integration과 브라우저 승인 경계 E2E를 포함한다.
+- 루트 정본 `corepack pnpm ci`(`pnpm ci`)가 exit 0이고 역할 분리 Safety QA, Codex 내부 교차검토, 가능한 외부 독립 리뷰 또는 정직한 `external-review-unavailable` 기록을 갖는다. Codex 검토는 외부 독립 리뷰가 아니다.
+- 브랜치는 `codex/phase-8-testnet-gateway`이고 `main` 대상 독립 Draft PR을 사용한다. 정렬된 인수 산출물의 정확한 SHA-256 digest를 사용자가 명시적으로 승인하기 전에는 Phase 8을 accepted로 기록하거나 Phase 9를 시작하지 않는다.
+
+
 ## 전체 로드맵
 
 | Phase | 목표 | 허용 핵심 범위 | 완료 게이트 |

@@ -1,0 +1,72 @@
+{
+  "schema_version": "woozoo.risk.replay-manifest/v1",
+  "id": "KILL-002",
+  "status": "PASS",
+  "commands": [
+    [
+      "python",
+      [
+        "-m",
+        "uv",
+        "run",
+        "--locked",
+        "pytest",
+        "tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_has_no_automatic_ai_or_unauthenticated_recovery",
+        "tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_scans_every_executable_config_and_tool_registry_for_recovery_writer",
+        "tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_attempt_keeps_postgres_active[timer]",
+        "tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_attempt_keeps_postgres_active[ai]",
+        "tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_attempt_keeps_postgres_active[process_restart]",
+        "tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_attempt_keeps_postgres_active[redis_expiry]",
+        "tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_attempt_keeps_postgres_active[unauthenticated_actor]",
+        "-q",
+        "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\KILL-002.xml"
+      ]
+    ]
+  ],
+  "source_revision": "binance-spot-api-docs@29c227d84058dd2be3fe3b42ab368d1d1ce910e5",
+  "policy_version": "woozoo.market.collector-policy/v1",
+  "fixture_manifest_sha256": "7ad31ec79946ab383176360ae3ee069135ea9d8758ad2e16c13d3811cc05ce40",
+  "fixed_seed": 0,
+  "timezone": "UTC",
+  "test_count": 7,
+  "risk_policy_version": "woozoo.risk-policy/v1",
+  "scenario_manifest_sha256": "30919ef76721906d0799bed56ffe7b0cd1eed1391f20626fc57b3b072983f23f",
+  "network_enabled": false,
+  "scenario_input_digest": "1a0814959f3b72880e7de1e90dcf0f14510bd2be6d195ffee48a62534f56c570",
+  "execution_gate": {
+    "framework": "pytest-junit",
+    "tests": 7,
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "invocation_id": "4ebf3047-d103-4f02-84ea-e3d44ce81cc7",
+    "result_label": "KILL-002",
+    "command": [
+      "python",
+      [
+        "-m",
+        "uv",
+        "run",
+        "--locked",
+        "pytest",
+        "tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_has_no_automatic_ai_or_unauthenticated_recovery",
+        "tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_scans_every_executable_config_and_tool_registry_for_recovery_writer",
+        "tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_attempt_keeps_postgres_active[timer]",
+        "tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_attempt_keeps_postgres_active[ai]",
+        "tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_attempt_keeps_postgres_active[process_restart]",
+        "tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_attempt_keeps_postgres_active[redis_expiry]",
+        "tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_attempt_keeps_postgres_active[unauthenticated_actor]",
+        "-q",
+        "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\KILL-002.xml"
+      ]
+    ],
+    "result_digest": "f6b792d2cc3641df09e68c4c27bfdba1400018bde6bda0a7bf1b8b449758f14b",
+    "run_id": "cc3f76d206d1ce93c15e80e98dc1932eb857e863738b6e106ea2c2f1e8b07341"
+  },
+  "git_commit": "c0baf4cedd56818da0cc9d5718950b15eaf48b2b",
+  "git_tree": "6f66d2f761a689ab4ed98924b1485f78f7c25478",
+  "working_tree_digest": "fb55680be162ccb23ef0632e97c8880d0cb449b2bad59f1f6dc582d56d969bd4",
+  "frozen_file_count": 405,
+  "output_digest": "e8a49c895efbe583abed28d774a0ef956447433a8281efe38c6b98201d94a523",
+  "recorded_at": "2026-07-21T13:29:23.626Z"
+}

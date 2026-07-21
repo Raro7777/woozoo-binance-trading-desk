@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
   "project": "woozoo-binance-trading-desk",
-  "current_phase": 7,
+  "current_phase": 8,
   "status": "active",
-  "updated_at": "2026-07-20T04:22:42Z",
+  "updated_at": "2026-07-21T18:54:34Z",
   "transition_policy": "monotonic_explicit_approval_only",
-  "acceptance_contract_ref": "woozoo-phase-gates#phase-7",
+  "acceptance_contract_ref": "woozoo-phase-gates#phase-8",
   "acceptance_contract_runtime_paths": {
-    "codex": ".agents/skills/woozoo-phase-gates/references/phase-contract.md#phase-7",
-    "claude": ".claude/skills/woozoo-phase-gates/references/phase-contract.md#phase-7"
+    "codex": ".agents/skills/woozoo-phase-gates/references/phase-contract.md#phase-8",
+    "claude": ".claude/skills/woozoo-phase-gates/references/phase-contract.md#phase-8"
   },
   "acceptance_evidence_digest": null,
   "phase_approval": {
@@ -25,26 +25,30 @@
   },
   "phase_scope_ref": "docs/woozoo-trading-desk/mvp-plan-and-acceptance.md",
   "allowed_change_scope": [
-    "single_local_operator_authentication_session_csrf_and_origin_controls",
-    "production_activation_of_evidence_proposal_risk_approval_authorization_and_paper_routes",
-    "deterministic_approval_view_projection_and_canonical_paper_preview_hash_binding",
-    "human_approve_reject_revoke_and_manual_kill_switch_controls",
-    "five_minute_one_time_paper_execution_authorization_with_distinct_nonce",
-    "atomic_authorization_consumption_paper_command_receipt_order_ledger_and_outbox_flow",
-    "trading_room_market_evidence_analysis_risk_paper_portfolio_ledger_audit_and_operations_ui",
-    "desktop_and_mobile_browser_e2e_accessibility_and_mvp_go_no_go_evidence",
-    "phase_7_contracts_migrations_tests_ci_and_documentation"
+    "separate_least_privilege_spot_testnet_gateway_package_process_and_environment",
+    "spot_testnet_order_cancel_query_user_data_timeout_and_reconciliation",
+    "gateway_default_disabled_with_explicit_authenticated_operator_activation",
+    "authenticated_deterministic_execution_service_only_gateway_ingress",
+    "separate_digest_bound_human_testnet_approval_with_exact_preview_ttl_and_one_time_nonce",
+    "allowlisted_spot_testnet_host_path_method_auth_and_capability",
+    "single_client_order_id_unknown_outcome_query_and_reconciliation_without_replacement",
+    "testnet_account_order_fill_balance_and_reset_aware_local_authority_reconciliation",
+    "phase_8_contracts_migrations_tests_ci_documentation_and_negative_e2e"
   ],
   "forbidden_change_scope": [
-    "testnet_gateway_schema_configuration_dependency_credential_or_private_exchange_capability",
-    "browser_or_ai_direct_access_to_order_cancel_account_balance_exchange_or_secret_tools",
+    "mainnet_private_live_withdrawal_futures_margin_leverage_or_short",
+    "browser_or_ai_direct_exchange_order_cancel_account_balance_secret_or_gateway_access",
     "ai_access_to_account_balance_risk_verdict_approval_order_or_exchange_tools",
     "unstructured_or_unvalidated_model_output_as_trading_authority",
-    "approval_or_authorization_without_server_session_actor_hash_ttl_nonce_csrf_and_origin_binding",
-    "runtime_risk_policy_mutation_or_ui_values_as_financial_authority",
+    "gateway_enabled_by_default_or_implicit_testnet_or_mainnet_fallback",
+    "testnet_command_without_separate_server_session_actor_proposal_risk_policy_preview_environment_account_ttl_nonce_and_revocation_binding",
+    "testnet_order_replacement_after_timeout_or_unknown_submit_outcome_before_authoritative_query_and_reconciliation",
+    "testnet_secret_in_browser_ai_prompt_tool_log_trace_fixture_or_shared_application_environment",
+    "testnet_private_capability_outside_the_separate_least_privilege_gateway",
+    "testnet_credential_request_or_storage_outside_the_gateway_secret_path",
+    "paper_approval_reused_as_testnet_approval",
     "public_derivatives_telemetry",
-    "mainnet_private_live_withdrawal_futures_margin_leverage_or_short",
-    "credential_request_or_storage"
+    "runtime_risk_policy_mutation_or_ui_values_as_financial_authority"
   ],
   "advance_requires": [
     "current_phase_acceptance_criteria_pass",
@@ -115,6 +119,14 @@
       "at": "2026-07-20T04:22:42Z",
       "evidence_digest": "6a1472efd1277f90656979dd6d73984468c20b7affdfad39dcc9941a848ef794",
       "approval_ref": "docs/woozoo-trading-desk/phase-6/p6-to-p7-transition-approval.json"
+    },
+    {
+      "from_phase": 7,
+      "to_phase": 8,
+      "event": "advanced_after_digest_bound_user_approval",
+      "at": "2026-07-21T18:54:34Z",
+      "evidence_digest": "a7d13e1d04f80bbcee94bcdad997357aa191e6510739a7e3415edd5d25ad194f",
+      "approval_ref": "docs/woozoo-trading-desk/phase-7/p7-to-p8-transition-approval.json"
     }
   ]
 }

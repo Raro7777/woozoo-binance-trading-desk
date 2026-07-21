@@ -1,0 +1,144 @@
+{
+  "schema_version": "woozoo.market.replay-manifest/v1",
+  "id": "E2E-005",
+  "status": "PASS",
+  "commands": [
+    [
+      "python",
+      [
+        "-m",
+        "uv",
+        "run",
+        "--locked",
+        "pytest",
+        "-q",
+        "tests/integration/test_trading_room_api.py",
+        "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\phase7-api.xml"
+      ]
+    ],
+    [
+      "C:\\Program Files\\nodejs\\node.exe",
+      [
+        "C:\\Users\\xxx\\woozoo-binance-trading-desk\\node_modules\\@playwright\\test\\cli.js",
+        "test",
+        "--reporter=junit"
+      ]
+    ],
+    [
+      "python",
+      [
+        "-m",
+        "uv",
+        "run",
+        "--locked",
+        "pytest",
+        "tests/integration/test_trading_room_api.py::test_audit_api_preserves_provenance_and_recursively_redacts_command_secrets",
+        "-q",
+        "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\e2e-E2E-005.xml"
+      ]
+    ]
+  ],
+  "source_revision": "binance-spot-api-docs@29c227d84058dd2be3fe3b42ab368d1d1ce910e5",
+  "policy_version": "woozoo.market.collector-policy/v1",
+  "fixture_manifest_sha256": "7ad31ec79946ab383176360ae3ee069135ea9d8758ad2e16c13d3811cc05ce40",
+  "fixed_seed": 0,
+  "timezone": "UTC",
+  "test_count": 27,
+  "phase7_scenario_manifest_sha256": "bf4079bcb6a003e7d32176f8bf153414ba927ab42ba927776281835f1b47e668",
+  "scenario_input_digest": "c4ffff18a4abea43daf246b967244ecbd1107771ac75e02077cae58789bd3c32",
+  "declared_test_nodes": [
+    "tests/e2e/trading-room.spec.ts::[live] E2E-005",
+    "tests/integration/test_trading_room_api.py::test_audit_api_preserves_provenance_and_recursively_redacts_command_secrets"
+  ],
+  "infrastructure_preflight": {
+    "path": "artifacts/e2e/E2E-INFRA-001.json",
+    "sha256": "13d0a01cf2a19be5499ed7c79b25341245f17aa899c46e36840fcfa9d5214032",
+    "output_digest": "06f451b2ef8959ae9c4c607dc6cf137540d26c35b90d426ba4170d6591fb8c32"
+  },
+  "declared_browser_scenario": "tests/e2e/trading-room.spec.ts::[live] E2E-005",
+  "declared_pytest_count": 1,
+  "execution_gate": {
+    "framework": "combined-junit",
+    "tests": 27,
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "cancelled": 0,
+    "todo": 0,
+    "components": [
+      {
+        "framework": "pytest-junit",
+        "tests": 7,
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "invocation_id": "a257e1b9-8baa-42bb-9954-546e5603acb6",
+        "result_label": "phase7-api",
+        "command": [
+          "python",
+          [
+            "-m",
+            "uv",
+            "run",
+            "--locked",
+            "pytest",
+            "-q",
+            "tests/integration/test_trading_room_api.py",
+            "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\phase7-api.xml"
+          ]
+        ],
+        "result_digest": "4a20c47a5159c50f5146453bf58bed756066eea6168eae97ac0e0b6a349d7e63",
+        "run_id": "b1bea0b2d87fcab5e1e927c2df8ad62a21be32d25a1cca4d4e8bf17b2e38785f"
+      },
+      {
+        "framework": "playwright-junit",
+        "tests": 19,
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "invocation_id": "223a480f-6534-4bad-9914-6ec27e39ade7",
+        "result_label": "phase7-playwright",
+        "command": [
+          "C:\\Program Files\\nodejs\\node.exe",
+          [
+            "C:\\Users\\xxx\\woozoo-binance-trading-desk\\node_modules\\@playwright\\test\\cli.js",
+            "test",
+            "--reporter=junit"
+          ]
+        ],
+        "result_digest": "ceef0690443bcfc5c71bfa288b244cf01e997d23dad8fdeb883a720759199a68",
+        "run_id": "7042d8d85a949dd92d3db96c1c2f734f5163d00a71e87b7b3ef85666308fbbe4"
+      },
+      {
+        "framework": "pytest-junit",
+        "tests": 1,
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "invocation_id": "27a66c1e-d9ce-4afe-99fe-ec39616c832e",
+        "result_label": "e2e-E2E-005",
+        "command": [
+          "python",
+          [
+            "-m",
+            "uv",
+            "run",
+            "--locked",
+            "pytest",
+            "tests/integration/test_trading_room_api.py::test_audit_api_preserves_provenance_and_recursively_redacts_command_secrets",
+            "-q",
+            "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\e2e-E2E-005.xml"
+          ]
+        ],
+        "result_digest": "27fc9ae1e930dc694e07b95a7a4badd9eab1b5c0e8394d554cee30fb72494937",
+        "run_id": "b698ca863ce0c7405e136e73b3cd807552efb017619d5c38393bc635b34ad9cf"
+      }
+    ]
+  },
+  "git_commit": "c0baf4cedd56818da0cc9d5718950b15eaf48b2b",
+  "git_tree": "6f66d2f761a689ab4ed98924b1485f78f7c25478",
+  "working_tree_digest": "fb55680be162ccb23ef0632e97c8880d0cb449b2bad59f1f6dc582d56d969bd4",
+  "frozen_file_count": 405,
+  "output_digest": "351c5cbbb818282c98edd1d24596814a048cddf1d294d7f0258139b256b18952",
+  "recorded_at": "2026-07-21T13:48:01.815Z"
+}

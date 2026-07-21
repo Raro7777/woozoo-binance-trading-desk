@@ -1,0 +1,129 @@
+{
+  "schema_version": "woozoo.market.replay-manifest/v1",
+  "id": "CONTRACT-001",
+  "status": "PASS",
+  "commands": [
+    [
+      "node",
+      [
+        "scripts/generate-contracts.mjs",
+        "--check"
+      ]
+    ],
+    [
+      "corepack",
+      [
+        "pnpm",
+        "exec",
+        "tsc",
+        "-p",
+        "tests/contract/tsconfig.json"
+      ]
+    ],
+    [
+      "corepack",
+      [
+        "pnpm",
+        "exec",
+        "tsx",
+        "--test",
+        "--test-reporter=junit",
+        "--test-reporter-destination=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.node-results\\bulk-contract-node.xml",
+        "tests/contract/contracts.test.ts",
+        "tests/contract/market-data-contracts.test.ts",
+        "tests/contract/evidence-contracts.test.ts",
+        "tests/contract/paper-contracts.test.ts",
+        "tests/contract/risk-contracts.test.ts"
+      ]
+    ],
+    [
+      "python",
+      [
+        "-m",
+        "uv",
+        "run",
+        "--locked",
+        "pytest",
+        "tests/contract",
+        "-q",
+        "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\bulk-contract-pytest.xml"
+      ]
+    ]
+  ],
+  "source_revision": "binance-spot-api-docs@29c227d84058dd2be3fe3b42ab368d1d1ce910e5",
+  "policy_version": "woozoo.market.collector-policy/v1",
+  "fixture_manifest_sha256": "7ad31ec79946ab383176360ae3ee069135ea9d8758ad2e16c13d3811cc05ce40",
+  "fixed_seed": 0,
+  "timezone": "UTC",
+  "test_count": 26,
+  "execution_gate": {
+    "framework": "combined-junit",
+    "tests": 26,
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "cancelled": 0,
+    "todo": 0,
+    "components": [
+      {
+        "framework": "node-junit",
+        "tests": 6,
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "cancelled": 0,
+        "todo": 0,
+        "invocation_id": "e1ef2866-1584-491d-8ac0-d00edd75f648",
+        "result_label": "bulk-contract-node",
+        "command": [
+          "corepack",
+          [
+            "pnpm",
+            "exec",
+            "tsx",
+            "--test",
+            "--test-reporter=junit",
+            "--test-reporter-destination=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.node-results\\bulk-contract-node.xml",
+            "tests/contract/contracts.test.ts",
+            "tests/contract/market-data-contracts.test.ts",
+            "tests/contract/evidence-contracts.test.ts",
+            "tests/contract/paper-contracts.test.ts",
+            "tests/contract/risk-contracts.test.ts"
+          ]
+        ],
+        "result_digest": "40bed4e3dcffcfdf0c9e748bcfe7adb0ada3c4826e9d18a8a6bcc51bdb917e3b",
+        "run_id": "fccbc80d7b11c7609e99dc89a78c19b8da2a050d2f31b811308bf328e6b79619"
+      },
+      {
+        "framework": "pytest-junit",
+        "tests": 20,
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "invocation_id": "ee789c9e-75e4-4e57-ba15-96a05921b0e7",
+        "result_label": "bulk-contract-pytest",
+        "command": [
+          "python",
+          [
+            "-m",
+            "uv",
+            "run",
+            "--locked",
+            "pytest",
+            "tests/contract",
+            "-q",
+            "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\bulk-contract-pytest.xml"
+          ]
+        ],
+        "result_digest": "62e54e48b14f35fb34ee93f231967c95b11dcd08ed37f5fa3df125e1568a3eff",
+        "run_id": "f15b8e281ad7264c00d880d7881e331d85400752e2807ef794e9bd6e10795800"
+      }
+    ]
+  },
+  "git_commit": "c0baf4cedd56818da0cc9d5718950b15eaf48b2b",
+  "git_tree": "6f66d2f761a689ab4ed98924b1485f78f7c25478",
+  "working_tree_digest": "fb55680be162ccb23ef0632e97c8880d0cb449b2bad59f1f6dc582d56d969bd4",
+  "frozen_file_count": 405,
+  "output_digest": "47dff6eb37fac2fca17b4c80631a19a328bbcc05c0cdfd763407ddc03ffcec5b",
+  "recorded_at": "2026-07-21T13:28:50.652Z"
+}

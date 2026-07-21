@@ -1,0 +1,71 @@
+{
+  "schema_version": "woozoo.evidence.replay-manifest/v1",
+  "id": "PTI-001",
+  "status": "PASS",
+  "commands": [
+    [
+      "python",
+      [
+        "-m",
+        "uv",
+        "run",
+        "--locked",
+        "pytest",
+        "tests/property/test_evidence_boundaries.py::test_dual_cutoff_is_independently_inclusive[event_delta0-received_delta0-True]",
+        "tests/property/test_evidence_boundaries.py::test_dual_cutoff_is_independently_inclusive[event_delta1-received_delta1-True]",
+        "tests/property/test_evidence_boundaries.py::test_dual_cutoff_is_independently_inclusive[event_delta2-received_delta2-False]",
+        "tests/property/test_evidence_boundaries.py::test_dual_cutoff_is_independently_inclusive[event_delta3-received_delta3-False]",
+        "-q",
+        "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\PTI-001.xml"
+      ]
+    ]
+  ],
+  "source_revision": "binance-spot-api-docs@29c227d84058dd2be3fe3b42ab368d1d1ce910e5",
+  "policy_version": "woozoo.market.collector-policy/v1",
+  "fixture_manifest_sha256": "7ad31ec79946ab383176360ae3ee069135ea9d8758ad2e16c13d3811cc05ce40",
+  "fixed_seed": 0,
+  "timezone": "UTC",
+  "test_count": 4,
+  "evidence_recipe_version": "woozoo.evidence.closed-candles-approved-features/v1",
+  "phase7_scenario_manifest_sha256": "bf4079bcb6a003e7d32176f8bf153414ba927ab42ba927776281835f1b47e668",
+  "scenario_input_digest": "a37999a315e5cbc7652b0eae4e6ab0853513a6b83cd46ffd9dcb64124820cc73",
+  "declared_test_nodes": [
+    "tests/property/test_evidence_boundaries.py::test_dual_cutoff_is_independently_inclusive[event_delta0-received_delta0-True]",
+    "tests/property/test_evidence_boundaries.py::test_dual_cutoff_is_independently_inclusive[event_delta1-received_delta1-True]",
+    "tests/property/test_evidence_boundaries.py::test_dual_cutoff_is_independently_inclusive[event_delta2-received_delta2-False]",
+    "tests/property/test_evidence_boundaries.py::test_dual_cutoff_is_independently_inclusive[event_delta3-received_delta3-False]"
+  ],
+  "execution_gate": {
+    "framework": "pytest-junit",
+    "tests": 4,
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "invocation_id": "93c53712-8c01-40d5-b84c-d32c548fecc3",
+    "result_label": "PTI-001",
+    "command": [
+      "python",
+      [
+        "-m",
+        "uv",
+        "run",
+        "--locked",
+        "pytest",
+        "tests/property/test_evidence_boundaries.py::test_dual_cutoff_is_independently_inclusive[event_delta0-received_delta0-True]",
+        "tests/property/test_evidence_boundaries.py::test_dual_cutoff_is_independently_inclusive[event_delta1-received_delta1-True]",
+        "tests/property/test_evidence_boundaries.py::test_dual_cutoff_is_independently_inclusive[event_delta2-received_delta2-False]",
+        "tests/property/test_evidence_boundaries.py::test_dual_cutoff_is_independently_inclusive[event_delta3-received_delta3-False]",
+        "-q",
+        "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\PTI-001.xml"
+      ]
+    ],
+    "result_digest": "faa1e3b09552ea4f350dfe795a087e130c27a8ce436e004e2f183f048cd50b66",
+    "run_id": "0a023364b89276cbe215c478a2b1e7913235c28ad4ca139d95f8ce2c3c0f33f6"
+  },
+  "git_commit": "c0baf4cedd56818da0cc9d5718950b15eaf48b2b",
+  "git_tree": "6f66d2f761a689ab4ed98924b1485f78f7c25478",
+  "working_tree_digest": "fb55680be162ccb23ef0632e97c8880d0cb449b2bad59f1f6dc582d56d969bd4",
+  "frozen_file_count": 405,
+  "output_digest": "267bdb5e4ce1c716fb20e237ce5dd1d9e7ec5cb11c012e798f1a26dfc2667116",
+  "recorded_at": "2026-07-21T13:37:46.387Z"
+}

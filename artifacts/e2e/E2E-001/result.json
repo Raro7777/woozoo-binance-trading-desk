@@ -1,0 +1,189 @@
+{
+  "schema_version": "woozoo.market.replay-manifest/v1",
+  "id": "E2E-001",
+  "status": "PASS",
+  "commands": [
+    [
+      "python",
+      [
+        "-m",
+        "uv",
+        "run",
+        "--locked",
+        "pytest",
+        "-q",
+        "tests/integration/test_trading_room_api.py",
+        "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\phase7-api.xml"
+      ]
+    ],
+    [
+      "C:\\Program Files\\nodejs\\node.exe",
+      [
+        "C:\\Users\\xxx\\woozoo-binance-trading-desk\\node_modules\\@playwright\\test\\cli.js",
+        "test",
+        "--reporter=junit"
+      ]
+    ],
+    [
+      "python",
+      [
+        "-m",
+        "uv",
+        "run",
+        "--locked",
+        "pytest",
+        "tests/integration/test_trading_room_api.py::test_e2e_001_authenticated_proposal_approval_creates_exactly_one_paper_order",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_authorized_order_recorded_book_partial_fill_then_cancel_is_atomic_and_idempotent",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_recorded_book_rejects_malformed_or_unbound_raw_provenance_without_effects",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_no_fill_replay_returns_immutable_first_response_after_later_fill",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_same_side_orders_compete_in_accepted_at_order_id_order_for_one_book_budget",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_recorded_book_revalidates_current_stream_health_and_defers_stale_event",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_recorded_book_kill_barrier_holds_without_any_paper_effect",
+        "tests/unit/test_paper_engine.py::test_side_partitioned_book_observations_keep_canonical_order_and_budgets_independent",
+        "tests/unit/test_paper_authorization_worker_runtime.py::test_recorded_book_hold_reconciles_without_reporting_progress_or_failing_worker[PAPER_RECONCILIATION_HOLD]",
+        "tests/unit/test_paper_authorization_worker_runtime.py::test_recorded_book_hold_reconciles_without_reporting_progress_or_failing_worker[PAPER_KILL_SWITCH_ACTIVE]",
+        "tests/unit/test_paper_authorization_worker_runtime.py::test_recorded_book_hold_reconciles_without_reporting_progress_or_failing_worker[ORDER_NOT_FILLABLE]",
+        "tests/unit/test_paper_authorization_worker_runtime.py::test_recorded_book_hold_reconciles_without_reporting_progress_or_failing_worker[INVALID_RECORDED_BOOK_INPUT]",
+        "tests/unit/test_paper_authorization_worker_runtime.py::test_recorded_book_hold_reconciles_without_reporting_progress_or_failing_worker[CURRENT_MARKET_STATE_UNHEALTHY]",
+        "tests/unit/test_paper_authorization_worker_runtime.py::test_unexpected_recorded_book_exception_remains_fatal",
+        "tests/unit/test_paper_authorization_worker_runtime.py::test_unknown_recorded_book_hold_reason_remains_fatal",
+        "tests/integration/test_trading_room_migration_contract.py::test_phase7_migration_upgrades_with_digest_only_storage_and_least_privilege",
+        "-q",
+        "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\e2e-E2E-001.xml"
+      ]
+    ]
+  ],
+  "source_revision": "binance-spot-api-docs@29c227d84058dd2be3fe3b42ab368d1d1ce910e5",
+  "policy_version": "woozoo.market.collector-policy/v1",
+  "fixture_manifest_sha256": "7ad31ec79946ab383176360ae3ee069135ea9d8758ad2e16c13d3811cc05ce40",
+  "fixed_seed": 0,
+  "timezone": "UTC",
+  "test_count": 42,
+  "phase7_scenario_manifest_sha256": "bf4079bcb6a003e7d32176f8bf153414ba927ab42ba927776281835f1b47e668",
+  "scenario_input_digest": "11f37b44d887c5be95d79cb4aaa6e347214e2b4bfad8ad53240476aeef21418d",
+  "declared_test_nodes": [
+    "tests/e2e/trading-room.spec.ts::[live] E2E-001",
+    "tests/integration/test_trading_room_api.py::test_e2e_001_authenticated_proposal_approval_creates_exactly_one_paper_order",
+    "tests/integration/test_phase7_paper_first_attempt_authority.py::test_authorized_order_recorded_book_partial_fill_then_cancel_is_atomic_and_idempotent",
+    "tests/integration/test_phase7_paper_first_attempt_authority.py::test_recorded_book_rejects_malformed_or_unbound_raw_provenance_without_effects",
+    "tests/integration/test_phase7_paper_first_attempt_authority.py::test_no_fill_replay_returns_immutable_first_response_after_later_fill",
+    "tests/integration/test_phase7_paper_first_attempt_authority.py::test_same_side_orders_compete_in_accepted_at_order_id_order_for_one_book_budget",
+    "tests/integration/test_phase7_paper_first_attempt_authority.py::test_recorded_book_revalidates_current_stream_health_and_defers_stale_event",
+    "tests/integration/test_phase7_paper_first_attempt_authority.py::test_recorded_book_kill_barrier_holds_without_any_paper_effect",
+    "tests/unit/test_paper_engine.py::test_side_partitioned_book_observations_keep_canonical_order_and_budgets_independent",
+    "tests/unit/test_paper_authorization_worker_runtime.py::test_recorded_book_hold_reconciles_without_reporting_progress_or_failing_worker[PAPER_RECONCILIATION_HOLD]",
+    "tests/unit/test_paper_authorization_worker_runtime.py::test_recorded_book_hold_reconciles_without_reporting_progress_or_failing_worker[PAPER_KILL_SWITCH_ACTIVE]",
+    "tests/unit/test_paper_authorization_worker_runtime.py::test_recorded_book_hold_reconciles_without_reporting_progress_or_failing_worker[ORDER_NOT_FILLABLE]",
+    "tests/unit/test_paper_authorization_worker_runtime.py::test_recorded_book_hold_reconciles_without_reporting_progress_or_failing_worker[INVALID_RECORDED_BOOK_INPUT]",
+    "tests/unit/test_paper_authorization_worker_runtime.py::test_recorded_book_hold_reconciles_without_reporting_progress_or_failing_worker[CURRENT_MARKET_STATE_UNHEALTHY]",
+    "tests/unit/test_paper_authorization_worker_runtime.py::test_unexpected_recorded_book_exception_remains_fatal",
+    "tests/unit/test_paper_authorization_worker_runtime.py::test_unknown_recorded_book_hold_reason_remains_fatal",
+    "tests/integration/test_trading_room_migration_contract.py::test_phase7_migration_upgrades_with_digest_only_storage_and_least_privilege"
+  ],
+  "infrastructure_preflight": {
+    "path": "artifacts/e2e/E2E-INFRA-001.json",
+    "sha256": "13d0a01cf2a19be5499ed7c79b25341245f17aa899c46e36840fcfa9d5214032",
+    "output_digest": "06f451b2ef8959ae9c4c607dc6cf137540d26c35b90d426ba4170d6591fb8c32"
+  },
+  "declared_browser_scenario": "tests/e2e/trading-room.spec.ts::[live] E2E-001",
+  "declared_pytest_count": 16,
+  "execution_gate": {
+    "framework": "combined-junit",
+    "tests": 42,
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "cancelled": 0,
+    "todo": 0,
+    "components": [
+      {
+        "framework": "pytest-junit",
+        "tests": 7,
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "invocation_id": "a257e1b9-8baa-42bb-9954-546e5603acb6",
+        "result_label": "phase7-api",
+        "command": [
+          "python",
+          [
+            "-m",
+            "uv",
+            "run",
+            "--locked",
+            "pytest",
+            "-q",
+            "tests/integration/test_trading_room_api.py",
+            "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\phase7-api.xml"
+          ]
+        ],
+        "result_digest": "4a20c47a5159c50f5146453bf58bed756066eea6168eae97ac0e0b6a349d7e63",
+        "run_id": "b1bea0b2d87fcab5e1e927c2df8ad62a21be32d25a1cca4d4e8bf17b2e38785f"
+      },
+      {
+        "framework": "playwright-junit",
+        "tests": 19,
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "invocation_id": "223a480f-6534-4bad-9914-6ec27e39ade7",
+        "result_label": "phase7-playwright",
+        "command": [
+          "C:\\Program Files\\nodejs\\node.exe",
+          [
+            "C:\\Users\\xxx\\woozoo-binance-trading-desk\\node_modules\\@playwright\\test\\cli.js",
+            "test",
+            "--reporter=junit"
+          ]
+        ],
+        "result_digest": "ceef0690443bcfc5c71bfa288b244cf01e997d23dad8fdeb883a720759199a68",
+        "run_id": "7042d8d85a949dd92d3db96c1c2f734f5163d00a71e87b7b3ef85666308fbbe4"
+      },
+      {
+        "framework": "pytest-junit",
+        "tests": 16,
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "invocation_id": "8bf7afc0-a7a5-4fa4-940d-272c2b8abbaa",
+        "result_label": "e2e-E2E-001",
+        "command": [
+          "python",
+          [
+            "-m",
+            "uv",
+            "run",
+            "--locked",
+            "pytest",
+            "tests/integration/test_trading_room_api.py::test_e2e_001_authenticated_proposal_approval_creates_exactly_one_paper_order",
+            "tests/integration/test_phase7_paper_first_attempt_authority.py::test_authorized_order_recorded_book_partial_fill_then_cancel_is_atomic_and_idempotent",
+            "tests/integration/test_phase7_paper_first_attempt_authority.py::test_recorded_book_rejects_malformed_or_unbound_raw_provenance_without_effects",
+            "tests/integration/test_phase7_paper_first_attempt_authority.py::test_no_fill_replay_returns_immutable_first_response_after_later_fill",
+            "tests/integration/test_phase7_paper_first_attempt_authority.py::test_same_side_orders_compete_in_accepted_at_order_id_order_for_one_book_budget",
+            "tests/integration/test_phase7_paper_first_attempt_authority.py::test_recorded_book_revalidates_current_stream_health_and_defers_stale_event",
+            "tests/integration/test_phase7_paper_first_attempt_authority.py::test_recorded_book_kill_barrier_holds_without_any_paper_effect",
+            "tests/unit/test_paper_engine.py::test_side_partitioned_book_observations_keep_canonical_order_and_budgets_independent",
+            "tests/unit/test_paper_authorization_worker_runtime.py::test_recorded_book_hold_reconciles_without_reporting_progress_or_failing_worker[PAPER_RECONCILIATION_HOLD]",
+            "tests/unit/test_paper_authorization_worker_runtime.py::test_recorded_book_hold_reconciles_without_reporting_progress_or_failing_worker[PAPER_KILL_SWITCH_ACTIVE]",
+            "tests/unit/test_paper_authorization_worker_runtime.py::test_recorded_book_hold_reconciles_without_reporting_progress_or_failing_worker[ORDER_NOT_FILLABLE]",
+            "tests/unit/test_paper_authorization_worker_runtime.py::test_recorded_book_hold_reconciles_without_reporting_progress_or_failing_worker[INVALID_RECORDED_BOOK_INPUT]",
+            "tests/unit/test_paper_authorization_worker_runtime.py::test_recorded_book_hold_reconciles_without_reporting_progress_or_failing_worker[CURRENT_MARKET_STATE_UNHEALTHY]",
+            "tests/unit/test_paper_authorization_worker_runtime.py::test_unexpected_recorded_book_exception_remains_fatal",
+            "tests/unit/test_paper_authorization_worker_runtime.py::test_unknown_recorded_book_hold_reason_remains_fatal",
+            "tests/integration/test_trading_room_migration_contract.py::test_phase7_migration_upgrades_with_digest_only_storage_and_least_privilege",
+            "-q",
+            "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\e2e-E2E-001.xml"
+          ]
+        ],
+        "result_digest": "5868872f2bcba2a53581cfba6a5f0842d3c184908249e8092c4b7f45c498f7e1",
+        "run_id": "8bc33183f18d3d803cf5f717dc895ebd262ed9e86e3d680e5e00cb26dd0c92b7"
+      }
+    ]
+  },
+  "git_commit": "c0baf4cedd56818da0cc9d5718950b15eaf48b2b",
+  "git_tree": "6f66d2f761a689ab4ed98924b1485f78f7c25478",
+  "working_tree_digest": "fb55680be162ccb23ef0632e97c8880d0cb449b2bad59f1f6dc582d56d969bd4",
+  "frozen_file_count": 405,
+  "output_digest": "5c9cac492cc06d7944004c5044e7e0d6bdcd1285f33bfafc9e3034563eb9a4f4",
+  "recorded_at": "2026-07-21T13:47:39.088Z"
+}

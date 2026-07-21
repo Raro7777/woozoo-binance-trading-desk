@@ -1,0 +1,64 @@
+{
+  "schema_version": "woozoo.market.replay-manifest/v1",
+  "id": "DATA-005",
+  "status": "PASS",
+  "commands": [
+    [
+      "python",
+      [
+        "-m",
+        "uv",
+        "run",
+        "--locked",
+        "pytest",
+        "tests/failure/test_market_data_failures.py::test_data_005_malformed_payload_is_quarantined_and_invalid",
+        "tests/unit/test_rest_collection.py::test_malformed_rest_json_is_preserved_exactly_and_fails_closed",
+        "tests/unit/test_rest_collection.py::test_rest_kline_future_close_is_quarantined_and_never_forced_closed",
+        "tests/unit/test_public_market_transports.py::test_rest_transport_rejects_responses_over_the_fixed_limit",
+        "tests/integration/test_platform_infrastructure.py::test_future_kline_quarantine_downgrades_durable_symbol_projection",
+        "-q",
+        "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\DATA-005.xml"
+      ]
+    ]
+  ],
+  "source_revision": "binance-spot-api-docs@29c227d84058dd2be3fe3b42ab368d1d1ce910e5",
+  "policy_version": "woozoo.market.collector-policy/v1",
+  "fixture_manifest_sha256": "7ad31ec79946ab383176360ae3ee069135ea9d8758ad2e16c13d3811cc05ce40",
+  "fixed_seed": 0,
+  "timezone": "UTC",
+  "test_count": 5,
+  "execution_gate": {
+    "framework": "pytest-junit",
+    "tests": 5,
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "invocation_id": "27c1048e-bba3-43da-bd33-c2f24ab2bf93",
+    "result_label": "DATA-005",
+    "command": [
+      "python",
+      [
+        "-m",
+        "uv",
+        "run",
+        "--locked",
+        "pytest",
+        "tests/failure/test_market_data_failures.py::test_data_005_malformed_payload_is_quarantined_and_invalid",
+        "tests/unit/test_rest_collection.py::test_malformed_rest_json_is_preserved_exactly_and_fails_closed",
+        "tests/unit/test_rest_collection.py::test_rest_kline_future_close_is_quarantined_and_never_forced_closed",
+        "tests/unit/test_public_market_transports.py::test_rest_transport_rejects_responses_over_the_fixed_limit",
+        "tests/integration/test_platform_infrastructure.py::test_future_kline_quarantine_downgrades_durable_symbol_projection",
+        "-q",
+        "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\DATA-005.xml"
+      ]
+    ],
+    "result_digest": "e9a482fb9c9abddefbf6f8dc3a30f659f4564d4c405d416a818d75b889fe3f2e",
+    "run_id": "4ea76539dafd0d1aec78e1a04ce0f6110d1f2e3dccae7babd5f78bffada72564"
+  },
+  "git_commit": "c0baf4cedd56818da0cc9d5718950b15eaf48b2b",
+  "git_tree": "6f66d2f761a689ab4ed98924b1485f78f7c25478",
+  "working_tree_digest": "fb55680be162ccb23ef0632e97c8880d0cb449b2bad59f1f6dc582d56d969bd4",
+  "frozen_file_count": 405,
+  "output_digest": "54ad651deee77240465ff59adf4dde2e943eb9407d7c145cfa6eec10c96d3c81",
+  "recorded_at": "2026-07-21T13:41:13.474Z"
+}

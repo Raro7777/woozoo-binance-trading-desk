@@ -1,0 +1,527 @@
+{
+  "schema_version": 1,
+  "phase": 7,
+  "status": "READY_FOR_DIGEST_BOUND_USER_APPROVAL",
+  "acceptance_status": "UNVERIFIED",
+  "digest_algorithm": "SHA-256",
+  "digest_definition": "SHA-256 of the exact UTF-8 bytes of this manifest. The manifest does not contain its own digest. The frozen product revision binds product source; review and support revisions bind ancestry and exact GitHub-check head; the sorted path plus SHA-256 artifact list binds ignored evidence and post-check working-tree projections.",
+  "frozen_code_revision": {
+    "commit": "c0baf4cedd56818da0cc9d5718950b15eaf48b2b",
+    "tree": "6f66d2f761a689ab4ed98924b1485f78f7c25478",
+    "base_commit": "03369ceebc84da904bf6cab6818154f96670dc43",
+    "verified_worktree_digest": "fb55680be162ccb23ef0632e97c8880d0cb449b2bad59f1f6dc582d56d969bd4",
+    "verified_file_count": 405,
+    "branch": "codex/phase-7-trading-room",
+    "verdict": "PASS"
+  },
+  "review_evidence_revision": {
+    "commit": "4ca4b487b6892421e1fbcf9549d234f38ff221f1",
+    "tree": "b39256c63375dbe525af5dff068081be01b994eb",
+    "parent_frozen_product_commit": "c0baf4cedd56818da0cc9d5718950b15eaf48b2b",
+    "scope": "Tracked exact-candidate review summaries and initial Git projection; canonical ignored reports are bound separately by artifact hashes.",
+    "verdict": "PASS"
+  },
+  "acceptance_support_revision": {
+    "commit": "dcef304d5043a51f54c7f20435206c9fb1fd171a",
+    "tree": "1655b9b908e19540fa5e0aae03daacf1811b31d7",
+    "parent_review_evidence_commit": "4ca4b487b6892421e1fbcf9549d234f38ff221f1",
+    "remote_head_verified": true,
+    "exact_head_checks_passed": true,
+    "scope": "Review-evidence ancestry plus the CI timeout-only support change required for the full canonical gate to finish.",
+    "verdict": "PASS"
+  },
+  "post_check_digest_bound_projection": {
+    "status": "PASS",
+    "contained_in_acceptance_support_revision": false,
+    "commit_state": "working-tree-uncommitted-until-digest-approval",
+    "paths": [
+      "docs/woozoo-trading-desk/phase-7/p7-git-gate-evidence.json",
+      "docs/woozoo-trading-desk/phase-7/final-review-record.md",
+      "docs/woozoo-trading-desk/working_history/phase-7_trading-room_20260721.md"
+    ],
+    "binding": "The exact bytes are bound by this manifest's artifact hashes and must remain unchanged until explicit approval of this manifest digest."
+  },
+  "phase_item_verdicts": {
+    "CORE-001": "PASS",
+    "PLAT-001": "PASS",
+    "PLAT-002": "PASS",
+    "PLAT-003": "PASS",
+    "CONTRACT-001": "PASS",
+    "SAFE-001": "PASS",
+    "SAFE-002": "PASS",
+    "SAFE-003": "PASS",
+    "SAFE-004": "PASS",
+    "DATA-001": "PASS",
+    "DATA-002": "PASS",
+    "DATA-003": "PASS",
+    "DATA-004": "PASS",
+    "DATA-005": "PASS",
+    "DATA-006": "PASS",
+    "DATA-007": "PASS",
+    "PTI-001": "PASS",
+    "PTI-002": "PASS",
+    "PTI-003": "PASS",
+    "PTI-004": "PASS",
+    "FIN-001": "PASS",
+    "FIN-002": "PASS",
+    "FIN-003": "PASS",
+    "FIN-004": "PASS",
+    "ORD-001": "PASS",
+    "ORD-002": "PASS",
+    "ATOM-001": "PASS",
+    "ATOM-002": "PASS",
+    "RISK-001": "PASS",
+    "RISK-002": "PASS",
+    "KILL-001": "PASS",
+    "KILL-002": "PASS",
+    "AUTH-001": "PASS",
+    "AUTH-002": "PASS",
+    "AI-001": "PASS",
+    "AI-002": "PASS",
+    "SEC-001": "PASS",
+    "SEC-002": "PASS",
+    "E2E-001": "PASS",
+    "E2E-002": "PASS",
+    "E2E-003": "PASS",
+    "E2E-004": "PASS",
+    "E2E-005": "PASS"
+  },
+  "review_gate": {
+    "role_separated_safety_qa": "PASS",
+    "safety_report": "_workspace/7_woozoo-safety-qa-inspector_report.md",
+    "packaging_boundary_qa": "PASS_NO_PACKAGING_BOUNDARY_FINDINGS",
+    "packaging_boundary_report": "_workspace/7_woozoo-safety-qa-inspector_package-report.md",
+    "codex_cross_review": "NO_CONFIRMED_FINDINGS",
+    "codex_cross_review_report": "_workspace/internal-reviews/phase-7_woozoo-codex-cross-reviewer_report.md",
+    "codex_cross_review_is_same_engine": true,
+    "codex_cross_review_external_gate_satisfied": false,
+    "packaging_cross_review": "NO_ACTIONABLE_PACKAGING_FINDINGS",
+    "packaging_cross_review_report": "_workspace/internal-reviews/phase-7_acceptance-package_review.md",
+    "external_review": "external-review-unavailable",
+    "external_review_pass": false,
+    "external_gate_satisfied": false,
+    "external_review_is_not_pass": true,
+    "external_review_is_not_user_approval": true,
+    "major_change_requirement_verdict": "PASS",
+    "major_change_satisfaction_mode": "external-review-unavailable-recorded",
+    "claude_used": false,
+    "approval_boundary": "Acceptance remains UNVERIFIED until the user explicitly approves the SHA-256 of this exact manifest. This manifest is not authority to mark Phase 7 accepted or begin Phase 8."
+  },
+  "git_gate": {
+    "status": "PASS",
+    "evidence_path": "docs/woozoo-trading-desk/phase-7/p7-git-gate-evidence.json",
+    "draft_pr": "https://github.com/Raro7777/woozoo-binance-trading-desk/pull/8",
+    "review_evidence_commit": "4ca4b487b6892421e1fbcf9549d234f38ff221f1",
+    "verified_pr_head": "dcef304d5043a51f54c7f20435206c9fb1fd171a",
+    "base": "main",
+    "base_commit": "03369ceebc84da904bf6cab6818154f96670dc43",
+    "exact_checks": [
+      {
+        "event": "push",
+        "run_id": 29838565082,
+        "job_id": 88661197157,
+        "conclusion": "success"
+      },
+      {
+        "event": "pull_request",
+        "run_id": 29838570859,
+        "job_id": 88661216341,
+        "conclusion": "success"
+      }
+    ],
+    "superseded_timeout_runs_counted_as_pass": false
+  },
+  "verification": {
+    "canonical_command": "corepack pnpm ci",
+    "status": "PASS",
+    "scenario_evidence": "docs/woozoo-trading-desk/phase-7/p7-scenario-manifest.json",
+    "aggregate_evidence": "artifacts/acceptance/P7-43.json",
+    "required_count": 43,
+    "passed_count": 43,
+    "scenario_manifest_sha256": "bf4079bcb6a003e7d32176f8bf153414ba927ab42ba927776281835f1b47e668",
+    "aggregate_sha256": "809eda7c8a8ae84cb7ef87c900a1ec402edf3878228a27442056ddb1217b6abf",
+    "aggregate_output_digest": "193076ba203113b98987e1d2758859c91242d43fddea51ac291ff4e9bfe4dc04",
+    "artifact_test_coverage_count": 1209,
+    "unique_test_execution_count": 700,
+    "unique_execution_run_count": 44,
+    "artifact_worktree_digest": "fb55680be162ccb23ef0632e97c8880d0cb449b2bad59f1f6dc582d56d969bd4",
+    "frozen_file_count": 405,
+    "e2e_preflight_path": "artifacts/e2e/E2E-INFRA-001.json",
+    "e2e_preflight_sha256": "13d0a01cf2a19be5499ed7c79b25341245f17aa899c46e36840fcfa9d5214032",
+    "validator_status": "PASS",
+    "validator_failures": []
+  },
+  "artifact_count": 65,
+  "artifact_path_count": 65,
+  "phase_leaf_artifact_count": 43,
+  "artifacts": [
+    {
+      "path": ".github/workflows/ci.yml",
+      "sha256": "d6402cdbfec51174b62aee8f907d27f882203eba9bb7a3233343870c647915d9",
+      "verdict": "PASS"
+    },
+    {
+      "path": "AGENTS.md",
+      "sha256": "48a07aed6f8ac753df49740797cbbbf20e821240d1c14e63912b6c0a289b4e64",
+      "verdict": "PASS"
+    },
+    {
+      "path": "_workspace/7_woozoo-safety-qa-inspector_package-report.md",
+      "sha256": "8fccf32ae8cba3a569c26b003756d317131d369d573e71c1eef011cfcc137839",
+      "verdict": "PASS"
+    },
+    {
+      "path": "_workspace/7_woozoo-safety-qa-inspector_report.md",
+      "sha256": "b646cf286735ec73a56aabfad2383dfc5cb342d7d2fbeeee4b9b159da69d5eb0",
+      "verdict": "PASS"
+    },
+    {
+      "path": "_workspace/internal-reviews/phase-7_acceptance-package_review.md",
+      "sha256": "d3f9d1e552eda9d98e127cec5ad251fdb864497ffedf64d43dff9ebd8c2e5e42",
+      "verdict": "NO_ACTIONABLE_PACKAGING_FINDINGS"
+    },
+    {
+      "path": "_workspace/internal-reviews/phase-7_codex-cross-review_c0baf4c_report.md",
+      "sha256": "3201b02ec055d49a5a8b3684864ea1fccfbab617fabc12a089f2209cd92bbc43",
+      "verdict": "NO_CONFIRMED_FINDINGS"
+    },
+    {
+      "path": "_workspace/internal-reviews/phase-7_woozoo-codex-cross-reviewer_report.md",
+      "sha256": "219db33c4007002e25cb697cd85d97a2e28c942a89a7fcbf2d3ebed0cf7e45e2",
+      "verdict": "NO_CONFIRMED_FINDINGS"
+    },
+    {
+      "path": "_workspace/reviews/p7_mvp_agy.md",
+      "sha256": "6f9b232ca1f3b43aa72e2ba63698c09b0796b612d5a17cf05efee31e6c79b713",
+      "verdict": "NO_USABLE_OUTPUT"
+    },
+    {
+      "path": "_workspace/reviews/p7_mvp_agy_retry.md",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "verdict": "NO_USABLE_OUTPUT"
+    },
+    {
+      "path": "_workspace/reviews/p7_mvp_prompt_external.md",
+      "sha256": "501faf5c7a36942ecba23ba22d44fda5535a50624734f1083dd8e358c3a8b916",
+      "verdict": "REVIEW_INPUT_ONLY"
+    },
+    {
+      "path": "_workspace/reviews/p7_mvp_review_status.json",
+      "sha256": "d646451b28a70c53e3ec16178e9e4e42401b6db61d6244a8b98368e6ec4afa4b",
+      "verdict": "external-review-unavailable"
+    },
+    {
+      "path": "_workspace/validate-phase7-evidence.mjs",
+      "sha256": "1fd12462856cf0aeb264e6fd5e8569ad5ce3f6aacf2edfc0bdd8c2da7d07a5e8",
+      "verdict": "VALIDATOR_SOURCE"
+    },
+    {
+      "path": "artifacts/acceptance/P7-43.json",
+      "sha256": "809eda7c8a8ae84cb7ef87c900a1ec402edf3878228a27442056ddb1217b6abf",
+      "verdict": "PASS"
+    },
+    {
+      "path": "artifacts/contracts/AI-001.json",
+      "sha256": "73c5c0940182043c8ad3c27d9107095540b3401489fb34bb417e89d7b2117f1e",
+      "verdict": "PASS",
+      "test_count": 1
+    },
+    {
+      "path": "artifacts/contracts/CONTRACT-001.json",
+      "sha256": "4d9128238114fd344d0bfb2e9bf38d276e82dd18efcca8a7d9585af3464808cb",
+      "verdict": "PASS",
+      "test_count": 26
+    },
+    {
+      "path": "artifacts/e2e/E2E-001/result.json",
+      "sha256": "2874c5f9a2d4f52b0abd1107cf1713cd12411ceff4f15a8c60eb4a1625b30780",
+      "verdict": "PASS",
+      "test_count": 42
+    },
+    {
+      "path": "artifacts/e2e/E2E-002/result.json",
+      "sha256": "469ec50a1cde649cbcb6775dc360c6fbbd1c8a5a11f4610db85db3cc7e4e372f",
+      "verdict": "PASS",
+      "test_count": 27
+    },
+    {
+      "path": "artifacts/e2e/E2E-003/result.json",
+      "sha256": "b4385a84364402ffe3646c64a852c9def63c600bd44a9d3b4f78dcde252db1e2",
+      "verdict": "PASS",
+      "test_count": 30
+    },
+    {
+      "path": "artifacts/e2e/E2E-004/result.json",
+      "sha256": "b9dfa70a1b2cf77ae59a67307f06fd8aa6dc92019b5d1303329e287174f61715",
+      "verdict": "PASS",
+      "test_count": 32
+    },
+    {
+      "path": "artifacts/e2e/E2E-005/result.json",
+      "sha256": "a03f6422c716fb1fa28925c4497ae088258696fa77b4196d87697e9f207bfb5a",
+      "verdict": "PASS",
+      "test_count": 27
+    },
+    {
+      "path": "artifacts/e2e/E2E-INFRA-001.json",
+      "sha256": "13d0a01cf2a19be5499ed7c79b25341245f17aa899c46e36840fcfa9d5214032",
+      "verdict": "PASS"
+    },
+    {
+      "path": "artifacts/failure/ATOM-001.json",
+      "sha256": "3308247f6673980b20c05048ced5e034b41fd91045c9934cb04fcc8150a0aeab",
+      "verdict": "PASS",
+      "test_count": 7
+    },
+    {
+      "path": "artifacts/failure/ATOM-002.json",
+      "sha256": "061d95554e32eb770654f44299d595495bd3bbf7b568a37bcc3810f4fb80ff94",
+      "verdict": "PASS",
+      "test_count": 4
+    },
+    {
+      "path": "artifacts/failure/AUTH-002.json",
+      "sha256": "92031b376dc18e3faa03aeabb330cb4c08a06a0d77a529c4bdcda3f3b909dfff",
+      "verdict": "PASS",
+      "test_count": 28
+    },
+    {
+      "path": "artifacts/failure/DATA-003.json",
+      "sha256": "37daf227d4a546c105d8974acb72d193c4fc2ec573e1ededc640f0c56dcf0b3c",
+      "verdict": "PASS",
+      "test_count": 3
+    },
+    {
+      "path": "artifacts/failure/DATA-004.json",
+      "sha256": "44dcf8570624b1533b12cf0eca200302badb4c4856cbe153a5c8b4e2128ab990",
+      "verdict": "PASS",
+      "test_count": 2
+    },
+    {
+      "path": "artifacts/failure/DATA-005.json",
+      "sha256": "741844045ed4b6ea42cbec17e1509a59b6439f5f6227e4d842c61843b5f1a47f",
+      "verdict": "PASS",
+      "test_count": 5
+    },
+    {
+      "path": "artifacts/failure/DATA-006.json",
+      "sha256": "31f3d96b0a5202669dbcb42e843b6d0bb8b327d25bb0363627406e771852dfb7",
+      "verdict": "PASS",
+      "test_count": 10
+    },
+    {
+      "path": "artifacts/failure/KILL-001.json",
+      "sha256": "fff2d39018d302c71fbd9d39ca455e2d913da48dc5bde962e55385da8ca176bc",
+      "verdict": "PASS",
+      "test_count": 9
+    },
+    {
+      "path": "artifacts/integration/FIN-004.json",
+      "sha256": "e79cbffeb74a8436c275b0a6d0808f88e7d9d8c0fa3c8adb6aada8de5032900a",
+      "verdict": "PASS",
+      "test_count": 12
+    },
+    {
+      "path": "artifacts/integration/PLAT-001.json",
+      "sha256": "36d721f7a8e81bc8ded42054875d23eb3b12e2b22c3492423e9f088bf26570d2",
+      "verdict": "PASS",
+      "test_count": 147
+    },
+    {
+      "path": "artifacts/integration/PLAT-002.json",
+      "sha256": "b6102cbf4a57048fc292296afc57489bfda0f821f27e93e4a29ed16f3c3c688a",
+      "verdict": "PASS",
+      "test_count": 147
+    },
+    {
+      "path": "artifacts/integration/PLAT-003.json",
+      "sha256": "61edbe49b5f0c133761e9da1e418550cf4f1498e0174c01c547cb1815595b671",
+      "verdict": "PASS",
+      "test_count": 147
+    },
+    {
+      "path": "artifacts/property/DATA-007.json",
+      "sha256": "e0f94b5142e043fad432db817d17a6145f17cdf69e1f3e352f1f5df27de0cc17",
+      "verdict": "PASS",
+      "test_count": 3
+    },
+    {
+      "path": "artifacts/property/FIN-001.json",
+      "sha256": "112936cac64f9d275ab83eac92fc1eacc33f2ce201b1ec5195b5295bb3a4e051",
+      "verdict": "PASS",
+      "test_count": 1
+    },
+    {
+      "path": "artifacts/property/FIN-002.json",
+      "sha256": "3b87ebba361dd2eef0130bc4978c697db33ea5bf5036fd987ab81988c535971c",
+      "verdict": "PASS",
+      "test_count": 1
+    },
+    {
+      "path": "artifacts/property/ORD-001.json",
+      "sha256": "ee64f74597564948e6a0444b1f35c08ec82ea9655759a232af5b756844907c0c",
+      "verdict": "PASS",
+      "test_count": 1
+    },
+    {
+      "path": "artifacts/replay/DATA-001.json",
+      "sha256": "07c39808da0585e815e488afd86d304bdf3b6fbee459afe4ea26009bb3c1a4c0",
+      "verdict": "PASS",
+      "test_count": 4
+    },
+    {
+      "path": "artifacts/replay/DATA-002.json",
+      "sha256": "3e98c60579c27f93bfc5b991b35b5a02278f4eaf4656bd2d4c603a8fe62d2aba",
+      "verdict": "PASS",
+      "test_count": 4
+    },
+    {
+      "path": "artifacts/replay/ORD-002.json",
+      "sha256": "1975af7849a5c1330c09855560d2cd83abcbac4156a92042e55c89e608391a92",
+      "verdict": "PASS",
+      "test_count": 11
+    },
+    {
+      "path": "artifacts/replay/PTI-001.json",
+      "sha256": "758a4fcad0766758af3ed9ce420996a5ad910176364291f579829e9e1da1dafd",
+      "verdict": "PASS",
+      "test_count": 4
+    },
+    {
+      "path": "artifacts/replay/PTI-002.json",
+      "sha256": "8513bc79e42aac70a1a42d03e037e3cae103c7fffcdab5525706156a0ff4c9e5",
+      "verdict": "PASS",
+      "test_count": 2
+    },
+    {
+      "path": "artifacts/replay/PTI-004.json",
+      "sha256": "fbd29018bd6cd452fc91a8661ee2c2b5ef71c57fc64e75ddbe9a6d8e903f4e9d",
+      "verdict": "PASS",
+      "test_count": 1
+    },
+    {
+      "path": "artifacts/replay/RISK-001.json",
+      "sha256": "bf941f1430b80a3ad1bf0111660f3f1dd428fb3c4cc92079978706e46b5cb21c",
+      "verdict": "PASS",
+      "test_count": 4
+    },
+    {
+      "path": "artifacts/safety/AI-002.json",
+      "sha256": "b08080e9d6d9a7021d27d1a43429fc1e9a2e7107cceec5dbb13c8e62fd254b04",
+      "verdict": "PASS",
+      "test_count": 1
+    },
+    {
+      "path": "artifacts/safety/KILL-002.json",
+      "sha256": "4552d081b31d79da77127288710847d1d903afcc24192ffdab0ee84db7e79dfb",
+      "verdict": "PASS",
+      "test_count": 7
+    },
+    {
+      "path": "artifacts/safety/PTI-003.json",
+      "sha256": "14283792b9b6f86e0e2c41f541a055c93765e6c95361d9546fded4f502000d75",
+      "verdict": "PASS",
+      "test_count": 15
+    },
+    {
+      "path": "artifacts/safety/SAFE-001.json",
+      "sha256": "7b2c923ea5b2b18c2b6a097b6f877dff1802d854313425684ff81326f747574f",
+      "verdict": "PASS",
+      "test_count": 37
+    },
+    {
+      "path": "artifacts/safety/SAFE-002.json",
+      "sha256": "f5d7dd107be8bff5045f89deed97c42f7a5d9dfe6f44d1f7616ed3b11dd19afc",
+      "verdict": "PASS",
+      "test_count": 37
+    },
+    {
+      "path": "artifacts/safety/SAFE-003.json",
+      "sha256": "e6cb79c510eb5cf93ce23a291cb21b52b21f9fe7c488c5a2b0e59c4fe9733a1d",
+      "verdict": "PASS",
+      "test_count": 37
+    },
+    {
+      "path": "artifacts/safety/SAFE-004.json",
+      "sha256": "9b4b6dffda8e3f50a3933eea813bd3623245fc62513e267724b98e6be66459dc",
+      "verdict": "PASS",
+      "test_count": 37
+    },
+    {
+      "path": "artifacts/safety/SEC-001.json",
+      "sha256": "cf729d596d89291e81e675aa3c9aa71b3c92997fd2218dd64e7aa21d69ead4f0",
+      "verdict": "PASS",
+      "test_count": 1
+    },
+    {
+      "path": "artifacts/safety/SEC-002.json",
+      "sha256": "2b6a5288870040e271b2344a7390cc00c4eb964409c9a75da40649b37900bfa8",
+      "verdict": "PASS",
+      "test_count": 2
+    },
+    {
+      "path": "artifacts/unit/AUTH-001.json",
+      "sha256": "3d54cdf1dd09f712db0a84b909db00e346c8bfad66b484985ed77e6831cc1619",
+      "verdict": "PASS",
+      "test_count": 22
+    },
+    {
+      "path": "artifacts/unit/CORE-001.json",
+      "sha256": "ca806b0b57f98ea03438b077a03fcf0109a0904caa8f7ae418fc154bcaae4873",
+      "verdict": "PASS",
+      "test_count": 199
+    },
+    {
+      "path": "artifacts/unit/FIN-003.json",
+      "sha256": "2fcf359230fc507f6232b4458565f4411706a1c2adeaddcc1a9e3d459b5e49e7",
+      "verdict": "PASS",
+      "test_count": 1
+    },
+    {
+      "path": "artifacts/unit/RISK-002.json",
+      "sha256": "12b915c275952212e4a6a9d89e35bc7ed57be95b4e898180f8e737abacc6ae88",
+      "verdict": "PASS",
+      "test_count": 71
+    },
+    {
+      "path": "docs/woozoo-trading-desk/phase-7/external-review-status.json",
+      "sha256": "e7261900b0e8367883b704ba65c62a9727b3c26cedcf319c2821d582712816f8",
+      "verdict": "external-review-unavailable"
+    },
+    {
+      "path": "docs/woozoo-trading-desk/phase-7/final-review-record.md",
+      "sha256": "eca418a4f1716d07d50962cad7876f5dbdab693ff2289af1ae40ba155464c85f",
+      "verdict": "PASS"
+    },
+    {
+      "path": "docs/woozoo-trading-desk/phase-7/implementation-contract.md",
+      "sha256": "ade54071efcaf2fef7731994df175f17009e6ffffcbc90eaac3e2569f5634c51",
+      "verdict": "PASS"
+    },
+    {
+      "path": "docs/woozoo-trading-desk/phase-7/p7-agent-regression-manifest.json",
+      "sha256": "333e8d522876e8055e8d33ae7cd5ec2b9e6933b73d7922725d88ee891b9877cc",
+      "verdict": "PASS"
+    },
+    {
+      "path": "docs/woozoo-trading-desk/phase-7/p7-git-gate-evidence.json",
+      "sha256": "b4a1e387c99a98529b5e75c483bd08a3d53703dbfe7837ac23b20f3053088405",
+      "verdict": "PASS"
+    },
+    {
+      "path": "docs/woozoo-trading-desk/phase-7/p7-risk-regression-manifest.json",
+      "sha256": "30919ef76721906d0799bed56ffe7b0cd1eed1391f20626fc57b3b072983f23f",
+      "verdict": "PASS"
+    },
+    {
+      "path": "docs/woozoo-trading-desk/phase-7/p7-scenario-manifest.json",
+      "sha256": "bf4079bcb6a003e7d32176f8bf153414ba927ab42ba927776281835f1b47e668",
+      "verdict": "PASS"
+    },
+    {
+      "path": "docs/woozoo-trading-desk/working_history/phase-7_trading-room_20260721.md",
+      "sha256": "676d0af5b1e7e16daf7842fa9aee2e4bad041737e2c65cc6c6f10d7e2f5f29e7",
+      "verdict": "PASS"
+    }
+  ]
+}

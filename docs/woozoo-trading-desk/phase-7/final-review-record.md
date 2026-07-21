@@ -4,14 +4,22 @@
 
 동결 제품 후보 `c0baf4cedd56818da0cc9d5718950b15eaf48b2b`는 정본 CI, 독립 evidence validator, 역할 분리 Safety QA와 동일 엔진 분리 컨텍스트 Codex 교차검토를 통과했다. 미해결 제품·안전·금융 지적은 0건이다.
 
-외부 agy/Gemini 검토는 허용된 시도와 1회 재시도에서 usable output을 만들지 못해 `external-review-unavailable`로 기록했다. 이는 외부 PASS가 아니다. Git 지원 증거 커밋의 정확한 GitHub push/PR checks는 아직 확인 전이므로 전체 인수 패키지는 이 기록 시점에 `PENDING_EXACT_SUPPORT_CHECKS`다.
+외부 agy/Gemini 검토는 허용된 시도와 1회 재시도에서 usable output을 만들지 못해 `external-review-unavailable`로 기록했다. 이는 외부 PASS가 아니다. 정확한 지원 head `dcef304d5043a51f54c7f20435206c9fb1fd171a`의 GitHub push·pull_request 품질 검사 두 건은 모두 성공했다.
 
-Phase 7은 계속 `active`·`not_requested`다. 정확한 최종 인수 매니페스트 SHA-256을 사용자가 명시적으로 승인하기 전에는 Phase 7을 accepted로 바꾸거나 Phase 8을 시작하지 않는다.
+Phase 7은 계속 `active`·`not_requested`다. 이 문서와 최종 Git projection을 포함하는 정확한 인수 매니페스트 SHA-256을 사용자가 명시적으로 승인하기 전에는 Phase 7을 accepted로 바꾸거나 Phase 8을 시작하지 않는다.
+
+## Revision 분리
+
+- frozen product revision: `c0baf4cedd56818da0cc9d5718950b15eaf48b2b`
+- frozen product tree: `6f66d2f761a689ab4ed98924b1485f78f7c25478`
+- review evidence revision: `4ca4b487b6892421e1fbcf9549d234f38ff221f1`
+- review evidence tree: `b39256c63375dbe525af5dff068081be01b994eb`
+- acceptance support revision: `dcef304d5043a51f54c7f20435206c9fb1fd171a`
+- acceptance support tree: `1655b9b908e19540fa5e0aae03daacf1811b31d7`
+- 이 문서와 Git PASS 문서는 `post_check_digest_bound_projection`이며 support revision에 포함됐다고 주장하지 않는다. 최종 매니페스트의 path+SHA-256이 정확한 바이트를 결속한다.
 
 ## 동결 제품 증거
 
-- commit: `c0baf4cedd56818da0cc9d5718950b15eaf48b2b`
-- tree: `6f66d2f761a689ab4ed98924b1485f78f7c25478`
 - base: `main@03369ceebc84da904bf6cab6818154f96670dc43`
 - worktree digest: `fb55680be162ccb23ef0632e97c8880d0cb449b2bad59f1f6dc582d56d969bd4`
 - frozen files: 405
@@ -35,7 +43,15 @@ Phase 7은 계속 `active`·`not_requested`다. 정확한 최종 인수 매니�
 | 역할 분리 Safety QA | `PASS` | 정확한 후보에서 미해결 안전·금융 지적 0건. 외부 리뷰나 사용자 승인이 아님. |
 | Codex 내부 교차검토 | `NO_CONFIRMED_FINDINGS` | 동일 엔진·분리 컨텍스트 검토. 외부 독립성이 아니며 Safety QA를 대체하지 않음. |
 | 외부 agy/Gemini | `external-review-unavailable` | 시도와 재시도를 소진했으나 usable output 없음. 외부 PASS가 아님. |
-| Git gate | `PENDING_EXACT_SUPPORT_CHECKS` | 검토·문서 지원 커밋을 push한 뒤 정확한 head의 두 GitHub checks를 확인해야 함. |
+| Git gate | `PASS` | support head `dcef304`의 push·PR exact-head checks 두 건 성공. |
+
+## GitHub exact-head 검사
+
+- push run `29838565082`, job `88661197157`: `success`, 2026-07-21T14:39:15Z 완료
+- pull_request run `29838570859`, job `88661216341`: `success`, 2026-07-21T14:41:08Z 완료
+- Draft PR #8: open, draft, mergeable, base `main@03369ce`, head `dcef304`
+- 이전 support head `4ca4b48`의 두 실행은 기존 20분 job timeout으로 Playwright 19 PASS 뒤 build·validator 전에 취소됐다. PASS로 계산하지 않았다.
+- `dcef304`는 timeout을 20분에서 45분으로 늘린 CI 지원 변경 한 줄뿐이며 명령·권한·dependency·제품 코드는 바꾸지 않았다.
 
 ## 닫힌 주요 결함
 
