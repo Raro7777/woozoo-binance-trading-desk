@@ -576,9 +576,6 @@ class PostgresPaperStore:
                 (account_id,),
             ).fetchone()
             current_ledger_hash = self.semantic_digest(account_id, connection=connection)
-            database_now = connection.execute("SELECT clock_timestamp()").fetchone()
-            assert database_now is not None
-            current_time = database_now[0]
 
             data_block_reason: str | None = None
             symbol = preview.get("symbol")
@@ -596,13 +593,6 @@ class PostgresPaperStore:
                 ).fetchone()
                 if evidence is None or evidence[4] != "healthy":
                     data_block_reason = "DATA_INVALID"
-                elif (
-                    evidence[2] > current_time
-                    or evidence[3] > current_time
-                    or current_time - evidence[2] > timedelta(minutes=5)
-                    or current_time - evidence[3] > timedelta(minutes=5)
-                ):
-                    data_block_reason = "DATA_STALE"
                 elif (
                     evidence[2] != expected_data_as_of
                     or evidence[3] != expected_knowledge_cutoff
@@ -623,6 +613,8 @@ class PostgresPaperStore:
                     data_block_reason = "HASH_MISMATCH"
 
             books: dict[str, tuple[object, ...]] = {}
+            book_authority_current = False
+            book_payload_reason: str | None = None
             if data_block_reason is None:
                 for row in connection.execute(
                     "SELECT DISTINCT ON (symbol) symbol,id,payload,event_time,received_at,"
@@ -645,30 +637,22 @@ class PostgresPaperStore:
                     data_block_reason = "DATA_INVALID"
                 elif any(row[5] != "healthy" for row in books.values()):
                     data_block_reason = "DATA_INVALID"
-                elif any(
-                    row[3] > current_time
-                    or row[4] > current_time
-                    or current_time - row[3] > timedelta(seconds=5)
-                    or current_time - row[4] > timedelta(seconds=5)
-                    for row in books.values()
-                ):
-                    data_block_reason = "DATA_STALE"
-                elif book_authority != ((True,), (True,)):
-                    data_block_reason = "DATA_INVALID"
                 else:
+                    book_authority_current = book_authority == ((True,), (True,))
                     parsed_books: dict[str, tuple[Decimal, Decimal]] = {}
-                    for current_symbol, current_book in books.items():
-                        payload = current_book[2]
-                        if not isinstance(payload, dict):
-                            data_block_reason = "HASH_MISMATCH"
-                            break
-                        current_bid = decimal_input(str(payload.get("bid_price")))
-                        current_ask = decimal_input(str(payload.get("ask_price")))
-                        if current_bid <= 0 or current_ask <= 0 or current_bid > current_ask:
-                            data_block_reason = "DATA_INVALID"
-                            break
-                        parsed_books[current_symbol] = (current_bid, current_ask)
-                    if data_block_reason is None:
+                    if book_authority_current:
+                        for current_symbol, current_book in books.items():
+                            payload = current_book[2]
+                            if not isinstance(payload, dict):
+                                book_payload_reason = "HASH_MISMATCH"
+                                break
+                            current_bid = decimal_input(str(payload.get("bid_price")))
+                            current_ask = decimal_input(str(payload.get("ask_price")))
+                            if current_bid <= 0 or current_ask <= 0 or current_bid > current_ask:
+                                book_payload_reason = "DATA_INVALID"
+                                break
+                            parsed_books[current_symbol] = (current_bid, current_ask)
+                    if book_authority_current and book_payload_reason is None:
                         assert isinstance(expected_books, dict)
                         for position_symbol, (current_bid, current_ask) in parsed_books.items():
                             expected_book = expected_books.get(position_symbol)
@@ -677,14 +661,43 @@ class PostgresPaperStore:
                                 or current_bid != decimal_input(str(expected_book.get("best_bid")))
                                 or current_ask != decimal_input(str(expected_book.get("best_ask")))
                             ):
-                                data_block_reason = "HASH_MISMATCH"
+                                book_payload_reason = "HASH_MISMATCH"
                                 break
-                    if data_block_reason is None:
+                    if book_authority_current and book_payload_reason is None:
                         target_bid, target_ask = parsed_books[str(symbol)]
                         if target_bid != decimal_input(
                             str(preview.get("best_bid"))
                         ) or target_ask != decimal_input(str(preview.get("best_ask"))):
-                            data_block_reason = "HASH_MISMATCH"
+                            book_payload_reason = "HASH_MISMATCH"
+
+            # The raw/current-market verifier above may wait on watermark,
+            # market-status, or collector authority locks.  Only a wall-clock
+            # sample taken after those locks may control freshness, expiry, and
+            # every immutable effect timestamp in this attempt.
+            database_now = connection.execute("SELECT clock_timestamp()").fetchone()
+            assert database_now is not None
+            current_time = database_now[0]
+            if data_block_reason is None:
+                assert evidence is not None
+                if (
+                    evidence[2] > current_time
+                    or evidence[3] > current_time
+                    or current_time - evidence[2] > timedelta(minutes=5)
+                    or current_time - evidence[3] > timedelta(minutes=5)
+                ):
+                    data_block_reason = "DATA_STALE"
+                elif any(
+                    row[3] > current_time
+                    or row[4] > current_time
+                    or current_time - row[3] > timedelta(seconds=5)
+                    or current_time - row[4] > timedelta(seconds=5)
+                    for row in books.values()
+                ):
+                    data_block_reason = "DATA_STALE"
+                elif not book_authority_current:
+                    data_block_reason = "DATA_INVALID"
+                elif book_payload_reason is not None:
+                    data_block_reason = book_payload_reason
 
             block_reason: str | None = None
             if not risk_authority_current:

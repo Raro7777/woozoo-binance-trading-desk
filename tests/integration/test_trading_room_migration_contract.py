@@ -173,6 +173,9 @@ def test_approval_sql_authority_requires_allowed_risk_and_rechecks_worker_atomic
     risk_evaluation = source.split("CREATE FUNCTION load_authoritative_risk_context_v1", 1)[
         1
     ].split("CREATE FUNCTION recover_kill_switch_v1", 1)[0]
+    recovery_command = source.split("CREATE FUNCTION recover_kill_switch_v1", 1)[1].split(
+        "CREATE FUNCTION assert_phase7_risk_outbox_consistency", 1
+    )[0]
     first_attempt = source.split("CREATE FUNCTION paper_lock_execution_authorization_v1", 1)[
         1
     ].split("CREATE FUNCTION paper_validate_kill_activation_v1", 1)[0]
@@ -231,21 +234,53 @@ def test_approval_sql_authority_requires_allowed_risk_and_rechecks_worker_atomic
     assert "OR decision_row.verdict<>'ALLOWED'" in approval_command
     assert "p_decision='APPROVED' AND decision_row.verdict<>'ALLOWED'" not in approval_command
 
-    worker_guard = approval_command.split("THEN RAISE EXCEPTION 'RECONCILIATION_DRIFT'", 1)[
-        1
-    ].split("SELECT COALESCE(max(version),0) INTO portfolio_version", 1)[0]
+    worker_guard = approval_command
     assert "FROM paper_authorization_worker_state" in worker_guard
     assert "worker_name='phase7-paper-authorization' FOR SHARE" in worker_guard
     assert "worker_row.status<>'RUNNING'" in worker_guard
-    assert "worker_row.heartbeat_at>clock_timestamp()" in worker_guard
-    assert "worker_row.heartbeat_at<clock_timestamp()-interval '2 minutes'" in worker_guard
+    assert "worker_row.heartbeat_at>authority_at" in worker_guard
+    assert "worker_row.heartbeat_at<authority_at-interval '2 minutes'" in worker_guard
     assert "RAISE EXCEPTION 'PAPER_WORKER_NOT_READY'" in worker_guard
     assert approval_command.index("FROM paper_authorization_worker_state") < approval_command.index(
         "INSERT INTO paper_approvals"
     )
-    assert approval_command.index("RECONCILIATION_DRIFT") < approval_command.index(
-        "FROM paper_authorization_worker_state"
+    assert approval_command.index(
+        "worker_name='phase7-paper-authorization' FOR SHARE"
+    ) < approval_command.index("authority_at:=clock_timestamp()")
+    assert approval_command.index("authority_at:=clock_timestamp()") < approval_command.index(
+        "authority_at>=decision_row.decision_as_of+interval '5 minutes'"
     )
+    assert approval_command.index(
+        "authority_at>=decision_row.decision_as_of+interval '5 minutes'"
+    ) < approval_command.index("KILL_SWITCH_DRIFT")
+    assert approval_command.index("KILL_SWITCH_DRIFT") < approval_command.index(
+        "RECONCILIATION_DRIFT"
+    )
+    assert approval_command.index("RECONCILIATION_DRIFT") < approval_command.index(
+        "PAPER_WORKER_NOT_READY"
+    )
+    assert "authority_at>=decision_row.decision_as_of+interval '5 minutes'" in approval_command
+    assert "expires_at:=authority_at+interval '5 minutes'" in approval_command
+    assert (
+        "VALUES (p_idempotency_key,p_request_hash,approval_id,response,authority_at)"
+        in approval_command
+    )
+
+    assert "CURRENT_TIMESTAMP" not in recovery_command
+    assert "worker_name='phase7-paper-authorization' FOR SHARE" in recovery_command
+    assert recovery_command.index(
+        "paper_recorded_book_market_is_current_v1(latest.id)"
+    ) < recovery_command.index("worker_name='phase7-paper-authorization' FOR SHARE")
+    assert recovery_command.index(
+        "worker_name='phase7-paper-authorization' FOR SHARE"
+    ) < recovery_command.index("authority_at:=clock_timestamp()")
+    assert "worker_row.heartbeat_at>authority_at" in recovery_command
+    assert "worker_row.heartbeat_at<authority_at-interval '2 minutes'" in recovery_command
+    assert (
+        "(book->>'received_at')::timestamptz<authority_at-interval '5 seconds'" in recovery_command
+    )
+    assert "response,authority_at" in recovery_command
+    assert "to_jsonb(authority_at)" in recovery_command
 
 
 def test_phase7_migration_preserves_frozen_namespaces_as_legacy_and_adds_paper() -> None:

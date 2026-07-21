@@ -981,10 +981,12 @@ def upgrade() -> None:
         DECLARE
           prior record; proposal_row record; decision_row record; kill_row record;
           checkpoint_row record; worker_row record;
+          kill_found boolean; checkpoint_found boolean; worker_found boolean:=false;
           portfolio_version bigint; ledger_version bigint;
           approval_unsigned jsonb; approval_payload jsonb; approval_hash varchar;
           approval_id varchar; authorization_payload jsonb; authorization_id varchar;
           authorization_input_digest varchar; expires_at timestamptz;
+          authority_at timestamptz;
           event_data jsonb; event_payload jsonb; event_id varchar; event_payload_hash varchar;
         BEGIN
           IF length(p_idempotency_key) NOT BETWEEN 1 AND 128
@@ -992,6 +994,7 @@ def upgrade() -> None:
              OR p_expected_version<>1
              OR p_decision NOT IN ('APPROVED','REJECTED')
              OR p_approval_nonce=p_authorization_nonce
+             OR p_decided_at IS NULL
           THEN RAISE EXCEPTION 'APPROVAL_COMMAND_INVALID'; END IF;
           PERFORM pg_advisory_xact_lock(hashtextextended(
             'approval:'||p_idempotency_key,0));
@@ -1024,18 +1027,36 @@ def upgrade() -> None:
              OR decision_row.proposal_hash<>proposal_row.proposal_hash
              OR decision_row.risk_input->'proposal'->'payload'<>proposal_row.payload
              OR decision_row.verdict<>'ALLOWED'
-             OR p_decided_at<decision_row.decision_as_of
-             OR p_decided_at>decision_row.decision_as_of+interval '5 minutes'
           THEN RAISE EXCEPTION 'RISK_DECISION_DRIFT'; END IF;
           SELECT * INTO kill_row FROM kill_switch_state
             WHERE scope='paper-global' FOR UPDATE;
-          IF NOT FOUND OR kill_row.version<>decision_row.kill_switch_version
-             OR (p_decision='APPROVED' AND kill_row.active)
-          THEN RAISE EXCEPTION 'KILL_SWITCH_DRIFT'; END IF;
+          kill_found:=FOUND;
           SELECT * INTO checkpoint_row FROM paper_reconciliation_checkpoints
             WHERE account_id='{PAPER_DEFAULT_ACCOUNT_ID}'
             ORDER BY created_at DESC,checkpoint_id DESC LIMIT 1;
-          IF NOT FOUND OR checkpoint_row.status<>'HEALTHY'
+          checkpoint_found:=FOUND;
+          IF p_decision='APPROVED' THEN
+            -- Lock order is Paper account advisory -> Risk Proposal advisory ->
+            -- Proposal row -> Kill row -> worker row.  The latest Risk and
+            -- reconciliation reads occur after the Proposal scope is serialized;
+            -- deterministic rejection precedence is unchanged.
+            SELECT * INTO worker_row FROM paper_authorization_worker_state
+              WHERE worker_name='phase7-paper-authorization' FOR SHARE;
+            worker_found:=FOUND;
+          END IF;
+          -- p_decided_at is request metadata only.  The database-owned time sampled
+          -- after every potentially blocking authority lock is the sole freshness
+          -- and effect-time authority for a newly created receipt.
+          authority_at:=clock_timestamp();
+          IF p_decided_at<decision_row.decision_as_of
+             OR p_decided_at>authority_at
+             OR authority_at<decision_row.decision_as_of
+             OR authority_at>=decision_row.decision_as_of+interval '5 minutes'
+          THEN RAISE EXCEPTION 'RISK_DECISION_DRIFT'; END IF;
+          IF NOT kill_found OR kill_row.version<>decision_row.kill_switch_version
+             OR (p_decision='APPROVED' AND kill_row.active)
+          THEN RAISE EXCEPTION 'KILL_SWITCH_DRIFT'; END IF;
+          IF NOT checkpoint_found OR checkpoint_row.status<>'HEALTHY'
              OR checkpoint_row.mismatch_codes<>'[]'::jsonb
              OR checkpoint_row.authority_sequence<>COALESCE((
                   SELECT max(event.ingestion_sequence)
@@ -1048,23 +1069,16 @@ def upgrade() -> None:
                   'mismatch_codes',checkpoint_row.mismatch_codes)),'UTF8'),'sha256'),'hex')
                  <>decision_row.reconciliation_checkpoint_hash
           THEN RAISE EXCEPTION 'RECONCILIATION_DRIFT'; END IF;
-          IF p_decision='APPROVED' THEN
-            -- Lock order is Paper account advisory -> Risk Proposal advisory ->
-            -- Proposal row -> Kill row -> worker row.  The latest Risk and
-            -- reconciliation reads occur after the Proposal scope is serialized;
-            -- deterministic rejection precedence is unchanged.
-            SELECT * INTO worker_row FROM paper_authorization_worker_state
-              WHERE worker_name='phase7-paper-authorization' FOR SHARE;
-            IF NOT FOUND OR worker_row.status<>'RUNNING'
-               OR worker_row.heartbeat_at>clock_timestamp()
-               OR worker_row.heartbeat_at<clock_timestamp()-interval '2 minutes'
-            THEN RAISE EXCEPTION 'PAPER_WORKER_NOT_READY'; END IF;
-          END IF;
+          IF p_decision='APPROVED' AND (
+               NOT worker_found OR worker_row.status<>'RUNNING'
+               OR worker_row.heartbeat_at>authority_at
+               OR worker_row.heartbeat_at<authority_at-interval '2 minutes')
+          THEN RAISE EXCEPTION 'PAPER_WORKER_NOT_READY'; END IF;
           SELECT COALESCE(max(version),0) INTO portfolio_version
             FROM paper_asset_balances WHERE account_id='{PAPER_DEFAULT_ACCOUNT_ID}';
           SELECT count(*) INTO ledger_version FROM paper_ledger_transactions
             WHERE account_id='{PAPER_DEFAULT_ACCOUNT_ID}';
-          expires_at:=p_decided_at+interval '5 minutes';
+          expires_at:=authority_at+interval '5 minutes';
           approval_unsigned:=jsonb_build_object(
             'approval_id',NULL,'proposal_id',proposal_row.proposal_id,
             'proposal_hash',proposal_row.proposal_hash,
@@ -1080,7 +1094,7 @@ def upgrade() -> None:
             'expected_kill_switch_version',kill_row.version,
             'expected_portfolio_version',portfolio_version,
             'expected_ledger_version',ledger_version,
-            'decided_at',to_jsonb(p_decided_at),'expires_at',to_jsonb(expires_at));
+            'decided_at',to_jsonb(authority_at),'expires_at',to_jsonb(expires_at));
           approval_unsigned:=jsonb_set(approval_unsigned,'{{approval_id}}',
             to_jsonb(encode(digest(convert_to(risk_canonical_jsonb(
               jsonb_build_array('paper-approval',approval_unsigned-'approval_id')),
@@ -1100,7 +1114,7 @@ def upgrade() -> None:
             decision_row.policy_version,decision_row.risk_input->'order_preview',
             decision_row.paper_order_preview_hash,p_actor_id,p_session_digest,p_csrf_digest,
             p_origin_hash,p_decision,p_approval_nonce,kill_row.version,portfolio_version,
-            ledger_version,p_decided_at,expires_at,approval_hash);
+            ledger_version,authority_at,expires_at,approval_hash);
           event_data:=approval_payload;
           event_payload_hash:=encode(digest(convert_to(risk_canonical_jsonb(event_data),
             'UTF8'),'sha256'),'hex');
@@ -1110,13 +1124,13 @@ def upgrade() -> None:
           event_payload:=jsonb_build_object(
             'spec_version','woozoo.event/v1','event_id',event_id,
             'event_type','paper.approval.recorded.v1','event_version',2,
-            'occurred_at',to_jsonb(p_decided_at),'producer','risk-engine',
+            'occurred_at',to_jsonb(authority_at),'producer','risk-engine',
             'activation_phase',7,'aggregate_id',approval_id,'aggregate_version',1,
             'payload_hash',event_payload_hash,'data',event_data);
           INSERT INTO outbox_events(event_id,event_type,payload,payload_hash,occurred_at,
             aggregate_type,aggregate_id,aggregate_version)
           VALUES (event_id,'paper.approval.recorded.v1',event_payload,event_payload_hash,
-            p_decided_at,'paper_approval',approval_id,1);
+            authority_at,'paper_approval',approval_id,1);
           INSERT INTO risk_outbox_links(event_id,aggregate_kind,aggregate_id)
           VALUES (event_id,'paper-approval',approval_id);
           IF p_decision='APPROVED' THEN
@@ -1150,7 +1164,7 @@ def upgrade() -> None:
               'reconciliation_checkpoint_hash',decision_row.reconciliation_checkpoint_hash,
               'ledger_snapshot_hash',checkpoint_row.input_digest,
               'paper_account_id','{PAPER_DEFAULT_ACCOUNT_ID}',
-              'issued_at',to_jsonb(p_decided_at),'expires_at',to_jsonb(expires_at));
+              'issued_at',to_jsonb(authority_at),'expires_at',to_jsonb(expires_at));
             INSERT INTO paper_execution_authorizations(
               authorization_id,namespace,approval_id,approval_hash,approval_nonce_hash,
               authorization_nonce,proposal_id,proposal_hash,risk_decision_id,
@@ -1168,7 +1182,7 @@ def upgrade() -> None:
               (decision_row.risk_input->'data'->>'as_of')::timestamptz,
               (decision_row.risk_input->'data'->>'knowledge_cutoff')::timestamptz,
               kill_row.version,decision_row.reconciliation_checkpoint_hash,
-              checkpoint_row.input_digest,'{PAPER_DEFAULT_ACCOUNT_ID}',p_decided_at,expires_at);
+              checkpoint_row.input_digest,'{PAPER_DEFAULT_ACCOUNT_ID}',authority_at,expires_at);
             event_data:=authorization_payload;
             event_payload_hash:=encode(digest(convert_to(risk_canonical_jsonb(event_data),
               'UTF8'),'sha256'),'hex');
@@ -1178,13 +1192,13 @@ def upgrade() -> None:
             event_payload:=jsonb_build_object(
               'spec_version','woozoo.event/v1','event_id',event_id,
               'event_type','paper.authorization.issued.v1','event_version',2,
-              'occurred_at',to_jsonb(p_decided_at),'producer','risk-engine',
+              'occurred_at',to_jsonb(authority_at),'producer','risk-engine',
               'activation_phase',7,'aggregate_id',authorization_id,'aggregate_version',1,
               'payload_hash',event_payload_hash,'data',event_data);
             INSERT INTO outbox_events(event_id,event_type,payload,payload_hash,occurred_at,
               aggregate_type,aggregate_id,aggregate_version)
             VALUES (event_id,'paper.authorization.issued.v1',event_payload,event_payload_hash,
-              p_decided_at,'paper_authorization',authorization_id,1);
+              authority_at,'paper_authorization',authorization_id,1);
             INSERT INTO risk_outbox_links(event_id,aggregate_kind,aggregate_id)
             VALUES (event_id,'paper-authorization',authorization_id);
           END IF;
@@ -1194,7 +1208,7 @@ def upgrade() -> None:
           END IF;
           INSERT INTO risk_approval_command_receipts(
             idempotency_key,request_hash,approval_id,response,created_at)
-          VALUES (p_idempotency_key,p_request_hash,approval_id,response,p_decided_at);
+          VALUES (p_idempotency_key,p_request_hash,approval_id,response,authority_at);
           RETURN QUERY SELECT true,response;
         END;
         $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public
@@ -2376,6 +2390,8 @@ def upgrade() -> None:
         RETURNS TABLE(created boolean,response jsonb) AS $$
         DECLARE
           prior record; state_row record; completion_row record; checkpoint_row record;
+          worker_row record; worker_found boolean; checkpoint_found boolean;
+          reconciliation_valid boolean:=false; authority_at timestamptz;
           data_material jsonb;
           data_state_hash varchar; reconciliation_hash varchar; context_digest varchar;
           recovery_event_id varchar; new_version bigint; event_data jsonb;
@@ -2385,6 +2401,7 @@ def upgrade() -> None:
              OR p_request_hash !~ '^[a-f0-9]{{64}}$'
              OR length(p_incident_reference) NOT BETWEEN 1 AND 128
              OR length(p_reason) NOT BETWEEN 1 AND 512
+             OR p_observed_at IS NULL
           THEN RAISE EXCEPTION 'KILL_RECOVERY_COMMAND_INVALID'; END IF;
           PERFORM pg_advisory_xact_lock(hashtextextended(
             'kill-recovery:'||p_idempotency_key,0));
@@ -2410,13 +2427,6 @@ def upgrade() -> None:
           IF NOT FOUND OR EXISTS (
                SELECT 1 FROM paper_orders WHERE status IN ('OPEN','PARTIALLY_FILLED'))
           THEN RAISE EXCEPTION 'KILL_RECOVERY_CANCELLATION_INCOMPLETE'; END IF;
-          IF NOT EXISTS (
-            SELECT 1 FROM paper_authorization_worker_state worker
-            WHERE worker.worker_name='phase7-paper-authorization'
-              AND worker.status='RUNNING'
-              AND worker.heartbeat_at<=CURRENT_TIMESTAMP
-              AND worker.heartbeat_at>=CURRENT_TIMESTAMP-interval '2 minutes'
-          ) THEN RAISE EXCEPTION 'KILL_RECOVERY_WORKER_NOT_READY'; END IF;
           SELECT jsonb_agg(jsonb_build_object(
               'symbol',latest.symbol,'event_id',latest.id,
               'best_bid',latest.payload->>'bid_price',
@@ -2430,39 +2440,61 @@ def upgrade() -> None:
             ORDER BY symbol,received_at DESC,sequence DESC,id DESC
           ) latest
           WHERE latest.quality_status='healthy'
-            AND latest.received_at<=CURRENT_TIMESTAMP
-            AND latest.received_at>=CURRENT_TIMESTAMP-interval '5 seconds'
             AND latest.payload ?& array['bid_price','ask_price']
             AND paper_recorded_book_market_is_current_v1(latest.id);
-          IF data_material IS NULL OR jsonb_array_length(data_material)<>2 THEN
-            RAISE EXCEPTION 'KILL_RECOVERY_DATA_UNHEALTHY';
-          END IF;
-          data_state_hash:=encode(digest(convert_to(risk_canonical_jsonb(data_material),
-            'UTF8'),'sha256'),'hex');
           SELECT * INTO checkpoint_row FROM paper_reconciliation_checkpoints
             WHERE account_id='{PAPER_DEFAULT_ACCOUNT_ID}'
             ORDER BY created_at DESC,checkpoint_id DESC LIMIT 1;
-          IF NOT FOUND OR checkpoint_row.status<>'HEALTHY'
-             OR checkpoint_row.mismatch_codes<>'[]'::jsonb
-             OR checkpoint_row.authority_sequence<>COALESCE((
-                  SELECT max(event.ingestion_sequence)
-                  FROM paper_outbox_links link
-                  JOIN outbox_events event USING(event_id)
-                  WHERE link.account_id='{PAPER_DEFAULT_ACCOUNT_ID}'),0)
-             OR checkpoint_row.created_at<=completion_row.completed_at
-             OR checkpoint_row.input_digest<>completion_row.state_digest
+          checkpoint_found:=FOUND;
+          IF checkpoint_found THEN
+            SELECT (
+              checkpoint_row.status='HEALTHY'
+              AND checkpoint_row.mismatch_codes='[]'::jsonb
+              AND checkpoint_row.authority_sequence=COALESCE((
+                    SELECT max(event.ingestion_sequence)
+                    FROM paper_outbox_links link
+                    JOIN outbox_events event USING(event_id)
+                    WHERE link.account_id='{PAPER_DEFAULT_ACCOUNT_ID}'),0)
+              AND checkpoint_row.created_at>completion_row.completed_at
+              AND checkpoint_row.input_digest=completion_row.state_digest
+              AND NOT EXISTS (
+                SELECT 1 FROM paper_ledger_transactions tx
+                JOIN paper_ledger_entries entry USING(transaction_id)
+                WHERE tx.account_id='{PAPER_DEFAULT_ACCOUNT_ID}'
+                GROUP BY entry.transaction_id,entry.commodity
+                HAVING sum(entry.debit)<>sum(entry.credit))
+              AND NOT EXISTS (
+                SELECT 1 FROM paper_ledger_transactions tx
+                WHERE tx.account_id='{PAPER_DEFAULT_ACCOUNT_ID}' AND NOT EXISTS (
+                                  SELECT 1 FROM paper_ledger_entries entry
+                                  WHERE entry.transaction_id=tx.transaction_id)))
+            INTO reconciliation_valid;
+          END IF;
+          SELECT * INTO worker_row FROM paper_authorization_worker_state
+            WHERE worker_name='phase7-paper-authorization' FOR SHARE;
+          worker_found:=FOUND;
+          -- Recovery can re-enable Paper flow, so only the database clock sampled
+          -- after the market and worker authority locks may decide freshness or
+          -- timestamp the recovery effects.
+          authority_at:=clock_timestamp();
+          IF p_observed_at>authority_at THEN
+            RAISE EXCEPTION 'KILL_RECOVERY_COMMAND_INVALID';
+          END IF;
+          IF NOT worker_found OR worker_row.status<>'RUNNING'
+             OR worker_row.heartbeat_at>authority_at
+             OR worker_row.heartbeat_at<authority_at-interval '2 minutes'
+          THEN RAISE EXCEPTION 'KILL_RECOVERY_WORKER_NOT_READY'; END IF;
+          IF data_material IS NULL OR jsonb_array_length(data_material)<>2
              OR EXISTS (
-               SELECT 1 FROM paper_ledger_transactions tx
-               JOIN paper_ledger_entries entry USING(transaction_id)
-               WHERE tx.account_id='{PAPER_DEFAULT_ACCOUNT_ID}'
-               GROUP BY entry.transaction_id,entry.commodity
-               HAVING sum(entry.debit)<>sum(entry.credit))
-             OR EXISTS (
-               SELECT 1 FROM paper_ledger_transactions tx
-               WHERE tx.account_id='{PAPER_DEFAULT_ACCOUNT_ID}' AND NOT EXISTS (
-                                 SELECT 1 FROM paper_ledger_entries entry
-                                 WHERE entry.transaction_id=tx.transaction_id))
-          THEN RAISE EXCEPTION 'KILL_RECOVERY_RECONCILIATION_UNHEALTHY'; END IF;
+               SELECT 1 FROM jsonb_array_elements(data_material) book
+               WHERE (book->>'received_at')::timestamptz>authority_at
+                  OR (book->>'received_at')::timestamptz<authority_at-interval '5 seconds')
+          THEN RAISE EXCEPTION 'KILL_RECOVERY_DATA_UNHEALTHY'; END IF;
+          IF NOT COALESCE(reconciliation_valid,false) THEN
+            RAISE EXCEPTION 'KILL_RECOVERY_RECONCILIATION_UNHEALTHY';
+          END IF;
+          data_state_hash:=encode(digest(convert_to(risk_canonical_jsonb(data_material),
+            'UTF8'),'sha256'),'hex');
           reconciliation_hash:=encode(digest(convert_to(risk_canonical_jsonb(
             jsonb_build_object('checkpoint_id',checkpoint_row.checkpoint_id,
               'health',checkpoint_row.status,
@@ -2486,7 +2518,7 @@ def upgrade() -> None:
             'ledger_snapshot_hash',checkpoint_row.input_digest);
           INSERT INTO risk_kill_recovery_command_receipts(
             idempotency_key,request_hash,recovery_event_id,response,created_at)
-          VALUES (p_idempotency_key,p_request_hash,recovery_event_id,response,p_observed_at);
+          VALUES (p_idempotency_key,p_request_hash,recovery_event_id,response,authority_at);
           INSERT INTO kill_recovery_events(
             recovery_event_id,scope,idempotency_key,request_hash,actor_id,session_digest,
             csrf_token_digest,origin_hash,incident_reference,reason,observed_at,
@@ -2495,7 +2527,7 @@ def upgrade() -> None:
             prior_version,new_version)
           VALUES (recovery_event_id,'paper-global',p_idempotency_key,p_request_hash,p_actor_id,
             p_session_digest,p_csrf_digest,p_origin_hash,p_incident_reference,p_reason,
-            p_observed_at,context_digest,'HEALTHY',data_state_hash,'PASS',
+            authority_at,context_digest,'HEALTHY',data_state_hash,'PASS',
             reconciliation_hash,'BALANCED',checkpoint_row.input_digest,
             state_row.version,new_version);
           event_data:=jsonb_build_object(
@@ -2503,7 +2535,7 @@ def upgrade() -> None:
             'prior_version',state_row.version,'version',new_version,'actor_id',p_actor_id,
             'session_binding_hash',p_session_digest,'csrf_binding_hash',p_csrf_digest,
             'origin_hash',p_origin_hash,'incident_reference',p_incident_reference,
-            'reason',p_reason,'observed_at',to_jsonb(p_observed_at),
+            'reason',p_reason,'observed_at',to_jsonb(authority_at),
             'context_digest',context_digest,'data_status','HEALTHY',
             'data_state_hash',data_state_hash,'reconciliation_status','PASS',
             'reconciliation_checkpoint_hash',reconciliation_hash,
@@ -2516,13 +2548,13 @@ def upgrade() -> None:
           event_payload:=jsonb_build_object(
             'spec_version','woozoo.event/v1','event_id',outbox_event_id,
             'event_type','kill-switch.recovered.v2','event_version',2,
-            'occurred_at',to_jsonb(p_observed_at),'producer','risk-engine',
+            'occurred_at',to_jsonb(authority_at),'producer','risk-engine',
             'activation_phase',7,'aggregate_id',recovery_event_id,'aggregate_version',1,
             'payload_hash',event_payload_hash,'data',event_data);
           INSERT INTO outbox_events(event_id,event_type,payload,payload_hash,occurred_at,
             aggregate_type,aggregate_id,aggregate_version)
           VALUES (outbox_event_id,'kill-switch.recovered.v2',event_payload,
-            event_payload_hash,p_observed_at,'kill_recovery',recovery_event_id,1);
+            event_payload_hash,authority_at,'kill_recovery',recovery_event_id,1);
           INSERT INTO risk_outbox_links(event_id,aggregate_kind,aggregate_id)
           VALUES (outbox_event_id,'kill-recovery',recovery_event_id);
           UPDATE kill_switch_state SET active=false,version=new_version,

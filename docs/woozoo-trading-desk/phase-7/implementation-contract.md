@@ -47,9 +47,13 @@ immutable Evidence
   authorization.
 - `APPROVE` revalidates and locks the authoritative worker row inside the same
   database transaction that records approval and authorization. The fixed lock
-  order is Paper account advisory lock, Kill Switch row, then worker row; a
-  stale, missing, failed, stopped, or future-dated heartbeat rolls back every
-  approval, receipt, outbox, and authorization effect.
+  order is Paper account advisory lock, Risk Proposal advisory lock, Proposal
+  row, Kill Switch row, then worker row. After the final potentially blocking
+  authority lock, one database `clock_timestamp()` sample controls Risk TTL,
+  worker freshness, approval/authorization timestamps, and the five-minute
+  authorization expiry. A Risk decision at or beyond its five-minute boundary,
+  or a stale, missing, failed, stopped, or future-dated heartbeat, rolls back
+  every approval, receipt, outbox, and authorization effect.
 - Approval issuance and Kill recovery hold the Paper account lock and require
   the latest reconciliation checkpoint's stamped authority sequence to equal
   the current Paper outbox sequence. Any committed Paper effect therefore
@@ -68,10 +72,14 @@ immutable Evidence
   an incident reference, authenticated actor, and healthy data, ledger, and
   reconciliation. Its reader and writer select the same latest BTCUSDT and
   ETHUSDT book event IDs and require the raw-bound current-market verifier to
-  pass for both while transaction locks are held. A stale projection,
-  watermark, collector session, raw provenance, future clock, or lock conflict
-  therefore keeps recovery on HOLD even when an immutable normalized row still
-  says healthy. Timer, AI, restart, and Redis cannot recover Kill.
+  pass for both while transaction locks are held. The writer also locks the
+  authorization-worker row and samples the database wall clock only after the
+  market and worker authority locks; that one time controls worker/data
+  freshness and every recovery effect timestamp. A stale projection,
+  watermark, collector session, raw provenance, worker heartbeat, future clock,
+  or lock conflict therefore keeps recovery on HOLD even when an immutable
+  normalized row still says healthy. Timer, AI, restart, and Redis cannot
+  recover Kill.
 
 ## Paper order preview policy v1
 
@@ -104,11 +112,14 @@ separate revocations, immutable authorizations, terminal authorization
 attempts, receipts, orders, ledger and outbox rows. Production rows use the
 closed `paper` namespace and cannot reference `test` fixtures.
 
-The Paper first-attempt transaction locks authorization, Kill, reconciliation,
-ledger, balance and order state in one documented order. Success writes receipt,
-attempt, order, holds/ledger and outbox atomically. Guard failure writes a
-blocked attempt, rejected receipt and outbox atomically with no order, hold,
-fill or ledger effect.
+The Paper first-attempt transaction locks authorization, Risk Proposal, Kill,
+reconciliation, ledger, balance, order, and exact raw/current-market authority
+in one documented order. Only after the last potentially blocking market
+verifier lock does it sample one database wall clock for expiry/freshness and
+all attempt, receipt, broker-input, order/ledger, and outbox timestamps. Success
+writes receipt, attempt, order, holds/ledger and outbox atomically. Guard failure
+writes a blocked attempt, rejected receipt and outbox atomically with no order,
+hold, fill or ledger effect.
 
 The same inbound-less Paper runtime may consume only append-only, healthy Binance
 Spot public `book_ticker` rows received after an order was accepted. It selects

@@ -142,6 +142,7 @@ def _seed_authorization(
     book_age_seconds: int = 0,
     insert_authority: bool = True,
     authorization_age_minutes: int = 0,
+    authorization_age_seconds: float = 0,
     authorization_ttl_seconds: int = 300,
 ) -> tuple[str, str]:
     store = PostgresPaperStore(PAPER_WRITER_URL)
@@ -171,7 +172,9 @@ def _seed_authorization(
             {"checkpoint_id": checkpoint_id, "health": "HEALTHY", "mismatch_codes": []}
         )
     ledger_snapshot_hash = store.semantic_digest(ACCOUNT_ID)
-    now = datetime.now(UTC) - timedelta(minutes=authorization_age_minutes)
+    now = datetime.now(UTC) - timedelta(
+        minutes=authorization_age_minutes, seconds=authorization_age_seconds
+    )
     expires_at = now + timedelta(seconds=authorization_ttl_seconds)
     authorization_id = canonical_hash({"authorization": suffix})
     request_hash = canonical_hash({"authorization_input": suffix})
@@ -540,8 +543,18 @@ def _seed_authorization(
     return authorization_id, request_hash
 
 
-def _seed_approval_candidate(suffix: str, verdict: str = "ALLOWED") -> tuple[str, str]:
-    _seed_authorization(suffix, healthy_reconciliation=True, insert_authority=False)
+def _seed_approval_candidate(
+    suffix: str,
+    verdict: str = "ALLOWED",
+    *,
+    decision_age_seconds: float = 0,
+) -> tuple[str, str]:
+    _seed_authorization(
+        suffix,
+        healthy_reconciliation=True,
+        insert_authority=False,
+        authorization_age_seconds=decision_age_seconds,
+    )
     evidence_id = canonical_hash({"evidence": suffix})
     with psycopg.connect(DATABASE_URL) as connection:
         connection.execute("SET session_replication_role='replica'")
@@ -800,6 +813,95 @@ def test_newer_denied_risk_serializes_before_waiting_approval_without_stale_effe
             (proposal_id,),
         ).fetchone()
     assert latest == (denied_id, "DENIED")
+    assert _approval_effect_counts(proposal_id, idempotency_key) == (0,) * 6
+
+
+def test_approval_lock_wait_crossing_risk_ttl_uses_post_lock_wall_clock(
+    postgres: None,
+) -> None:
+    proposal_id, preview_hash = _seed_approval_candidate(
+        "approval-risk-ttl-lock", decision_age_seconds=297
+    )
+    PostgresWorkerStateReporter(PAPER_WRITER_URL, instance_id="approval-risk-ttl-worker").start()
+    with psycopg.connect(DATABASE_URL) as connection:
+        decision_row = connection.execute(
+            "SELECT decision_as_of FROM risk_decisions WHERE proposal_id=%s",
+            (proposal_id,),
+        ).fetchone()
+    assert decision_row is not None
+    risk_expires_at = decision_row[0] + timedelta(minutes=5)
+    requested_at = datetime.now(UTC)
+    assert decision_row[0] <= requested_at < risk_expires_at
+    session_digest, csrf_digest = _seed_operator_csrf("approval-risk-ttl-lock", requested_at)
+    idempotency_key = "phase7-approval-risk-ttl-lock"
+    application_name = "phase7-approval-risk-ttl-lock"
+    started = Event()
+
+    def issue_while_locked() -> tuple[object, ...] | None:
+        with psycopg.connect(
+            f"{RISK_WRITER_URL}?application_name={application_name}"
+        ) as connection:
+            started.set()
+            return connection.execute(
+                "SELECT created,response FROM issue_paper_approval_v1("
+                "%s,%s,%s,'APPROVED',1,%s,'operator-local-1',%s,%s,%s,%s,%s,%s)",
+                (
+                    idempotency_key,
+                    canonical_hash({"approval-risk-ttl-lock": proposal_id}),
+                    proposal_id,
+                    preview_hash,
+                    session_digest,
+                    csrf_digest,
+                    canonical_hash({"origin": "approval-risk-ttl-lock"}),
+                    "approval-risk-ttl-lock-nonce-0000001",
+                    "authorization-risk-ttl-lock-nonce-001",
+                    requested_at,
+                ),
+            ).fetchone()
+
+    lock_connection = psycopg.connect(RISK_WRITER_URL)
+    executor = ThreadPoolExecutor(max_workers=1)
+    future = None
+    try:
+        try:
+            lock_connection.execute(
+                "SELECT pg_advisory_xact_lock(hashtextextended(%s,0))",
+                (f"risk-proposal:{proposal_id}",),
+            )
+            future = executor.submit(issue_while_locked)
+            assert started.wait(timeout=5)
+            with psycopg.connect(DATABASE_URL, autocommit=True) as observer:
+                deadline = time.monotonic() + 20
+                while time.monotonic() < deadline:
+                    waiting = observer.execute(
+                        "SELECT wait_event_type FROM pg_stat_activity "
+                        "WHERE application_name=%s AND state='active'",
+                        (application_name,),
+                    ).fetchone()
+                    if waiting == ("Lock",):
+                        break
+                    time.sleep(0.02)
+                else:
+                    pytest.fail("approval did not reach the bounded Risk lock wait")
+                deadline = time.monotonic() + 15
+                while time.monotonic() < deadline:
+                    expired = observer.execute(
+                        "SELECT clock_timestamp()>=%s", (risk_expires_at,)
+                    ).fetchone()
+                    if expired == (True,):
+                        break
+                    time.sleep(0.02)
+                else:
+                    pytest.fail("Risk decision did not expire within the bounded wait")
+        finally:
+            lock_connection.commit()
+            lock_connection.close()
+        assert future is not None
+        with pytest.raises(psycopg.errors.RaiseException, match="RISK_DECISION_DRIFT"):
+            future.result(timeout=10)
+    finally:
+        executor.shutdown(wait=True, cancel_futures=True)
+
     assert _approval_effect_counts(proposal_id, idempotency_key) == (0,) * 6
 
 
@@ -1301,6 +1403,86 @@ def test_paper_lock_wait_crossing_expiry_uses_post_lock_wall_clock(postgres: Non
     assert authority_times is not None
     assert authority_times[0] == authority_times[1] == authority_times[2] == authority_times[3]
     assert authority_times[0] >= authority_times[4]
+
+
+def test_market_authority_lock_wait_crossing_expiry_uses_post_lock_wall_clock(
+    postgres: None,
+) -> None:
+    authorization_id, _ = _seed_authorization(
+        "market-lock-expiry",
+        healthy_reconciliation=True,
+        authorization_ttl_seconds=3,
+    )
+    application_name = "phase7-market-lock-expiry"
+    waiting_store = PostgresPaperStore(f"{PAPER_WRITER_URL}?application_name={application_name}")
+    started = Event()
+
+    def attempt_while_locked() -> CommitResult:
+        started.set()
+        return waiting_store.attempt_phase7_authorization(authorization_id)
+
+    lock_connection = psycopg.connect(DATABASE_URL)
+    executor = ThreadPoolExecutor(max_workers=1)
+    future = None
+    try:
+        try:
+            locked = lock_connection.execute(
+                "UPDATE stream_watermark_projections SET last_sequence=last_sequence "
+                "WHERE collector_session_id="
+                "'00000000-0000-7000-8000-000000000777' "
+                "AND stream='btcusdt@bookTicker' RETURNING last_sequence"
+            ).fetchone()
+            assert locked is not None
+            future = executor.submit(attempt_while_locked)
+            assert started.wait(timeout=5)
+            with psycopg.connect(DATABASE_URL, autocommit=True) as observer:
+                deadline = time.monotonic() + 20
+                while time.monotonic() < deadline:
+                    waiting = observer.execute(
+                        "SELECT wait_event_type FROM pg_stat_activity "
+                        "WHERE application_name=%s AND state='active'",
+                        (application_name,),
+                    ).fetchone()
+                    if waiting == ("Lock",):
+                        break
+                    time.sleep(0.02)
+                else:
+                    pytest.fail("first attempt did not reach the market-authority lock wait")
+                expires_at = observer.execute(
+                    "SELECT expires_at FROM paper_execution_authorizations "
+                    "WHERE authorization_id=%s",
+                    (authorization_id,),
+                ).fetchone()
+                assert expires_at is not None
+                deadline = time.monotonic() + 15
+                while time.monotonic() < deadline:
+                    expired = observer.execute(
+                        "SELECT clock_timestamp()>=%s", (expires_at[0],)
+                    ).fetchone()
+                    if expired == (True,):
+                        break
+                    time.sleep(0.02)
+                else:
+                    pytest.fail("authorization did not expire within the bounded market wait")
+        finally:
+            lock_connection.commit()
+            lock_connection.close()
+        assert future is not None
+        result = future.result(timeout=10)
+    finally:
+        executor.shutdown(wait=True, cancel_futures=True)
+
+    assert result.response == {
+        "result": "BLOCKED",
+        "authorization_id": authorization_id,
+        "reason_code": "AUTHORIZATION_EXPIRED",
+    }
+    _assert_composite_block_is_terminal(authorization_id, "AUTHORIZATION_EXPIRED")
+    replay = PostgresPaperStore(PAPER_WRITER_URL).attempt_phase7_authorization(authorization_id)
+    assert replay.created is False
+    assert replay.response == result.response
+    assert replay.semantic_digest == result.semantic_digest
+    _assert_composite_block_is_terminal(authorization_id, "AUTHORIZATION_EXPIRED")
 
 
 def test_expired_and_revoked_authorization_uses_expiry_precedence(postgres: None) -> None:
@@ -2585,6 +2767,149 @@ def test_revocation_and_first_attempt_serialize_without_revoked_order(postgres: 
         assert order_count == 1
         assert revoke_result[0] == "error"
         assert "APPROVAL_NOT_REVOCABLE" in str(revoke_result[1])
+
+
+def test_kill_recovery_lock_wait_crossing_worker_ttl_uses_post_lock_wall_clock(
+    postgres: None,
+) -> None:
+    observed_at = datetime.now(UTC)
+    activated = PostgresKillSwitch(DATABASE_URL).activate(
+        KillActivation(
+            request_id="phase7-recovery-worker-ttl-lock",
+            expected_version=0,
+            trigger_kind="MANUAL",
+            actor_id="operator:phase7-recovery",
+            reason_code="MANUAL_SAFETY_STOP",
+            reason="prove recovery uses post-lock worker authority",
+            observed_at=observed_at,
+            context_digest=canonical_hash({"recovery-worker-ttl-lock": observed_at.isoformat()}),
+        )
+    )
+    with psycopg.connect(DATABASE_URL) as connection:
+        payload_hash = connection.execute(
+            "SELECT payload_hash FROM outbox_events WHERE event_id=%s",
+            (activated.outbox_event_id,),
+        ).fetchone()[0]
+    store = PostgresPaperStore(PAPER_WRITER_URL)
+    completion_result = store.consume_kill_activation(
+        activated.activation_event_id,
+        payload_hash,
+        received_at=datetime.now(UTC),
+    )
+    assert completion_result.cancelled_count == 0
+    assert completion_result.has_more is False
+    assert completion_result.completion_created is True
+    with psycopg.connect(DATABASE_URL) as connection:
+        completion = connection.execute(
+            "SELECT state_digest FROM paper_kill_cancel_completions WHERE activation_event_id=%s",
+            (activated.activation_event_id,),
+        ).fetchone()
+    assert completion is not None
+    checkpoint = store.reconcile(
+        ACCOUNT_ID,
+        checkpoint_id="phase7-recovery-worker-ttl-lock-checkpoint",
+        created_at=datetime.now(UTC),
+    )
+    assert checkpoint.status == "HEALTHY"
+    assert checkpoint.input_digest == completion[0]
+    command_time = datetime.now(UTC)
+    session_digest, csrf_digest = _seed_operator_csrf("recovery-worker-ttl-lock", command_time)
+    with psycopg.connect(DATABASE_URL) as connection:
+        database_now = connection.execute("SELECT clock_timestamp()").fetchone()
+        assert database_now is not None
+        heartbeat_at = database_now[0] - timedelta(seconds=118)
+        connection.execute(
+            "INSERT INTO paper_authorization_worker_state"
+            "(worker_name,instance_id,status,started_at,heartbeat_at) VALUES "
+            "('phase7-paper-authorization','recovery-worker-ttl-lock','RUNNING',%s,%s) "
+            "ON CONFLICT (worker_name) DO UPDATE SET "
+            "instance_id=EXCLUDED.instance_id,status='RUNNING',"
+            "started_at=EXCLUDED.started_at,heartbeat_at=EXCLUDED.heartbeat_at,"
+            "last_progress_at=NULL,last_result=NULL,last_error_code=NULL,stopped_at=NULL",
+            (heartbeat_at - timedelta(minutes=1), heartbeat_at),
+        )
+    _record_current_public_books("recovery-worker-ttl-lock", sequence=9750)
+    recovery_key = "phase7-recovery-worker-ttl-lock-command"
+    application_name = "phase7-recovery-worker-ttl-lock"
+    started = Event()
+
+    def recover_while_locked() -> tuple[object, ...] | None:
+        with psycopg.connect(
+            f"{RISK_WRITER_URL}?application_name={application_name}"
+        ) as connection:
+            started.set()
+            return connection.execute(
+                "SELECT created,response FROM recover_kill_switch_v1("
+                "%s,%s,1,%s,%s,%s,'operator-local-1',%s,%s,%s,%s)",
+                (
+                    recovery_key,
+                    canonical_hash({"recovery": activated.activation_event_id}),
+                    activated.activation_event_id,
+                    "INCIDENT-P7-WORKER-TTL",
+                    "operator reviewed recovery authority after cancellation",
+                    session_digest,
+                    csrf_digest,
+                    canonical_hash({"origin": "recovery-worker-ttl-lock"}),
+                    command_time,
+                ),
+            ).fetchone()
+
+    lock_connection = psycopg.connect(DATABASE_URL)
+    executor = ThreadPoolExecutor(max_workers=1)
+    future = None
+    try:
+        try:
+            lock_connection.execute(
+                "SELECT pg_advisory_xact_lock(hashtextextended(%s,0))",
+                (f"paper-account:{ACCOUNT_ID}",),
+            )
+            future = executor.submit(recover_while_locked)
+            assert started.wait(timeout=5)
+            with psycopg.connect(DATABASE_URL, autocommit=True) as observer:
+                deadline = time.monotonic() + 20
+                while time.monotonic() < deadline:
+                    waiting = observer.execute(
+                        "SELECT wait_event_type FROM pg_stat_activity "
+                        "WHERE application_name=%s AND state='active'",
+                        (application_name,),
+                    ).fetchone()
+                    if waiting == ("Lock",):
+                        break
+                    time.sleep(0.02)
+                else:
+                    pytest.fail("Kill recovery did not reach the bounded account lock wait")
+                deadline = time.monotonic() + 15
+                while time.monotonic() < deadline:
+                    stale = observer.execute(
+                        "SELECT clock_timestamp()>=%s+interval '2 minutes'",
+                        (heartbeat_at,),
+                    ).fetchone()
+                    if stale == (True,):
+                        break
+                    time.sleep(0.02)
+                else:
+                    pytest.fail("worker heartbeat did not become stale within the bounded wait")
+        finally:
+            lock_connection.commit()
+            lock_connection.close()
+        assert future is not None
+        with pytest.raises(psycopg.errors.RaiseException, match="KILL_RECOVERY_WORKER_NOT_READY"):
+            future.result(timeout=10)
+    finally:
+        executor.shutdown(wait=True, cancel_futures=True)
+
+    with psycopg.connect(DATABASE_URL) as connection:
+        assert connection.execute(
+            "SELECT active,version FROM kill_switch_state WHERE scope='paper-global'"
+        ).fetchone() == (True, 1)
+        assert connection.execute(
+            "SELECT count(*) FROM risk_kill_recovery_command_receipts WHERE idempotency_key=%s",
+            (recovery_key,),
+        ).fetchone() == (0,)
+        assert connection.execute("SELECT count(*) FROM kill_recovery_events").fetchone() == (0,)
+        assert connection.execute(
+            "SELECT count(*) FROM outbox_events WHERE event_type='kill-switch.recovered.v2'"
+        ).fetchone() == (0,)
 
 
 def test_recovery_races_consumer_but_requires_completion_and_later_checkpoint(
