@@ -12,6 +12,7 @@ from pathlib import Path
 import subprocess
 import sys
 from threading import Event
+import time
 from typing import cast, Iterator
 
 import psycopg
@@ -44,7 +45,12 @@ from control_api.trading_room import (
 )
 from paper_engine.authorization_worker import DurableRecordedBookWorker
 from paper_engine.authorization_worker import PostgresWorkerStateReporter
-from paper_engine.persistence import PersistenceStage, Phase7AuthorizationWorker, PostgresPaperStore
+from paper_engine.persistence import (
+    CommitResult,
+    PersistenceStage,
+    Phase7AuthorizationWorker,
+    PostgresPaperStore,
+)
 from platform_core import canonical_hash, canonical_json
 from platform_core.generated_contracts import (
     PAPER_DOMAIN_EVENTS_V2_SCHEMA,
@@ -136,6 +142,7 @@ def _seed_authorization(
     book_age_seconds: int = 0,
     insert_authority: bool = True,
     authorization_age_minutes: int = 0,
+    authorization_ttl_seconds: int = 300,
 ) -> tuple[str, str]:
     store = PostgresPaperStore(PAPER_WRITER_URL)
     checkpoint_id = f"phase7-{suffix}"
@@ -165,7 +172,7 @@ def _seed_authorization(
         )
     ledger_snapshot_hash = store.semantic_digest(ACCOUNT_ID)
     now = datetime.now(UTC) - timedelta(minutes=authorization_age_minutes)
-    expires_at = now + timedelta(minutes=5)
+    expires_at = now + timedelta(seconds=authorization_ttl_seconds)
     authorization_id = canonical_hash({"authorization": suffix})
     request_hash = canonical_hash({"authorization_input": suffix})
     approval_id = canonical_hash({"approval": suffix})
@@ -257,6 +264,11 @@ def _seed_authorization(
     assert isinstance(bound_portfolio, dict)
     portfolio_snapshot_hash = str(bound_portfolio["snapshot_hash"])
     book_observed_at = now - timedelta(seconds=book_age_seconds)
+    _record_current_public_books(
+        f"seeded-{suffix}",
+        sequence=int(canonical_hash({"seeded-book": suffix})[:12], 16),
+        observed_at=book_observed_at,
+    )
     with psycopg.connect(DATABASE_URL) as connection:
         connection.execute("SET session_replication_role='replica'")
         connection.execute(
@@ -293,29 +305,6 @@ def _seed_authorization(
                 now,
             ),
         )
-        for index, (book_symbol, bid, ask) in enumerate(
-            (("BTCUSDT", "9999", "10000"), ("ETHUSDT", "1999", "2001")), start=1
-        ):
-            connection.execute(
-                "INSERT INTO normalized_market_events"
-                "(id,raw_event_id,event_type,schema_version,source,symbol,event_time,received_at,"
-                "sequence,raw_payload_hash,correlation_id,quality_status,quality_reasons,"
-                "stream_watermark,payload) VALUES (%s,%s,'book_ticker',"
-                "'woozoo.market-event/v1','binance_spot_public',%s,%s,%s,%s,%s,%s,"
-                "'healthy','[]'::jsonb,%s,%s)",
-                (
-                    canonical_hash({"book": suffix, "symbol": book_symbol}),
-                    canonical_hash({"raw": suffix, "symbol": book_symbol}),
-                    book_symbol,
-                    book_observed_at,
-                    book_observed_at,
-                    index,
-                    canonical_hash({"raw_hash": suffix, "symbol": book_symbol}),
-                    f"phase7-{suffix}-{book_symbol}",
-                    Jsonb({"last_sequence": index}),
-                    Jsonb({"bid_price": bid, "ask_price": ask}),
-                ),
-            )
         connection.execute(
             "INSERT INTO risk_decisions"
             "(decision_id,risk_input_digest,risk_input,decision_hash,verdict,primary_reason,"
@@ -868,14 +857,16 @@ def _record_current_public_book(
     market_quality_reasons: tuple[str, ...] = (),
     raw_payload_bytes: bytes | None = None,
     raw_payload_hash: str | None = None,
+    observed_at: datetime | None = None,
 ) -> tuple[str, datetime]:
     raw_event_id = canonical_hash({"recorded-book-raw": suffix})
     session_id = "00000000-0000-7000-8000-000000000777"
     stream = f"{symbol.lower()}@bookTicker"
     with psycopg.connect(DATABASE_URL) as connection:
-        observed_row = connection.execute("SELECT clock_timestamp()").fetchone()
-        assert observed_row is not None
-        observed_at = observed_row[0]
+        if observed_at is None:
+            observed_row = connection.execute("SELECT clock_timestamp()").fetchone()
+            assert observed_row is not None
+            observed_at = observed_row[0]
         watermark = {
             "session_id": session_id,
             "stream": stream,
@@ -987,8 +978,12 @@ def _record_current_public_book(
     return market_event_id, observed_at
 
 
-def _record_current_public_books(suffix: str, *, sequence: int) -> None:
-    _record_current_public_book(f"{suffix}-btc", sequence=sequence, symbol="BTCUSDT")
+def _record_current_public_books(
+    suffix: str, *, sequence: int, observed_at: datetime | None = None
+) -> None:
+    _record_current_public_book(
+        f"{suffix}-btc", sequence=sequence, symbol="BTCUSDT", observed_at=observed_at
+    )
     _record_current_public_book(
         f"{suffix}-eth",
         sequence=sequence,
@@ -997,7 +992,47 @@ def _record_current_public_books(suffix: str, *, sequence: int) -> None:
         bid_quantity="0.00100000",
         ask_price="2001",
         ask_quantity="0.00100000",
+        observed_at=observed_at,
     )
+
+
+def _record_normalized_only_book(
+    suffix: str,
+    *,
+    sequence: int,
+    symbol: str,
+    bid_price: str,
+    ask_price: str,
+) -> str:
+    event_id = canonical_hash({"normalized-only-book": suffix, "symbol": symbol})
+    raw_event_id = canonical_hash({"missing-raw-book": suffix, "symbol": symbol})
+    with psycopg.connect(DATABASE_URL) as connection:
+        observed_row = connection.execute("SELECT clock_timestamp()").fetchone()
+        assert observed_row is not None
+        observed_at = observed_row[0]
+        connection.execute("SET session_replication_role='replica'")
+        connection.execute(
+            "INSERT INTO normalized_market_events"
+            "(id,raw_event_id,event_type,schema_version,source,symbol,event_time,received_at,"
+            "sequence,raw_payload_hash,correlation_id,quality_status,quality_reasons,"
+            "stream_watermark,payload) VALUES (%s,%s,'book_ticker',"
+            "'woozoo.market-event/v1','binance_spot_public',%s,%s,%s,%s,%s,%s,"
+            "'healthy','[]'::jsonb,%s,%s)",
+            (
+                event_id,
+                raw_event_id,
+                symbol,
+                observed_at,
+                observed_at,
+                sequence,
+                canonical_hash({"missing-raw-hash": suffix, "symbol": symbol}),
+                f"missing-raw-{suffix}",
+                Jsonb({"last_sequence": sequence}),
+                Jsonb({"bid_price": bid_price, "ask_price": ask_price}),
+            ),
+        )
+        connection.execute("SET session_replication_role='origin'")
+    return event_id
 
 
 def _assert_blocked_only(authorization_id: str, reason_code: str) -> None:
@@ -1105,6 +1140,167 @@ def _assert_composite_block_is_terminal(
     assert counts == (1, 1, 1, 0, 0, 1)
     assert terminal == ("BLOCKED", reason_code, "REJECTED", reason_code)
     assert blocked_outbox == (1,)
+
+
+def test_first_attempt_blocks_normalized_only_newest_books_without_financial_effects(
+    postgres: None,
+) -> None:
+    authorization_id, _ = _seed_authorization("normalized-only-newest", healthy_reconciliation=True)
+    _record_normalized_only_book(
+        "normalized-only-newest-btc",
+        sequence=9801,
+        symbol="BTCUSDT",
+        bid_price="9999",
+        ask_price="10000",
+    )
+    _record_normalized_only_book(
+        "normalized-only-newest-eth",
+        sequence=9801,
+        symbol="ETHUSDT",
+        bid_price="1999",
+        ask_price="2001",
+    )
+    store = PostgresPaperStore(PAPER_WRITER_URL)
+
+    first = store.attempt_phase7_authorization(authorization_id)
+
+    assert first.created is True
+    assert first.response == {
+        "result": "BLOCKED",
+        "authorization_id": authorization_id,
+        "reason_code": "DATA_INVALID",
+    }
+    _assert_composite_block_is_terminal(authorization_id, "DATA_INVALID")
+    replay = store.attempt_phase7_authorization(authorization_id)
+    assert replay.created is False
+    assert replay.response == first.response
+    assert replay.semantic_digest == first.semantic_digest
+    _assert_composite_block_is_terminal(authorization_id, "DATA_INVALID")
+
+
+def test_first_attempt_does_not_fall_back_from_newest_unverified_book(
+    postgres: None,
+) -> None:
+    authorization_id, _ = _seed_authorization(
+        "newest-unverified-no-fallback", healthy_reconciliation=True
+    )
+    newest_id = _record_normalized_only_book(
+        "newest-unverified-no-fallback",
+        sequence=9802,
+        symbol="BTCUSDT",
+        bid_price="9999",
+        ask_price="10000",
+    )
+    with psycopg.connect(DATABASE_URL) as connection:
+        newest = connection.execute(
+            "SELECT id,paper_recorded_book_market_is_current_v1(id) "
+            "FROM normalized_market_events WHERE symbol='BTCUSDT' "
+            "ORDER BY event_time DESC,received_at DESC,id DESC LIMIT 1"
+        ).fetchone()
+    assert newest == (newest_id, False)
+
+    first = PostgresPaperStore(PAPER_WRITER_URL).attempt_phase7_authorization(authorization_id)
+
+    assert first.response == {
+        "result": "BLOCKED",
+        "authorization_id": authorization_id,
+        "reason_code": "DATA_INVALID",
+    }
+    _assert_composite_block_is_terminal(authorization_id, "DATA_INVALID")
+
+
+def test_account_lock_wait_crossing_expiry_uses_post_lock_wall_clock(postgres: None) -> None:
+    authorization_id, _ = _seed_authorization(
+        "account-lock-expiry",
+        healthy_reconciliation=True,
+        authorization_ttl_seconds=5,
+    )
+    application_name = "phase7-account-lock-expiry"
+    waiting_store = PostgresPaperStore(f"{PAPER_WRITER_URL}?application_name={application_name}")
+    started = Event()
+
+    def attempt_while_locked() -> CommitResult:
+        started.set()
+        return waiting_store.attempt_phase7_authorization(authorization_id)
+
+    lock_connection = psycopg.connect(DATABASE_URL)
+    executor = ThreadPoolExecutor(max_workers=1)
+    future = None
+    try:
+        try:
+            lock_connection.execute(
+                "SELECT pg_advisory_xact_lock(hashtextextended(%s,0))",
+                (f"paper-account:{ACCOUNT_ID}",),
+            )
+            future = executor.submit(attempt_while_locked)
+            assert started.wait(timeout=2)
+            with psycopg.connect(DATABASE_URL) as observer:
+                deadline = time.monotonic() + 5
+                while time.monotonic() < deadline:
+                    waiting = observer.execute(
+                        "SELECT wait_event_type FROM pg_stat_activity "
+                        "WHERE application_name=%s AND state='active'",
+                        (application_name,),
+                    ).fetchone()
+                    if waiting == ("Lock",):
+                        break
+                    time.sleep(0.02)
+                else:
+                    pytest.fail("first attempt did not reach the bounded account lock wait")
+                expires_at = observer.execute(
+                    "SELECT expires_at FROM paper_execution_authorizations "
+                    "WHERE authorization_id=%s",
+                    (authorization_id,),
+                ).fetchone()
+                assert expires_at is not None
+                deadline = time.monotonic() + 10
+                while time.monotonic() < deadline:
+                    expired = observer.execute(
+                        "SELECT clock_timestamp()>=%s", (expires_at[0],)
+                    ).fetchone()
+                    if expired == (True,):
+                        break
+                    time.sleep(0.02)
+                else:
+                    pytest.fail("authorization did not expire within the bounded wait")
+        finally:
+            lock_connection.commit()
+            lock_connection.close()
+        assert future is not None
+        result = future.result(timeout=5)
+    finally:
+        executor.shutdown(wait=True, cancel_futures=True)
+
+    assert result.response == {
+        "result": "BLOCKED",
+        "authorization_id": authorization_id,
+        "reason_code": "AUTHORIZATION_EXPIRED",
+    }
+    _assert_composite_block_is_terminal(authorization_id, "AUTHORIZATION_EXPIRED")
+    replay = PostgresPaperStore(PAPER_WRITER_URL).attempt_phase7_authorization(authorization_id)
+    assert replay.created is False
+    assert replay.response == result.response
+    assert replay.semantic_digest == result.semantic_digest
+    _assert_composite_block_is_terminal(authorization_id, "AUTHORIZATION_EXPIRED")
+    with psycopg.connect(DATABASE_URL) as connection:
+        authority_times = connection.execute(
+            "SELECT attempt.created_at,receipt.created_at,input.observed_at,event.occurred_at,"
+            "authz.expires_at FROM paper_authorization_attempts attempt "
+            "JOIN paper_command_receipts receipt ON receipt.authorization_id=attempt.authorization_id "
+            "JOIN paper_broker_inputs input "
+            "ON input.paper_execution_authorization_id=attempt.paper_execution_authorization_id "
+            "JOIN paper_execution_authorizations authz "
+            "ON authz.authorization_id=attempt.paper_execution_authorization_id "
+            "JOIN paper_outbox_links link ON link.account_id=attempt.account_id "
+            "JOIN outbox_events event ON event.event_id=link.event_id "
+            "AND event.event_type='paper.authorization.blocked.v2' "
+            "AND event.aggregate_id=attempt.authorization_id "
+            "WHERE attempt.paper_execution_authorization_id=%s",
+            (authorization_id,),
+        ).fetchone()
+    assert authority_times is not None
+    assert authority_times[0] == authority_times[1] == authority_times[2] == authority_times[3]
+    assert authority_times[0] >= authority_times[4]
 
 
 def test_expired_and_revoked_authorization_uses_expiry_precedence(postgres: None) -> None:
@@ -1459,6 +1655,13 @@ def test_missing_reconciliation_consumes_authorization_without_financial_effects
 def test_authorized_order_and_cancel_are_atomic_v2_and_idempotent(postgres: None) -> None:
     authorization_id, _ = _seed_authorization("create-cancel", healthy_reconciliation=True)
     store = PostgresPaperStore(PAPER_WRITER_URL)
+    with psycopg.connect(DATABASE_URL) as connection:
+        assert connection.execute(
+            "SELECT count(*) FROM (SELECT DISTINCT ON (symbol) id FROM normalized_market_events "
+            "WHERE event_type='book_ticker' AND symbol IN ('BTCUSDT','ETHUSDT') "
+            "ORDER BY symbol,event_time DESC,received_at DESC,id DESC) latest "
+            "WHERE paper_recorded_book_market_is_current_v1(latest.id)"
+        ).fetchone() == (2,)
     created = store.attempt_phase7_authorization(authorization_id)
     assert created.created is True
     order_id = str(created.response["order_id"])
@@ -2203,8 +2406,8 @@ def test_newer_changed_book_blocks_and_audit_projection_removes_nonce(
         connection.execute("SET session_replication_role='origin'")
 
     result = PostgresPaperStore(PAPER_WRITER_URL).attempt_phase7_authorization(authorization_id)
-    assert result.response["reason_code"] == "HASH_MISMATCH"
-    _assert_blocked_only(authorization_id, "HASH_MISMATCH")
+    assert result.response["reason_code"] == "DATA_INVALID"
+    _assert_blocked_only(authorization_id, "DATA_INVALID")
     with psycopg.connect(DATABASE_URL) as connection:
         raw, projected = connection.execute(
             "SELECT event.payload::text,audit.data::text FROM outbox_events event "
@@ -2257,8 +2460,8 @@ def test_non_target_same_midpoint_book_drift_terminally_blocks_first_attempt(
         connection.execute("SET session_replication_role='origin'")
 
     result = PostgresPaperStore(PAPER_WRITER_URL).attempt_phase7_authorization(authorization_id)
-    assert result.response["reason_code"] == "HASH_MISMATCH"
-    _assert_blocked_only(authorization_id, "HASH_MISMATCH")
+    assert result.response["reason_code"] == "DATA_INVALID"
+    _assert_blocked_only(authorization_id, "DATA_INVALID")
 
 
 def test_reconciliation_serializes_on_the_paper_account_authority_lock(postgres: None) -> None:

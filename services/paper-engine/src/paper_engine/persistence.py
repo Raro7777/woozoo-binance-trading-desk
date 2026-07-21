@@ -576,7 +576,7 @@ class PostgresPaperStore:
                 (account_id,),
             ).fetchone()
             current_ledger_hash = self.semantic_digest(account_id, connection=connection)
-            database_now = connection.execute("SELECT CURRENT_TIMESTAMP").fetchone()
+            database_now = connection.execute("SELECT clock_timestamp()").fetchone()
             assert database_now is not None
             current_time = database_now[0]
 
@@ -625,28 +625,40 @@ class PostgresPaperStore:
             books: dict[str, tuple[object, ...]] = {}
             if data_block_reason is None:
                 for row in connection.execute(
-                    "SELECT DISTINCT ON (symbol) symbol,payload,event_time,received_at,"
+                    "SELECT DISTINCT ON (symbol) symbol,id,payload,event_time,received_at,"
                     "quality_status FROM normalized_market_events "
                     "WHERE event_type='book_ticker' AND symbol IN ('BTCUSDT','ETHUSDT') "
                     "ORDER BY symbol,event_time DESC,received_at DESC,id DESC"
                 ).fetchall():
                     books[str(row[0])] = cast(tuple[object, ...], row)
+                book_authority = (
+                    tuple(
+                        connection.execute(
+                            "SELECT paper_recorded_book_market_is_current_v1(%s)", (row[1],)
+                        ).fetchone()
+                        for row in books.values()
+                    )
+                    if set(books) == {"BTCUSDT", "ETHUSDT"}
+                    else ()
+                )
                 if set(books) != {"BTCUSDT", "ETHUSDT"}:
                     data_block_reason = "DATA_INVALID"
-                elif any(row[4] != "healthy" for row in books.values()):
+                elif any(row[5] != "healthy" for row in books.values()):
                     data_block_reason = "DATA_INVALID"
                 elif any(
-                    row[2] > current_time
-                    or row[3] > current_time
-                    or current_time - row[2] > timedelta(seconds=5)
+                    row[3] > current_time
+                    or row[4] > current_time
                     or current_time - row[3] > timedelta(seconds=5)
+                    or current_time - row[4] > timedelta(seconds=5)
                     for row in books.values()
                 ):
                     data_block_reason = "DATA_STALE"
+                elif book_authority != ((True,), (True,)):
+                    data_block_reason = "DATA_INVALID"
                 else:
                     parsed_books: dict[str, tuple[Decimal, Decimal]] = {}
                     for current_symbol, current_book in books.items():
-                        payload = current_book[1]
+                        payload = current_book[2]
                         if not isinstance(payload, dict):
                             data_block_reason = "HASH_MISMATCH"
                             break
@@ -681,7 +693,7 @@ class PostgresPaperStore:
                 block_reason = "KILL_SWITCH_ACTIVE"
             elif barrier[1] != expected_kill_version:
                 block_reason = "KILL_VERSION_MISMATCH"
-            elif database_now[0] >= expires_at:
+            elif current_time >= expires_at:
                 block_reason = "AUTHORIZATION_EXPIRED"
             elif revoked[0]:
                 block_reason = "AUTHORIZATION_REVOKED"
@@ -709,7 +721,7 @@ class PostgresPaperStore:
             ).fetchone()
             assert broker_seq_row is not None
             broker_seq = broker_seq_row[0]
-            occurred_at = database_now[0].astimezone(UTC)
+            occurred_at = current_time.astimezone(UTC)
             connection.execute("SET CONSTRAINTS ALL DEFERRED")
             connection.execute(
                 "INSERT INTO paper_broker_inputs"

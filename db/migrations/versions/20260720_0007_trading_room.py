@@ -2160,12 +2160,20 @@ def upgrade() -> None:
                 'best_ask',book.payload->>'ask_price','event_time',book.event_time,
                 'received_at',book.received_at,'quality_status',book.quality_status)),
               '{}'::jsonb) FROM (
-                SELECT DISTINCT ON (event.symbol) event.symbol,event.payload,
-                  event.event_time,event.received_at,event.quality_status
-                FROM normalized_market_events event
-                WHERE event.event_type='book_ticker' AND event.symbol IN ('BTCUSDT','ETHUSDT')
-                  AND event.event_time<=p_recorded_at AND event.received_at<=p_recorded_at
-                ORDER BY event.symbol,event.event_time DESC,event.received_at DESC,event.id DESC
+                SELECT latest.symbol,latest.payload,latest.event_time,
+                  latest.received_at,latest.quality_status
+                FROM (
+                  SELECT DISTINCT ON (event.symbol) event.id,event.symbol,event.payload,
+                    event.event_time,event.received_at,event.quality_status
+                  FROM normalized_market_events event
+                  WHERE event.event_type='book_ticker'
+                    AND event.symbol IN ('BTCUSDT','ETHUSDT')
+                    AND event.event_time<=p_recorded_at
+                    AND event.received_at<=p_recorded_at
+                  ORDER BY event.symbol,event.event_time DESC,
+                    event.received_at DESC,event.id DESC
+                ) latest
+                WHERE paper_recorded_book_market_is_current_v1(latest.id)
               ) book),
             'open_orders',(SELECT COALESCE(jsonb_agg(jsonb_build_object(
                 'client_order_id',orders.client_order_id,'symbol',orders.symbol,

@@ -19,7 +19,7 @@
   "regression_manifests": [
     {
       "path": "docs/woozoo-trading-desk/phase-7/p7-agent-regression-manifest.json",
-      "sha256": "1a71d33a1db0b6cd076042f7294b7df0c7225213b613bd622c49de3f4f2ab03e"
+      "sha256": "333e8d522876e8055e8d33ae7cd5ec2b9e6933b73d7922725d88ee891b9877cc"
     },
     {
       "path": "docs/woozoo-trading-desk/phase-7/p7-risk-regression-manifest.json",
@@ -276,6 +276,10 @@
         "tests/integration/test_phase7_paper_first_attempt_authority.py::test_sql_worker_authority_blocks_failed_worker_without_effects",
         "tests/integration/test_phase7_paper_first_attempt_authority.py::test_newer_denied_risk_serializes_before_waiting_approval_without_stale_effects",
         "tests/integration/test_phase7_paper_first_attempt_authority.py::test_first_attempt_rejects_authorization_superseded_by_newer_denied_risk",
+        "tests/integration/test_agent_postgres_persistence.py::test_authoritative_risk_context_requires_latest_raw_bound_books",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_first_attempt_blocks_normalized_only_newest_books_without_financial_effects",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_first_attempt_does_not_fall_back_from_newest_unverified_book",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_account_lock_wait_crossing_expiry_uses_post_lock_wall_clock",
         "tests/integration/test_phase7_paper_first_attempt_authority.py::test_expired_and_revoked_authorization_uses_expiry_precedence",
         "tests/integration/test_phase7_paper_first_attempt_authority.py::test_revoked_and_newer_denied_risk_uses_risk_precedence",
         "tests/integration/test_phase7_paper_first_attempt_authority.py::test_kill_and_expired_authorization_uses_kill_precedence_and_drains",
@@ -292,11 +296,12 @@
       ],
       "source_sha256": [
         "9d5d32d65c8bf17db096b4ecd718969c96b4be5f613db594f8021b7ff2325abc",
-        "fced920a65f6e5c72d8221b700feaf6e9a1b9aa63d03e65941dbe327b2e041cd",
-        "052b0a4ef1328502cf87d9d648125b616d4108828ebfcd5f8bc3b74da5619cfd",
+        "0fdca606febbd91304a5c90615801312f435eb4a2da333780b0b411a860eaf1d",
+        "d872eb3e9060624ea526d68d5f249fa096d94a285f9e97e24257d54e9465faf4",
+        "ecb53c9be2ea559227b7932a164e171e7e86f159b347a852a8a98f601494a59d",
         "5df68171d47cfbf6dc19e8c6672e326380dc7ab60a978905e09941cab81fad42"
       ],
-      "oracle": "A direct human decision is recorded only for a complete latest ALLOWED Risk decision: DENIED or ERROR blocks both APPROVE and REJECT with zero approval, receipt, outbox, authorization, attempt or order effect. New APPROVE locks and rechecks the authoritative worker row inside the issuance transaction; worker readiness never blocks a valid human REJECT. Risk persistence, approval and the first Paper attempt share one proposal authority lock: a newer DENIED decision wins before a waiting approval and supersedes an already-issued authorization at first attempt without an order. Approval issuance rejects a reconciliation checkpoint whose stamped authority sequence predates any committed Paper effect. Composite first-attempt blockers resolve to exactly one database-enforced reason in Risk drift, Kill active, Kill version drift, expiry at or after the boundary, then revocation priority; expired plus revoked, revoked plus newer DENIED, and Kill plus expired each create one terminal attempt, receipt, broker input and blocked outbox with zero order, hold, fill or ledger effect, replay immutably, and do not stall the Kill drain. Reconciliation, stale books and execution-quality drift remain terminal fail-closed checks."
+      "oracle": "A direct human decision is recorded only for a complete latest ALLOWED Risk decision: DENIED or ERROR blocks both APPROVE and REJECT with zero approval, receipt, outbox, authorization, attempt or order effect. New APPROVE locks and rechecks the authoritative worker row inside the issuance transaction; worker readiness never blocks a valid human REJECT. Risk persistence, approval and the first Paper attempt share one proposal authority lock: a newer DENIED decision wins before a waiting approval and supersedes an already-issued authorization at first attempt without an order. Authoritative Risk context and the first Paper attempt select the newest BTCUSDT and ETHUSDT normalized rows before verifying their exact raw bytes and hash, collector identity, stream watermark and current-market projection; rawless or unverified newest rows fail closed and never fall back to an older valid row. After all blocking authority locks, one wall-clock sample controls the expiry boundary and every attempt effect, so an authorization that expires while waiting cannot create an order. Approval issuance rejects a reconciliation checkpoint whose stamped authority sequence predates any committed Paper effect. Composite first-attempt blockers resolve to exactly one database-enforced reason in Risk drift, Kill active, Kill version drift, expiry at or after the boundary, then revocation priority; expired plus revoked, revoked plus newer DENIED, and Kill plus expired each create one terminal attempt, receipt, broker input and blocked outbox with zero order, hold, fill or ledger effect, replay immutably, and do not stall the Kill drain. Reconciliation, stale books and execution-quality drift remain terminal fail-closed checks."
     },
     {
       "id": "E2E-001",
@@ -326,10 +331,10 @@
       "source_sha256": [
         "90a31939b5325fb4ec774edd91789ef40b51c70ff35d97206f2393e6f756d3ef",
         "dd85d3264e1a7374d1e34e8f7fde5a083fd8ae115b927d453941c5a4be9942d3",
-        "fced920a65f6e5c72d8221b700feaf6e9a1b9aa63d03e65941dbe327b2e041cd",
+        "0fdca606febbd91304a5c90615801312f435eb4a2da333780b0b411a860eaf1d",
         "07cb535db57cca0e4f13b44a2ad75a2716461abe283517bb6cfe67d0409757c6",
         "5769abf0ed4b9a57c849a168da2536cb6397d2b24dc514d06b8c45e54633c7a8",
-        "052b0a4ef1328502cf87d9d648125b616d4108828ebfcd5f8bc3b74da5619cfd"
+        "ecb53c9be2ea559227b7932a164e171e7e86f159b347a852a8a98f601494a59d"
       ],
       "configuration_sources": [
         {
@@ -465,7 +470,7 @@
       "source_sha256": [
         "90a31939b5325fb4ec774edd91789ef40b51c70ff35d97206f2393e6f756d3ef",
         "dd85d3264e1a7374d1e34e8f7fde5a083fd8ae115b927d453941c5a4be9942d3",
-        "fced920a65f6e5c72d8221b700feaf6e9a1b9aa63d03e65941dbe327b2e041cd",
+        "0fdca606febbd91304a5c90615801312f435eb4a2da333780b0b411a860eaf1d",
         "5769abf0ed4b9a57c849a168da2536cb6397d2b24dc514d06b8c45e54633c7a8"
       ],
       "configuration_sources": [

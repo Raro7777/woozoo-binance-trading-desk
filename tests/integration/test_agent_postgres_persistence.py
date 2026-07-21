@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from hashlib import sha256
 import os
 from pathlib import Path
 import subprocess
@@ -24,7 +25,7 @@ from agent_orchestrator import (
     WorkflowResult,
     bind_test_risk_input,
 )
-from agent_orchestrator.canonical import canonical_hash
+from agent_orchestrator.canonical import canonical_hash, canonical_json
 from agent_orchestrator.persistence import (
     AgentPersistenceStage,
     AnalysisCommandReceipt,
@@ -191,12 +192,42 @@ def _seed_phase7_books(
             "SELECT collector_session_id FROM evidence_snapshots WHERE evidence_id=%s",
             (evidence_id,),
         ).fetchone()[0]
-        for ordinal, (symbol, bid, ask) in enumerate(
-            (("BTCUSDT", "99.99", "100"), ("ETHUSDT", "49.99", "50")), start=2
+        connection.execute(
+            "UPDATE collector_sessions SET status='healthy',ended_at=NULL WHERE id=%s",
+            (session_id,),
+        )
+        sequence_row = connection.execute(
+            "SELECT COALESCE(max(sequence),1)+1 FROM normalized_market_events "
+            "WHERE event_type='book_ticker'"
+        ).fetchone()
+        assert sequence_row is not None
+        first_sequence = sequence_row[0]
+        for offset, (symbol, bid, ask) in enumerate(
+            (("BTCUSDT", "99.99", "100"), ("ETHUSDT", "49.99", "50"))
         ):
-            raw_id = f"{ordinal + 4:x}" * 64
-            normalized_id = f"{ordinal + 8:x}" * 64
-            raw_hash = f"{ordinal + 10:x}" * 64
+            sequence = first_sequence + offset
+            stream = f"{symbol.lower()}@bookTicker"
+            raw_id = canonical_hash(["phase7-risk-book-raw", evidence_id, symbol])
+            payload_bytes = canonical_json(
+                {
+                    "u": sequence,
+                    "s": symbol,
+                    "b": bid,
+                    "B": "1",
+                    "a": ask,
+                    "A": "1",
+                }
+            ).encode("utf-8")
+            raw_hash = sha256(payload_bytes).hexdigest()
+            normalized_id = sha256(
+                (f"woozoo.market-event/v1|{raw_id}|book_ticker|{sequence}").encode("utf-8")
+            ).hexdigest()
+            watermark = {
+                "session_id": str(session_id),
+                "stream": stream,
+                "last_sequence": sequence,
+                "observed_at": observed_text,
+            }
             connection.execute(
                 """
                 INSERT INTO raw_market_events(
@@ -209,15 +240,15 @@ def _seed_phase7_books(
                 (
                     raw_id,
                     str(session_id),
-                    f"{symbol.lower()}@bookTicker",
+                    stream,
                     symbol,
-                    f"phase7-risk-book-{symbol}",
-                    b"{}",
+                    f"book_ticker:{symbol}:{sequence}",
+                    payload_bytes,
                     raw_hash,
+                    None,
                     observed_at,
                     observed_at,
-                    observed_at,
-                    ordinal,
+                    sequence,
                 ),
             )
             connection.execute(
@@ -235,15 +266,94 @@ def _seed_phase7_books(
                     symbol,
                     observed_at,
                     observed_at,
-                    ordinal,
+                    sequence,
                     raw_hash,
                     session_id,
                     Jsonb([]),
+                    Jsonb(watermark),
                     Jsonb(
                         {
-                            "session_id": str(session_id),
-                            "stream": "book_ticker",
-                            "last_sequence": ordinal,
+                            "kind": "book_ticker",
+                            "bid_price": bid,
+                            "bid_quantity": "1",
+                            "ask_price": ask,
+                            "ask_quantity": "1",
+                            "event_time_source": "received_at",
+                        }
+                    ),
+                ),
+            )
+            connection.execute(
+                """
+                INSERT INTO stream_watermark_projections(
+                  collector_session_id,stream,last_sequence,observed_at,quality_status)
+                VALUES (%s,%s,%s,%s,'healthy')
+                ON CONFLICT (collector_session_id,stream) DO UPDATE SET
+                  last_sequence=EXCLUDED.last_sequence,
+                  observed_at=EXCLUDED.observed_at,
+                  quality_status=EXCLUDED.quality_status
+                """,
+                (session_id, stream, sequence, observed_at),
+            )
+            connection.execute(
+                """
+                INSERT INTO market_status_projections(
+                  symbol,price,event_time,received_at,quality_status,quality_reasons,
+                  stream_watermark,last_event_id)
+                VALUES (%s,%s,%s,%s,'healthy',%s,%s,%s)
+                ON CONFLICT (symbol) DO UPDATE SET
+                  price=EXCLUDED.price,
+                  event_time=EXCLUDED.event_time,
+                  received_at=EXCLUDED.received_at,
+                  quality_status=EXCLUDED.quality_status,
+                  quality_reasons=EXCLUDED.quality_reasons,
+                  stream_watermark=EXCLUDED.stream_watermark,
+                  last_event_id=EXCLUDED.last_event_id
+                """,
+                (
+                    symbol,
+                    bid,
+                    observed_at,
+                    observed_at,
+                    Jsonb([]),
+                    Jsonb(watermark),
+                    normalized_id,
+                ),
+            )
+
+
+def _seed_rawless_normalized_books(suffix: str, observed_at: datetime) -> None:
+    observed_text = observed_at.isoformat().replace("+00:00", "Z")
+    with psycopg.connect(DATABASE_URL) as connection:
+        connection.execute("SET LOCAL session_replication_role = replica")
+        for sequence, (symbol, bid, ask) in enumerate(
+            (("BTCUSDT", "99.99", "100"), ("ETHUSDT", "49.99", "50")), start=100
+        ):
+            raw_id = canonical_hash(["rawless-risk-book", suffix, symbol])
+            connection.execute(
+                """
+                INSERT INTO normalized_market_events(
+                  id,raw_event_id,event_type,schema_version,source,symbol,event_time,received_at,
+                  sequence,raw_payload_hash,correlation_id,quality_status,quality_reasons,
+                  stream_watermark,payload)
+                VALUES (%s,%s,'book_ticker','woozoo.market-event/v1','binance_spot_public',
+                  %s,%s,%s,%s,%s,%s,'healthy',%s,%s,%s)
+                """,
+                (
+                    canonical_hash(["rawless-normalized-risk-book", suffix, symbol]),
+                    raw_id,
+                    symbol,
+                    observed_at,
+                    observed_at,
+                    sequence,
+                    canonical_hash(["rawless-payload", suffix, symbol]),
+                    f"rawless-{suffix}",
+                    Jsonb([]),
+                    Jsonb(
+                        {
+                            "session_id": "00000000-0000-7000-8000-000000000999",
+                            "stream": f"{symbol.lower()}@bookTicker",
+                            "last_sequence": sequence,
                             "observed_at": observed_text,
                         }
                     ),
@@ -685,6 +795,121 @@ def test_agent_persistence_is_atomic_idempotent_and_append_only() -> None:
             run("docker", "compose", "down", "-v")
 
 
+def test_authoritative_risk_context_requires_latest_raw_bound_books() -> None:
+    with docker_infrastructure_lock():
+        run("docker", "compose", "down", "-v")
+        run("docker", "compose", "up", "-d", "--wait", "postgres")
+        try:
+            run(sys.executable, "-m", "alembic", "upgrade", "head")
+            with psycopg.connect(DATABASE_URL) as connection:
+                database_now_row = connection.execute("SELECT clock_timestamp()").fetchone()
+            assert database_now_row is not None
+            database_now = database_now_row[0]
+
+            rawless_time = database_now - timedelta(seconds=3)
+            rawless_evidence = _seed_evidence(
+                observed_at=rawless_time,
+                evidence_id="a" * 64,
+                evidence_digest="b" * 64,
+                item_id="c" * 64,
+                raw_id="d" * 64,
+                raw_hash="e" * 64,
+            )
+            _seed_rawless_normalized_books("only", rawless_time)
+            PostgresPaperStore(DATABASE_URL).reconcile(
+                PAPER_ACCOUNT_ID,
+                checkpoint_id="rawless-risk-context-reconciliation",
+                created_at=database_now,
+            )
+            rawless_loaded = PostgresAgentStore(AGENT_DATABASE_URL).load_evidence(
+                rawless_evidence.evidence_id
+            )
+            assert rawless_loaded is not None
+            rawless_workflow = asyncio.run(
+                AgentWorkflow(
+                    MockLlmProvider(),
+                    clock=lambda: rawless_time.isoformat().replace("+00:00", "Z"),
+                    namespace="paper",
+                ).run(rawless_loaded)
+            )
+            rawless_proposal = (
+                PostgresAgentStore(AGENT_DATABASE_URL).persist(rawless_workflow).proposal_id
+            )
+            assert rawless_proposal is not None
+            with psycopg.connect(RISK_DATABASE_URL) as connection:
+                rawless_context_row = connection.execute(
+                    "SELECT load_authoritative_risk_context_v1(%s,%s,%s)",
+                    (rawless_proposal, PAPER_ACCOUNT_ID, database_now),
+                ).fetchone()
+            assert rawless_context_row is not None
+            assert rawless_context_row[0]["books"] == {}
+            with pytest.raises(ValueError, match="RISK_BOOK_NOT_FOUND"):
+                PostgresRiskStore(RISK_DATABASE_URL).evaluate_proposal(
+                    rawless_proposal, PAPER_ACCOUNT_ID, database_now
+                )
+
+            with psycopg.connect(DATABASE_URL) as connection:
+                second_now_row = connection.execute("SELECT clock_timestamp()").fetchone()
+            assert second_now_row is not None
+            second_now = second_now_row[0]
+            evidence_time = second_now - timedelta(seconds=2)
+            valid_book_time = second_now - timedelta(seconds=1)
+            newer_unverified_time = second_now
+            fallback_evidence = _seed_evidence(
+                observed_at=evidence_time,
+                evidence_id="1" * 64,
+                evidence_digest="2" * 64,
+                item_id="3" * 64,
+                raw_id="4" * 64,
+                raw_hash="5" * 64,
+            )
+            _seed_phase7_books(fallback_evidence.evidence_id, valid_book_time)
+            with psycopg.connect(DATABASE_URL) as connection:
+                valid_book_authority = connection.execute(
+                    "SELECT count(*),bool_and("
+                    "paper_recorded_book_market_is_current_v1(id)) "
+                    "FROM normalized_market_events "
+                    "WHERE event_type='book_ticker' AND event_time=%s",
+                    (valid_book_time,),
+                ).fetchone()
+            assert valid_book_authority == (2, True)
+            _seed_rawless_normalized_books("newest", newer_unverified_time)
+            fallback_loaded = PostgresAgentStore(AGENT_DATABASE_URL).load_evidence(
+                fallback_evidence.evidence_id
+            )
+            assert fallback_loaded is not None
+            fallback_workflow = asyncio.run(
+                AgentWorkflow(
+                    MockLlmProvider(),
+                    clock=lambda: evidence_time.isoformat().replace("+00:00", "Z"),
+                    namespace="paper",
+                ).run(fallback_loaded)
+            )
+            fallback_proposal = (
+                PostgresAgentStore(AGENT_DATABASE_URL).persist(fallback_workflow).proposal_id
+            )
+            assert fallback_proposal is not None
+            with psycopg.connect(RISK_DATABASE_URL) as connection:
+                fallback_context_row = connection.execute(
+                    "SELECT load_authoritative_risk_context_v1(%s,%s,%s)",
+                    (fallback_proposal, PAPER_ACCOUNT_ID, newer_unverified_time),
+                ).fetchone()
+            assert fallback_context_row is not None
+            assert fallback_context_row[0]["books"] == {}
+            with pytest.raises(ValueError, match="RISK_BOOK_NOT_FOUND"):
+                PostgresRiskStore(RISK_DATABASE_URL).evaluate_proposal(
+                    fallback_proposal, PAPER_ACCOUNT_ID, newer_unverified_time
+                )
+            with psycopg.connect(RISK_DATABASE_URL) as connection:
+                decision_count = connection.execute(
+                    "SELECT count(*) FROM risk_decisions WHERE proposal_id IN (%s,%s)",
+                    (rawless_proposal, fallback_proposal),
+                ).fetchone()
+            assert decision_count == (0,)
+        finally:
+            run("docker", "compose", "down", "-v")
+
+
 def test_phase7_postgres_evaluate_proposal_preserves_canonical_evidence_times() -> None:
     with docker_infrastructure_lock():
         run("docker", "compose", "down", "-v")
@@ -720,6 +945,27 @@ def test_phase7_postgres_evaluate_proposal_preserves_canonical_evidence_times() 
             )
             assert decision.verdict == "ALLOWED"
             assert "PROPOSAL_HASH_MISMATCH" not in decision.ordered_reason_codes
+            with psycopg.connect(RISK_DATABASE_URL) as connection:
+                existing_context_row = connection.execute(
+                    "SELECT load_authoritative_risk_context_v1(%s,%s,%s)",
+                    (
+                        persisted_analysis.proposal_id,
+                        PAPER_ACCOUNT_ID,
+                        observed_at + timedelta(seconds=30),
+                    ),
+                ).fetchone()
+            assert existing_context_row == ({"existing_risk_input": risk_input},)
+            replay_input, replay_decision, replayed_risk = PostgresRiskStore(
+                RISK_DATABASE_URL
+            ).evaluate_proposal(
+                persisted_analysis.proposal_id,
+                PAPER_ACCOUNT_ID,
+                observed_at,
+            )
+            assert replay_input == risk_input
+            assert replay_decision == decision
+            assert replayed_risk.created is False
+            assert replayed_risk.decision_id == persisted_risk.decision_id
             data = risk_input["data"]
             assert isinstance(data, dict)
             assert data["as_of"] == observed_text
@@ -847,7 +1093,10 @@ def test_phase7_postgres_evaluate_proposal_preserves_canonical_evidence_times() 
                     (PAPER_ACCOUNT_ID,),
                 ).fetchall() == [("BTCUSDT", "OPEN")]
 
-            second_at = observed_at + timedelta(seconds=1)
+            with psycopg.connect(DATABASE_URL) as connection:
+                second_at_row = connection.execute("SELECT clock_timestamp()").fetchone()
+            assert second_at_row is not None
+            second_at = second_at_row[0]
             second_text = second_at.isoformat().replace("+00:00", "Z")
             second_evidence = _seed_evidence(
                 symbol="ETHUSDT",
@@ -858,6 +1107,7 @@ def test_phase7_postgres_evaluate_proposal_preserves_canonical_evidence_times() 
                 raw_id="9" * 64,
                 raw_hash="b" * 64,
             )
+            _seed_phase7_books(second_evidence.evidence_id, second_at)
             loaded_second = agent_store.load_evidence(second_evidence.evidence_id)
             assert loaded_second is not None
             second_workflow = asyncio.run(

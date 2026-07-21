@@ -185,6 +185,12 @@ def test_approval_sql_authority_requires_allowed_risk_and_rechecks_worker_atomic
     assert "risk-proposal:" in risk_evaluation
     assert "risk-proposal:" in approval_command
     assert "risk-proposal:" in first_attempt
+    risk_books = risk_evaluation.split("'books'", 1)[1].split("'open_orders'", 1)[0]
+    assert "SELECT DISTINCT ON (event.symbol) event.id,event.symbol,event.payload" in risk_books
+    assert risk_books.index(") latest") < risk_books.index(
+        "WHERE paper_recorded_book_market_is_current_v1(latest.id)"
+    )
+    assert risk_books.count("paper_recorded_book_market_is_current_v1(latest.id)") == 1
     assert approval_command.index(
         "'paper-account:{PAPER_DEFAULT_ACCOUNT_ID}',0"
     ) < approval_command.index("'risk-proposal:'||p_proposal_id")
