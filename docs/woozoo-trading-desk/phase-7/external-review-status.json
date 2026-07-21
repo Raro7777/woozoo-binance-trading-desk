@@ -3,11 +3,11 @@
   "phase": 7,
   "status": "external-review-unavailable",
   "runner": "codex",
-  "target_commit": "2b8aa59f366bc621fbbd3ffe4ef40a6ce6d86456",
-  "target_tree": "3d3e96360561a4029deb6c052e40f7a527615c30",
+  "target_commit": "cacdd0738d4c281dac475b8eb478ddba2b1447c0",
+  "target_tree": "800d2d1d1338b030298218c42377076a95e40778",
   "prompt_evidence": {
     "path": "_workspace/reviews/p7_mvp_prompt_external.md",
-    "sha256": "61f0f6d02905b0d544205787f7eab4609efc0c977d86774855c08f93fbb5c6b7"
+    "sha256": "7dc72f34a7a114f0b5e9290f3cc7182171cafb0502ab0def9a68dd436d0612b2"
   },
   "selected_reviewers": [
     "agy"
@@ -30,7 +30,7 @@
     }
   ],
   "final_inventory_check": {
-    "checked_at": "2026-07-21T03:31:42Z",
+    "checked_at": "2026-07-21T04:12:32Z",
     "project_selector_result": "EXTERNAL_REVIEWERS: agy",
     "allowed_external_reviewers": [
       "agy",

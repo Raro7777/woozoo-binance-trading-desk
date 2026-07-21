@@ -2,15 +2,15 @@
   "schema_version": 1,
   "phase": 7,
   "status": "PENDING_FINAL_REVIEW_EVIDENCE",
-  "frozen_code_commit": "2b8aa59f366bc621fbbd3ffe4ef40a6ce6d86456",
-  "frozen_code_tree": "3d3e96360561a4029deb6c052e40f7a527615c30",
+  "frozen_code_commit": "cacdd0738d4c281dac475b8eb478ddba2b1447c0",
+  "frozen_code_tree": "800d2d1d1338b030298218c42377076a95e40778",
   "review_evidence_commit": null,
   "branch": "codex/phase-7-trading-room",
   "base": "main",
   "push": {
     "status": "PASS",
     "remote": "origin",
-    "remote_head": "2b8aa59f366bc621fbbd3ffe4ef40a6ce6d86456"
+    "remote_head": "cacdd0738d4c281dac475b8eb478ddba2b1447c0"
   },
   "draft_pr": {
     "status": "PENDING_FINAL_REVIEW_EVIDENCE",
@@ -21,7 +21,7 @@
     "mergeable": true,
     "base": "main",
     "head": "codex/phase-7-trading-room",
-    "verified_head_sha": "2b8aa59f366bc621fbbd3ffe4ef40a6ce6d86456",
+    "verified_head_sha": "cacdd0738d4c281dac475b8eb478ddba2b1447c0",
     "created_at": "2026-07-20T12:42:28Z"
   },
   "verification": {

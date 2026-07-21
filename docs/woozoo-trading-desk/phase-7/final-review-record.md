@@ -2,21 +2,22 @@
 
 ## 현재 판정
 
-동결 구현 후보 `2b8aa59f366bc621fbbd3ffe4ef40a6ce6d86456`은 정본 CI와 Phase 7 인수 분모를 통과했다. 이 문서는 정확한 후보에 대한 역할 분리 Safety QA와 동일 엔진 Codex 교차검토를 시작하기 위한 사전 동결 기록이며, 두 검토 결과는 아직 `REVIEW_PENDING`이다.
+동결 구현 후보 `cacdd0738d4c281dac475b8eb478ddba2b1447c0`은 정본 CI와 Phase 7 인수 분모를 통과했다. 이 문서는 정확한 후보에 대한 역할 분리 Safety QA와 동일 엔진 Codex 교차검토를 시작하기 위한 사전 동결 기록이며, 두 검토 결과는 아직 `REVIEW_PENDING`이다.
 
 Phase 7은 여전히 active·unaccepted 상태다. 최종 인수 증거 매니페스트의 SHA-256을 사용자가 명시적으로 승인하기 전에는 Phase 7 완료나 Phase 8 전환 권한이 생기지 않는다.
 
 ## 동결 증거
 
-- commit: `2b8aa59f366bc621fbbd3ffe4ef40a6ce6d86456`
-- tree: `3d3e96360561a4029deb6c052e40f7a527615c30`
-- worktree digest: `3a4ab470bd14a539350c0f96e251749a9884d79ea3c85a528e76609965d9aef4`
-- frozen files: 400
+- commit: `cacdd0738d4c281dac475b8eb478ddba2b1447c0`
+- tree: `800d2d1d1338b030298218c42377076a95e40778`
+- worktree digest: `4cdc63d2c98da91df5563508d14e834e6e5faa771781787ce31271923970f2fe`
+- frozen files: 402
 - canonical command: `corepack pnpm ci`, PASS, exit 0
-- P7-43: 43/43 PASS, 1,118 frozen test executions
-- scenario manifest SHA-256: `9377c175c0ed6211b7b8284d707878a64adcfc3104a615da26c8421ebaa27803`
-- aggregate output digest: `9a839141c13c3db9d5393d3e476ad67f079e1e109cdee43dbed731b365a61c9e`
-- P7-43 artifact SHA-256: `673b6f23636721aabd449ed0d5b147c49e579cebf98481077de9b4a19c5807f4`
+- P7-43: 43/43 PASS, 1,121 frozen test executions
+- scenario manifest SHA-256: `937517899f4383c631935278617c4aaac0234f1d6fa7b7ac94f658dbbfe6a244`
+- aggregate output digest: `231ccf08c989f09840c30e9349c43c24ee2b6d68b82ac695fde6501ada2bd6cf`
+- P7-43 artifact SHA-256: `5e5929d44c39c396c0ca8589b78fae220ba50d136e55f8921b445187774533ea`
+- E2E fresh-volume preflight SHA-256: `13d0a01cf2a19be5499ed7c79b25341245f17aa899c46e36840fcfa9d5214032`
 
 ## 검토 게이트
 
@@ -31,7 +32,8 @@ Phase 7은 여전히 active·unaccepted 상태다. 최종 인수 증거 매니�
 - Paper 작업자가 stale·failed·missing·unavailable이어도 사람의 거절은 가능하고 승인만 fail-closed 되도록 승인·거절 가용성 계약을 분리했다.
 - 거절 가능 응답은 완전한 Risk·canonical preview 바인딩과 미발급 approval/authorization 상태를 스키마에서 강제한다.
 - 알 수 없는 Paper 작업자 상태는 `PAPER_WORKER_STATE_INVALID`로 fail-closed 되며 모든 작업자 차단 사유는 한국어 UI에 닫힌 집합으로 표시된다.
-- Postgres 새 볼륨 초기화 중 임시 Unix-socket 서버를 정상 준비 상태로 오인하지 않도록 헬스체크를 명시적 TCP probe로 고정했다. 새 볼륨 생성 직후 마이그레이션을 3회 반복 검증했고 DATA-005와 E2E도 정본 CI에서 통과했다.
+- Postgres 새 볼륨 초기화 중 임시 Unix-socket 서버를 정상 준비 상태로 오인하지 않도록 헬스체크를 명시적 TCP probe로 고정했다.
+- E2E 사전 cleanup 실패와 잔존 named volume을 fail-closed로 차단한다. cleanup·볼륨 부재·startup·migration·recorded-data bootstrap 결과는 `E2E-INFRA-001`에 기록되고 각 E2E 결과가 그 파일 해시를 직접 결속한다.
 - Kill completion/recovery, rejected receipt namespace dialect, receipt↔attempt request hash, terminal BLOCKED outcome, Evidence freshness, logout/command-guard 직렬화 회귀를 유지했다.
 
 ## 제품 경계
