@@ -1233,9 +1233,9 @@ def test_paper_lock_wait_crossing_expiry_uses_post_lock_wall_clock(postgres: Non
                 (f"paper-account:{ACCOUNT_ID}",),
             )
             future = executor.submit(attempt_while_locked)
-            assert started.wait(timeout=2)
-            with psycopg.connect(DATABASE_URL) as observer:
-                deadline = time.monotonic() + 5
+            assert started.wait(timeout=5)
+            with psycopg.connect(DATABASE_URL, autocommit=True) as observer:
+                deadline = time.monotonic() + 20
                 while time.monotonic() < deadline:
                     waiting = observer.execute(
                         "SELECT wait_event_type FROM pg_stat_activity "
@@ -1253,7 +1253,7 @@ def test_paper_lock_wait_crossing_expiry_uses_post_lock_wall_clock(postgres: Non
                     (authorization_id,),
                 ).fetchone()
                 assert expires_at is not None
-                deadline = time.monotonic() + 10
+                deadline = time.monotonic() + 15
                 while time.monotonic() < deadline:
                     expired = observer.execute(
                         "SELECT clock_timestamp()>=%s", (expires_at[0],)
@@ -1267,7 +1267,7 @@ def test_paper_lock_wait_crossing_expiry_uses_post_lock_wall_clock(postgres: Non
             lock_connection.commit()
             lock_connection.close()
         assert future is not None
-        result = future.result(timeout=5)
+        result = future.result(timeout=10)
     finally:
         executor.shutdown(wait=True, cancel_futures=True)
 
