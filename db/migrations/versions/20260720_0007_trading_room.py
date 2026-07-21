@@ -1392,6 +1392,11 @@ def upgrade() -> None:
           raw_payload jsonb;
           book_payload jsonb;
         BEGIN
+          -- The market writer acquires its normalized table RowExclusive lock
+          -- before watermark and market rows.  Upgrade the reader's table lock
+          -- first so any already-in-flight insert commits before authority is
+          -- checked, while later inserts remain blocked through this transaction.
+          LOCK TABLE normalized_market_events IN SHARE MODE;
           SELECT raw.collector_session_id,raw.stream,raw.source_dedupe_key,
                  raw.payload_bytes,raw.payload_hash,raw.id AS raw_event_id,
                  normalized.raw_payload_hash,normalized.schema_version,
@@ -1531,6 +1536,12 @@ def upgrade() -> None:
             AND normalized.received_at<=observed_now
             AND observed_now-normalized.event_time<=interval '5 seconds'
             AND observed_now-normalized.received_at<=interval '5 seconds'
+            AND normalized.id=(
+              SELECT newest.id FROM normalized_market_events newest
+              WHERE newest.symbol=normalized.symbol
+                AND newest.event_type='book_ticker'
+              ORDER BY newest.event_time DESC,newest.received_at DESC,newest.id DESC
+              LIMIT 1)
           ) AS is_healthy
           INTO current_state
           FROM normalized_market_events normalized
@@ -2434,10 +2445,11 @@ def upgrade() -> None:
               'received_at',latest.received_at) ORDER BY latest.symbol)
             INTO data_material
           FROM (
-            SELECT DISTINCT ON (symbol) id,symbol,payload,quality_status,received_at
+            SELECT DISTINCT ON (symbol) id,symbol,payload,quality_status,
+              event_time,received_at
             FROM normalized_market_events
             WHERE symbol IN ('BTCUSDT','ETHUSDT') AND event_type='book_ticker'
-            ORDER BY symbol,received_at DESC,sequence DESC,id DESC
+            ORDER BY symbol,event_time DESC,received_at DESC,id DESC
           ) latest
           WHERE latest.quality_status='healthy'
             AND latest.payload ?& array['bid_price','ask_price']
@@ -2876,7 +2888,7 @@ def upgrade() -> None:
           SELECT event.id,event.payload,event.quality_status,event.received_at
           FROM normalized_market_events event
           WHERE event.symbol=requested.symbol AND event.event_type='book_ticker'
-          ORDER BY event.received_at DESC,event.sequence DESC,event.id DESC LIMIT 1
+          ORDER BY event.event_time DESC,event.received_at DESC,event.id DESC LIMIT 1
         ) latest ON true
         ORDER BY requested.symbol
     """)
@@ -2932,7 +2944,7 @@ def upgrade() -> None:
             FROM normalized_market_events event
             WHERE event.symbol IN ('BTCUSDT','ETHUSDT')
               AND event.event_type='book_ticker'
-            ORDER BY event.symbol,event.received_at DESC,event.sequence DESC,event.id DESC
+            ORDER BY event.symbol,event.event_time DESC,event.received_at DESC,event.id DESC
           ) latest
           WHERE latest.quality_status='healthy'
             AND latest.received_at<=CURRENT_TIMESTAMP

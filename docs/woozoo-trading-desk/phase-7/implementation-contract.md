@@ -72,10 +72,14 @@ immutable Evidence
   an incident reference, authenticated actor, and healthy data, ledger, and
   reconciliation. Its reader and writer select the same latest BTCUSDT and
   ETHUSDT book event IDs and require the raw-bound current-market verifier to
-  pass for both while transaction locks are held. The writer also locks the
-  authorization-worker row and samples the database wall clock only after the
-  market and worker authority locks; that one time controls worker/data
-  freshness and every recovery effect timestamp. A stale projection,
+  pass for both while transaction locks are held. The shared verifier follows
+  the market writer's normalized-table, watermark, market, and collector lock
+  order, then reselects the exact latest normalized book ID for the symbol;
+  committing a newer book while a reader waits therefore invalidates the
+  originally selected row. The writer also locks the authorization-worker row
+  and samples the database wall clock only after the market and worker authority
+  locks; that one time controls worker/data freshness and every recovery effect
+  timestamp. A stale projection,
   watermark, collector session, raw provenance, worker heartbeat, future clock,
   or lock conflict therefore keeps recovery on HOLD even when an immutable
   normalized row still says healthy. Timer, AI, restart, and Redis cannot
@@ -114,12 +118,15 @@ closed `paper` namespace and cannot reference `test` fixtures.
 
 The Paper first-attempt transaction locks authorization, Risk Proposal, Kill,
 reconciliation, ledger, balance, order, and exact raw/current-market authority
-in one documented order. Only after the last potentially blocking market
-verifier lock does it sample one database wall clock for expiry/freshness and
-all attempt, receipt, broker-input, order/ledger, and outbox timestamps. Success
-writes receipt, attempt, order, holds/ledger and outbox atomically. Guard failure
-writes a blocked attempt, rejected receipt and outbox atomically with no order,
-hold, fill or ledger effect.
+in one documented order. The shared verifier first serializes against concurrent
+normalized inserts, then locks and validates watermark, market and collector
+authority and requires the originally selected ID to remain the exact newest
+book under the canonical event-time, received-time and ID ordering. Only after
+the last potentially blocking market verifier lock does it sample one database
+wall clock for expiry/freshness and all attempt, receipt, broker-input,
+order/ledger, and outbox timestamps. Success writes receipt, attempt, order,
+holds/ledger and outbox atomically. Guard failure writes a blocked attempt,
+rejected receipt and outbox atomically with no order, hold, fill or ledger effect.
 
 The same inbound-less Paper runtime may consume only append-only, healthy Binance
 Spot public `book_ticker` rows received after an order was accepted. It selects

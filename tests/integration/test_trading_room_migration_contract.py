@@ -68,6 +68,10 @@ def test_phase7_migration_closes_auth_approval_authorization_and_recovery_bounda
     recorded_book_guard = source.split(
         "CREATE FUNCTION paper_recorded_book_market_is_current_v1", 1
     )[1].split("CREATE FUNCTION enforce_phase7_attempt_binding", 1)[0]
+    assert "LOCK TABLE normalized_market_events IN SHARE MODE" in recorded_book_guard
+    assert recorded_book_guard.index(
+        "LOCK TABLE normalized_market_events IN SHARE MODE"
+    ) < recorded_book_guard.index("PERFORM 1 FROM stream_watermark_projections watermark")
     assert recorded_book_guard.index(
         "PERFORM 1 FROM stream_watermark_projections watermark"
     ) < recorded_book_guard.index("PERFORM 1 FROM market_status_projections market")
@@ -83,6 +87,12 @@ def test_phase7_migration_closes_auth_approval_authorization_and_recovery_bounda
     )
     assert recorded_book_guard.index("LOCK TABLE collector_sessions IN SHARE MODE") < (
         recorded_book_guard.index("SELECT latest.id FROM collector_sessions latest")
+    )
+    assert "AND normalized.id=(" in recorded_book_guard
+    assert "SELECT newest.id FROM normalized_market_events newest" in recorded_book_guard
+    assert (
+        "ORDER BY newest.event_time DESC,newest.received_at DESC,newest.id DESC"
+        in recorded_book_guard
     )
     assert "digest(source_identity.payload_bytes,'sha256')" in recorded_book_guard
     assert "source_identity.payload_hash<>source_identity.raw_payload_hash" in recorded_book_guard
@@ -132,6 +142,11 @@ def test_phase7_migration_closes_auth_approval_authorization_and_recovery_bounda
     assert "attempt.paper_execution_authorization_id=authz.authorization_id" in completion_guard
     assert "paper_recorded_book_market_is_current_v1(latest.id)" in recovery_guard
     assert "paper_recorded_book_market_is_current_v1(latest.id)" in recovery_reader
+    assert "ORDER BY symbol,event_time DESC,received_at DESC,id DESC" in recovery_guard
+    assert (
+        "ORDER BY event.symbol,event.event_time DESC,event.received_at DESC,event.id DESC"
+        in recovery_reader
+    )
     for writer_guard, authority_comparison in (
         (approval_guard, "checkpoint_row.authority_sequence<>COALESCE(("),
         (recovery_guard, "checkpoint_row.authority_sequence=COALESCE(("),

@@ -8,7 +8,7 @@
   "phase_schedule_amendment": "docs/woozoo-trading-desk/phase-5/phase-0-contract-amendment.md",
   "phase_schedule_amendment_sha256": "faab0952b4c60d6cc432bd699d549f52d9c9b43f75e4e7050b30e01bb70b6c68",
   "implementation_contract": "docs/woozoo-trading-desk/phase-7/implementation-contract.md",
-  "implementation_contract_sha256": "6af58f778c4c0770eabf87f435e64b1356c98e6187ca924b4cbbd1784ed0745d",
+  "implementation_contract_sha256": "fdc7a1ed8808777ff97fd9dc04dab7fa8df057497ccfd0edf8d012e523642ee6",
   "fixed_seed": 0,
   "timezone": "UTC",
   "trading_mode": "paper",
@@ -282,6 +282,7 @@
         "tests/integration/test_phase7_paper_first_attempt_authority.py::test_first_attempt_does_not_fall_back_from_newest_unverified_book",
         "tests/integration/test_phase7_paper_first_attempt_authority.py::test_paper_lock_wait_crossing_expiry_uses_post_lock_wall_clock",
         "tests/integration/test_phase7_paper_first_attempt_authority.py::test_market_authority_lock_wait_crossing_expiry_uses_post_lock_wall_clock",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_newer_book_commit_while_verifier_waits_blocks_stale_first_attempt",
         "tests/integration/test_phase7_paper_first_attempt_authority.py::test_expired_and_revoked_authorization_uses_expiry_precedence",
         "tests/integration/test_phase7_paper_first_attempt_authority.py::test_revoked_and_newer_denied_risk_uses_risk_precedence",
         "tests/integration/test_phase7_paper_first_attempt_authority.py::test_kill_and_expired_authorization_uses_kill_precedence_and_drains",
@@ -299,12 +300,12 @@
       ],
       "source_sha256": [
         "9d5d32d65c8bf17db096b4ecd718969c96b4be5f613db594f8021b7ff2325abc",
-        "9f1e1d634cde5b6e575f373562cead7f15d04c8429315cd1de5b475b9cb7a71c",
+        "56a1ea53ff01091e0bf9ed7fb7b636236f84e800c4bf38a54f34e299f591fa7e",
         "d872eb3e9060624ea526d68d5f249fa096d94a285f9e97e24257d54e9465faf4",
-        "a7da863db53f153ea87cb85269ff5bc0419ee3894bf7200af44a32536006848b",
+        "acc84079a939aa0eaee24089706852801a1b64047384e77d0e70a613bdeafe2d",
         "5df68171d47cfbf6dc19e8c6672e326380dc7ab60a978905e09941cab81fad42"
       ],
-      "oracle": "A direct human decision is recorded only for a complete latest ALLOWED Risk decision: DENIED or ERROR blocks both APPROVE and REJECT with zero approval, receipt, outbox, authorization, attempt or order effect. New APPROVE locks and rechecks the authoritative worker row inside the issuance transaction; worker readiness never blocks a valid human REJECT. Risk persistence, approval and the first Paper attempt share one proposal authority lock: a newer DENIED decision wins before a waiting approval and supersedes an already-issued authorization at first attempt without an order. Approval issuance samples one database wall clock only after every authority lock, so a Risk decision that expires while the command waits creates no approval or authorization. Authoritative Risk context and the first Paper attempt select the newest BTCUSDT and ETHUSDT normalized rows before verifying their exact raw bytes and hash, collector identity, stream watermark and current-market projection; rawless or unverified newest rows fail closed and never fall back to an older valid row. After all blocking market-authority locks, one wall-clock sample controls the first-attempt expiry/freshness boundary and every effect, so an authorization that expires on either the account or verifier lock cannot create an order. Kill recovery likewise locks the worker and market authority before sampling its recovery clock; a heartbeat that becomes stale while waiting leaves Kill active with zero recovery effect. Approval issuance rejects a reconciliation checkpoint whose stamped authority sequence predates any committed Paper effect. Composite first-attempt blockers resolve to exactly one database-enforced reason in Risk drift, Kill active, Kill version drift, expiry at or after the boundary, then revocation priority; expired plus revoked, revoked plus newer DENIED, and Kill plus expired each create one terminal attempt, receipt, broker input and blocked outbox with zero order, hold, fill or ledger effect, replay immutably, and do not stall the Kill drain. Reconciliation, stale books and execution-quality drift remain terminal fail-closed checks."
+      "oracle": "A direct human decision is recorded only for a complete latest ALLOWED Risk decision: DENIED or ERROR blocks both APPROVE and REJECT with zero approval, receipt, outbox, authorization, attempt or order effect. New APPROVE locks and rechecks the authoritative worker row inside the issuance transaction; worker readiness never blocks a valid human REJECT. Risk persistence, approval and the first Paper attempt share one proposal authority lock: a newer DENIED decision wins before a waiting approval and supersedes an already-issued authorization at first attempt without an order. Approval issuance samples one database wall clock only after every authority lock, so a Risk decision that expires while the command waits creates no approval or authorization. Authoritative Risk context and the first Paper attempt select the newest BTCUSDT and ETHUSDT normalized rows before verifying their exact raw bytes and hash, collector identity, stream watermark and current-market projection. The shared verifier serializes against concurrent normalized inserts and then requires the originally selected ID to remain the exact newest symbol book, so a newer commit made while the verifier waits fails closed instead of using the stale price; rawless or unverified newest rows likewise fail closed and never fall back to an older valid row. After all blocking market-authority locks, one wall-clock sample controls the first-attempt expiry/freshness boundary and every effect, so an authorization that expires on either the account or verifier lock cannot create an order. Kill recovery likewise locks the worker and market authority before sampling its recovery clock; a heartbeat that becomes stale while waiting leaves Kill active with zero recovery effect. Approval issuance rejects a reconciliation checkpoint whose stamped authority sequence predates any committed Paper effect. Composite first-attempt blockers resolve to exactly one database-enforced reason in Risk drift, Kill active, Kill version drift, expiry at or after the boundary, then revocation priority; expired plus revoked, revoked plus newer DENIED, and Kill plus expired each create one terminal attempt, receipt, broker input and blocked outbox with zero order, hold, fill or ledger effect, replay immutably, and do not stall the Kill drain. Reconciliation, stale books and execution-quality drift remain terminal fail-closed checks."
     },
     {
       "id": "E2E-001",
@@ -334,10 +335,10 @@
       "source_sha256": [
         "90a31939b5325fb4ec774edd91789ef40b51c70ff35d97206f2393e6f756d3ef",
         "dd85d3264e1a7374d1e34e8f7fde5a083fd8ae115b927d453941c5a4be9942d3",
-        "9f1e1d634cde5b6e575f373562cead7f15d04c8429315cd1de5b475b9cb7a71c",
+        "56a1ea53ff01091e0bf9ed7fb7b636236f84e800c4bf38a54f34e299f591fa7e",
         "07cb535db57cca0e4f13b44a2ad75a2716461abe283517bb6cfe67d0409757c6",
         "5769abf0ed4b9a57c849a168da2536cb6397d2b24dc514d06b8c45e54633c7a8",
-        "a7da863db53f153ea87cb85269ff5bc0419ee3894bf7200af44a32536006848b"
+        "acc84079a939aa0eaee24089706852801a1b64047384e77d0e70a613bdeafe2d"
       ],
       "configuration_sources": [
         {
@@ -473,7 +474,7 @@
       "source_sha256": [
         "90a31939b5325fb4ec774edd91789ef40b51c70ff35d97206f2393e6f756d3ef",
         "dd85d3264e1a7374d1e34e8f7fde5a083fd8ae115b927d453941c5a4be9942d3",
-        "9f1e1d634cde5b6e575f373562cead7f15d04c8429315cd1de5b475b9cb7a71c",
+        "56a1ea53ff01091e0bf9ed7fb7b636236f84e800c4bf38a54f34e299f591fa7e",
         "5769abf0ed4b9a57c849a168da2536cb6397d2b24dc514d06b8c45e54633c7a8"
       ],
       "configuration_sources": [

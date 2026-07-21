@@ -1485,6 +1485,163 @@ def test_market_authority_lock_wait_crossing_expiry_uses_post_lock_wall_clock(
     _assert_composite_block_is_terminal(authorization_id, "AUTHORIZATION_EXPIRED")
 
 
+def test_newer_book_commit_while_verifier_waits_blocks_stale_first_attempt(
+    postgres: None,
+) -> None:
+    authorization_id, _ = _seed_authorization(
+        "newer-book-verifier-wait", healthy_reconciliation=True
+    )
+    application_name = "phase7-newer-book-verifier-wait"
+    waiting_store = PostgresPaperStore(f"{PAPER_WRITER_URL}?application_name={application_name}")
+    started = Event()
+
+    with psycopg.connect(DATABASE_URL) as connection:
+        prior_book = connection.execute(
+            "SELECT id FROM normalized_market_events "
+            "WHERE symbol='BTCUSDT' AND event_type='book_ticker' "
+            "ORDER BY event_time DESC,received_at DESC,id DESC LIMIT 1"
+        ).fetchone()
+    assert prior_book is not None
+
+    writer = psycopg.connect(DATABASE_URL)
+    executor = ThreadPoolExecutor(max_workers=1)
+    future = None
+    newer_event_id = ""
+    try:
+        observed_row = writer.execute("SELECT clock_timestamp()").fetchone()
+        sequence_row = writer.execute(
+            "SELECT COALESCE(max(sequence),0)+1 FROM normalized_market_events "
+            "WHERE symbol='BTCUSDT'"
+        ).fetchone()
+        assert observed_row is not None and sequence_row is not None
+        observed_at = observed_row[0]
+        sequence = sequence_row[0]
+        session_id = "00000000-0000-7000-8000-000000000777"
+        stream = "btcusdt@bookTicker"
+        raw_event_id = canonical_hash(
+            {"recorded-book-raw": "newer-book-verifier-wait", "sequence": sequence}
+        )
+        raw_payload = canonical_json(
+            {
+                "u": sequence,
+                "s": "BTCUSDT",
+                "b": "10001",
+                "B": "0.00010000",
+                "a": "10002",
+                "A": "0.00010000",
+            }
+        ).encode("utf-8")
+        raw_payload_hash = sha256(raw_payload).hexdigest()
+        newer_event_id = sha256(
+            (f"woozoo.market-event/v1|{raw_event_id}|book_ticker|{sequence}").encode("utf-8")
+        ).hexdigest()
+        watermark = {
+            "session_id": session_id,
+            "stream": stream,
+            "last_sequence": sequence,
+            "observed_at": observed_at.isoformat().replace("+00:00", "Z"),
+        }
+        writer.execute(
+            "INSERT INTO raw_market_events"
+            "(id,collector_session_id,source,stream,symbol,record_kind,parent_raw_event_id,"
+            "source_dedupe_key,payload_bytes,payload_hash,source_event_time,received_at,"
+            "ingested_at,sequence,schema_version) VALUES "
+            "(%s,%s,'binance_spot_public',%s,'BTCUSDT','stream_message',NULL,%s,%s,%s,"
+            "NULL,%s,%s,%s,'woozoo.raw-market-event/v1')",
+            (
+                raw_event_id,
+                session_id,
+                stream,
+                f"book_ticker:BTCUSDT:{sequence}",
+                raw_payload,
+                raw_payload_hash,
+                observed_at,
+                observed_at,
+                sequence,
+            ),
+        )
+        writer.execute(
+            "INSERT INTO normalized_market_events"
+            "(id,raw_event_id,event_type,schema_version,source,symbol,event_time,received_at,"
+            "sequence,raw_payload_hash,correlation_id,quality_status,quality_reasons,"
+            "stream_watermark,payload) VALUES (%s,%s,'book_ticker',"
+            "'woozoo.market-event/v1','binance_spot_public','BTCUSDT',%s,%s,%s,%s,%s,"
+            "'healthy','[]'::jsonb,%s,%s)",
+            (
+                newer_event_id,
+                raw_event_id,
+                observed_at,
+                observed_at,
+                sequence,
+                raw_payload_hash,
+                session_id,
+                Jsonb(watermark),
+                Jsonb(
+                    {
+                        "kind": "book_ticker",
+                        "bid_price": "10001",
+                        "bid_quantity": "0.00010000",
+                        "ask_price": "10002",
+                        "ask_quantity": "0.00010000",
+                        "event_time_source": "received_at",
+                    }
+                ),
+            ),
+        )
+        assert writer.execute(
+            "UPDATE stream_watermark_projections SET last_sequence=%s,observed_at=%s,"
+            "quality_status='healthy' WHERE collector_session_id=%s AND stream=%s "
+            "RETURNING last_sequence",
+            (sequence, observed_at, session_id, stream),
+        ).fetchone() == (sequence,)
+        assert writer.execute(
+            "UPDATE market_status_projections SET price='10001',event_time=%s,received_at=%s,"
+            "quality_status='healthy',quality_reasons='[]'::jsonb,stream_watermark=%s,"
+            "last_event_id=%s WHERE symbol='BTCUSDT' RETURNING last_event_id",
+            (observed_at, observed_at, Jsonb(watermark), newer_event_id),
+        ).fetchone() == (newer_event_id,)
+
+        def attempt_while_newer_book_is_uncommitted() -> CommitResult:
+            started.set()
+            return waiting_store.attempt_phase7_authorization(authorization_id)
+
+        future = executor.submit(attempt_while_newer_book_is_uncommitted)
+        assert started.wait(timeout=5)
+        with psycopg.connect(DATABASE_URL, autocommit=True) as observer:
+            deadline = time.monotonic() + 20
+            while time.monotonic() < deadline:
+                waiting = observer.execute(
+                    "SELECT wait_event_type FROM pg_stat_activity "
+                    "WHERE application_name=%s AND state='active'",
+                    (application_name,),
+                ).fetchone()
+                if waiting == ("Lock",):
+                    break
+                time.sleep(0.02)
+            else:
+                pytest.fail("first attempt did not wait behind the newer book writer")
+    finally:
+        writer.commit()
+        writer.close()
+        executor.shutdown(wait=True, cancel_futures=True)
+
+    assert future is not None
+    result = future.result(timeout=10)
+    assert result.response == {
+        "result": "BLOCKED",
+        "authorization_id": authorization_id,
+        "reason_code": "DATA_INVALID",
+    }
+    _assert_composite_block_is_terminal(authorization_id, "DATA_INVALID")
+    with psycopg.connect(DATABASE_URL) as connection:
+        authority = connection.execute(
+            "SELECT paper_recorded_book_market_is_current_v1(%s),"
+            "paper_recorded_book_market_is_current_v1(%s)",
+            (prior_book[0], newer_event_id),
+        ).fetchone()
+    assert authority == (False, True)
+
+
 def test_expired_and_revoked_authorization_uses_expiry_precedence(postgres: None) -> None:
     authorization_id, _ = _seed_authorization(
         "expired-revoked-precedence",
