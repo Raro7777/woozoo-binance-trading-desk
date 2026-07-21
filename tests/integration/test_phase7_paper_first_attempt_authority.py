@@ -16,6 +16,8 @@ from typing import Iterator
 import psycopg
 from psycopg.types.json import Jsonb
 import pytest
+import httpx
+from fastapi import FastAPI
 from jsonschema import Draft202012Validator, FormatChecker
 from referencing import Registry, Resource
 
@@ -26,7 +28,21 @@ from agent_orchestrator import (
     bind_paper_risk_input,
 )
 from docker_infrastructure_lock import docker_infrastructure_lock
+from control_api.app import create_app
+from control_api.command_ports import PostgresRiskCommandPort
+from control_api.dependencies import DependencySnapshot, StaticHealthProbe
+from control_api.security import (
+    LocalOperatorSecurity,
+    PostgresSecurityRepository,
+    make_password_verifier,
+)
+from control_api.trading_room import (
+    PaperWorkerReadinessAuthority,
+    PostgresPaperWorkerReadinessAuthority,
+    PostgresTradingRoom,
+)
 from paper_engine.authorization_worker import DurableRecordedBookWorker
+from paper_engine.authorization_worker import PostgresWorkerStateReporter
 from paper_engine.persistence import PersistenceStage, Phase7AuthorizationWorker, PostgresPaperStore
 from platform_core import canonical_hash, canonical_json
 from platform_core.generated_contracts import (
@@ -39,9 +55,12 @@ from test_risk_engine import risk_input as base_risk_input
 
 ROOT = Path(__file__).parents[2]
 DATABASE_URL = "postgresql://postgres@127.0.0.1:5433/woozoo"
+CONTROL_URL = "postgresql://woozoo_control_api@127.0.0.1:5433/woozoo"
+RISK_WRITER_URL = "postgresql://woozoo_risk_engine@127.0.0.1:5433/woozoo"
 PAPER_WRITER_URL = "postgresql://woozoo_paper_engine@127.0.0.1:5433/woozoo"
 ACCOUNT_ID = "c71f45a74649ecfbc2f897ed1ced77309accd4dbbc069c9cd425754204c09b3e"
 ENVIRONMENT = {"TRADING_MODE": "paper", "DATABASE_URL": DATABASE_URL}
+ORIGIN = "https://localhost:3443"
 
 
 def _validate_phase7_event(payload: object) -> None:
@@ -528,6 +547,188 @@ def _seed_authorization(
         )
         connection.execute("SET session_replication_role='origin'")
     return authorization_id, request_hash
+
+
+def _seed_approval_candidate(suffix: str, verdict: str = "ALLOWED") -> tuple[str, str]:
+    _seed_authorization(suffix, healthy_reconciliation=True, insert_authority=False)
+    evidence_id = canonical_hash({"evidence": suffix})
+    with psycopg.connect(DATABASE_URL) as connection:
+        connection.execute("SET session_replication_role='replica'")
+        candidate = connection.execute(
+            "UPDATE risk_decisions SET verdict=%s WHERE "
+            "risk_input->'data'->>'evidence_id'=%s "
+            "RETURNING proposal_id,paper_order_preview_hash",
+            (verdict, evidence_id),
+        ).fetchone()
+        connection.execute("SET session_replication_role='origin'")
+    assert candidate is not None
+    return candidate[0], candidate[1]
+
+
+def _approval_effect_counts(proposal_id: str, idempotency_key: str) -> tuple[int, ...]:
+    with psycopg.connect(DATABASE_URL) as connection:
+        counts = connection.execute(
+            "SELECT "
+            "(SELECT count(*) FROM paper_approvals WHERE proposal_id=%s),"
+            "(SELECT count(*) FROM risk_approval_command_receipts "
+            " WHERE idempotency_key=%s),"
+            "(SELECT count(*) FROM outbox_events WHERE event_type IN "
+            " ('paper.approval.recorded.v1','paper.authorization.issued.v1')) ,"
+            "(SELECT count(*) FROM paper_execution_authorizations WHERE proposal_id=%s),"
+            "(SELECT count(*) FROM paper_authorization_attempts WHERE "
+            " paper_execution_authorization_id IN "
+            " (SELECT authorization_id FROM paper_execution_authorizations WHERE proposal_id=%s)),"
+            "(SELECT count(*) FROM paper_orders WHERE authorization_id IN "
+            " (SELECT authorization_id FROM paper_execution_authorizations WHERE proposal_id=%s))",
+            (proposal_id, idempotency_key, proposal_id, proposal_id, proposal_id),
+        ).fetchone()
+    assert counts is not None
+    return tuple(int(value) for value in counts)
+
+
+def _postgres_approval_app(*, worker_readiness: PaperWorkerReadinessAuthority) -> FastAPI:
+    verifier = make_password_verifier("phase7-approval-atomicity-password")
+    security = LocalOperatorSecurity(
+        verifier,
+        ORIGIN,
+        repository=PostgresSecurityRepository(CONTROL_URL, verifier),
+    )
+    room = PostgresTradingRoom(
+        CONTROL_URL,
+        risk_commands=PostgresRiskCommandPort(RISK_WRITER_URL),
+        worker_readiness=worker_readiness,
+    )
+    return create_app(
+        environment={
+            "TRADING_MODE": "paper",
+            "DATABASE_URL": DATABASE_URL,
+            "REDIS_URL": "redis://127.0.0.1:6380/0",
+        },
+        probe=StaticHealthProbe(DependencySnapshot(postgres="healthy", redis="healthy")),
+        operator_security=security,
+        trading_room=room,
+    )
+
+
+async def _login_and_csrf(client: httpx.AsyncClient) -> str:
+    login = await client.post(
+        "/api/v1/session/login",
+        headers={"Origin": ORIGIN},
+        json={"password": "phase7-approval-atomicity-password"},
+    )
+    assert login.status_code == 200
+    token = (await client.get("/api/v1/session")).json()["csrf_token"]
+    assert isinstance(token, str)
+    return token
+
+
+class _WorkerFailsAfterHealthyApiSnapshot:
+    def __init__(self, reporter: PostgresWorkerStateReporter) -> None:
+        self._reporter = reporter
+        self.calls = 0
+
+    def snapshot(self) -> dict[str, object]:
+        self.calls += 1
+        with psycopg.connect(DATABASE_URL) as connection:
+            before = connection.execute(
+                "SELECT status,ready FROM paper_authorization_worker_reader_v1"
+            ).fetchone()
+        assert before == ("HEALTHY", True)
+        self._reporter.fail("INJECTED_AFTER_API_SNAPSHOT")
+        return {"status": "HEALTHY", "ready": True}
+
+
+def test_denied_and_error_risk_reject_commands_have_no_db_or_api_effects(
+    postgres: None,
+) -> None:
+    proposal_id, preview_hash = _seed_approval_candidate("non-allowed-risk-reject", "DENIED")
+    reporter = PostgresWorkerStateReporter(PAPER_WRITER_URL, instance_id="risk-denied-worker")
+    reporter.start()
+    app = _postgres_approval_app(
+        worker_readiness=PostgresPaperWorkerReadinessAuthority(CONTROL_URL)
+    )
+
+    async def scenario() -> None:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url=ORIGIN
+        ) as client:
+            await _login_and_csrf(client)
+            for verdict in ("DENIED", "ERROR"):
+                with psycopg.connect(DATABASE_URL) as connection:
+                    connection.execute("SET session_replication_role='replica'")
+                    connection.execute(
+                        "UPDATE risk_decisions SET verdict=%s WHERE proposal_id=%s",
+                        (verdict, proposal_id),
+                    )
+                    connection.execute("SET session_replication_role='origin'")
+                view = await client.get(f"/api/v1/proposals/{proposal_id}/approval-view")
+                assert view.status_code == 200
+                assert view.json()["risk_verdict"] == verdict
+                assert view.json()["status"] == "BLOCKED"
+                assert view.json()["approval_action_allowed"] is False
+                assert view.json()["approve_action_allowed"] is False
+                assert view.json()["reject_action_allowed"] is False
+                idempotency_key = f"phase7-{verdict.lower()}-reject"
+                response = await client.post(
+                    "/api/v1/paper-approvals",
+                    headers={
+                        "Origin": ORIGIN,
+                        "X-CSRF-Token": (await client.get("/api/v1/session")).json()["csrf_token"],
+                        "Idempotency-Key": idempotency_key,
+                        "If-Match": "1",
+                    },
+                    json={
+                        "proposal_id": proposal_id,
+                        "decision": "REJECT",
+                        "expected_version": 1,
+                        "paper_order_preview_hash": preview_hash,
+                        "reason": "non-ALLOWED Risk decisions are not operator-actionable",
+                    },
+                )
+                assert response.status_code == 409
+                assert response.json()["error"]["code"] == "APPROVAL_NOT_READY"
+                assert _approval_effect_counts(proposal_id, idempotency_key) == (0,) * 6
+
+    asyncio.run(scenario())
+
+
+def test_sql_worker_recheck_blocks_approve_after_healthy_api_snapshot_without_effects(
+    postgres: None,
+) -> None:
+    proposal_id, preview_hash = _seed_approval_candidate("worker-snapshot-race")
+    reporter = PostgresWorkerStateReporter(PAPER_WRITER_URL, instance_id="snapshot-race-worker")
+    reporter.start()
+    race = _WorkerFailsAfterHealthyApiSnapshot(reporter)
+    app = _postgres_approval_app(worker_readiness=race)
+    idempotency_key = "phase7-worker-snapshot-race"
+
+    async def scenario() -> None:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url=ORIGIN
+        ) as client:
+            csrf = await _login_and_csrf(client)
+            response = await client.post(
+                "/api/v1/paper-approvals",
+                headers={
+                    "Origin": ORIGIN,
+                    "X-CSRF-Token": csrf,
+                    "Idempotency-Key": idempotency_key,
+                    "If-Match": "1",
+                },
+                json={
+                    "proposal_id": proposal_id,
+                    "decision": "APPROVE",
+                    "expected_version": 1,
+                    "paper_order_preview_hash": preview_hash,
+                    "reason": "reproduce worker failure after the API readiness snapshot",
+                },
+            )
+            assert response.status_code == 409
+            assert response.json()["error"]["code"] == "PAPER_WORKER_NOT_READY"
+
+    asyncio.run(scenario())
+    assert race.calls == 1
+    assert _approval_effect_counts(proposal_id, idempotency_key) == (0,) * 6
 
 
 def _record_current_public_book(

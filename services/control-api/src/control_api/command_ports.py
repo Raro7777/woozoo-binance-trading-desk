@@ -322,6 +322,7 @@ class PostgresRiskCommandPort:
                 409,
             ),
             ("KILL_RECOVERY_LEDGER_UNHEALTHY", "LEDGER_UNHEALTHY", 409),
+            ("PAPER_WORKER_NOT_READY", "PAPER_WORKER_NOT_READY", 409),
             ("NOT READY", "APPROVAL_NOT_READY", 409),
             ("NOT_REVOCABLE", "APPROVAL_NOT_REVOCABLE", 409),
             ("DRIFT", "APPROVAL_NOT_READY", 409),

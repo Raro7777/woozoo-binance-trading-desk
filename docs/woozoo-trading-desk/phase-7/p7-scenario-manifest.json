@@ -8,7 +8,7 @@
   "phase_schedule_amendment": "docs/woozoo-trading-desk/phase-5/phase-0-contract-amendment.md",
   "phase_schedule_amendment_sha256": "faab0952b4c60d6cc432bd699d549f52d9c9b43f75e4e7050b30e01bb70b6c68",
   "implementation_contract": "docs/woozoo-trading-desk/phase-7/implementation-contract.md",
-  "implementation_contract_sha256": "399c231531f3464ccd6f5cb1e22c14af9f12d4a71a10198e2d98c9a6d5b7b52d",
+  "implementation_contract_sha256": "db7c9cb9237603e42ed40e9aa9fe2d6868636b0d6689beb457b6906639de4863",
   "fixed_seed": 0,
   "timezone": "UTC",
   "trading_mode": "paper",
@@ -271,6 +271,9 @@
       "artifact": "artifacts/failure/AUTH-002.json",
       "test_nodes": [
         "tests/failure/test_trading_room_authorization_failures.py::test_auth_002_stale_state_before_human_decision_has_zero_order_effect",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_denied_and_error_risk_reject_commands_have_no_db_or_api_effects",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_sql_worker_recheck_blocks_approve_after_healthy_api_snapshot_without_effects",
+        "tests/integration/test_trading_room_migration_contract.py::test_approval_sql_authority_requires_allowed_risk_and_rechecks_worker_atomically",
         "tests/integration/test_phase7_paper_first_attempt_authority.py::test_approval_rejects_checkpoint_that_predates_a_paper_effect",
         "tests/integration/test_phase7_paper_first_attempt_authority.py::test_kill_first_attempt_stays_blocked_after_recovery_and_retry",
         "tests/integration/test_phase7_paper_first_attempt_authority.py::test_missing_reconciliation_consumes_authorization_without_financial_effects",
@@ -283,10 +286,11 @@
       ],
       "source_sha256": [
         "9d5d32d65c8bf17db096b4ecd718969c96b4be5f613db594f8021b7ff2325abc",
-        "9038342c0343567dd339168dc77a1dc54c3eccb1b35adf5c06bfd693196491c5",
+        "9b2ea9e45f4dc66682608e514220369de94d1fe23e5d55a44e0ea962a747d860",
+        "3b75cf54f9d2d2c120cf9d6c349e6dfe8e61be8b5c3b514df466af4884b31c28",
         "f498ade35a16cbb73750f6e2ce92abca837fd743d0d8eb34bb348b30f2f292fc"
       ],
-      "oracle": "Approval issuance rejects a reconciliation checkpoint whose stamped authority sequence predates any committed Paper effect. Kill, reconciliation, revocation, stale books and execution-quality drift are revalidated at the first Paper attempt; any failure consumes or blocks the authorization terminally with no order, hold, fill or ledger effect."
+      "oracle": "A direct human decision is recorded only for a complete latest ALLOWED Risk decision: DENIED or ERROR blocks both APPROVE and REJECT with zero approval, receipt, outbox, authorization, attempt or order effect. APPROVE rechecks and locks the authoritative worker row inside the issuance transaction, so a worker failure after the API snapshot also has zero effect; worker readiness never blocks a valid human REJECT. Approval issuance rejects a reconciliation checkpoint whose stamped authority sequence predates any committed Paper effect. Kill, reconciliation, revocation, stale books and execution-quality drift are revalidated at the first Paper attempt; any failure consumes or blocks the authorization terminally with no order, hold, fill or ledger effect."
     },
     {
       "id": "E2E-001",
@@ -316,10 +320,10 @@
       "source_sha256": [
         "90a31939b5325fb4ec774edd91789ef40b51c70ff35d97206f2393e6f756d3ef",
         "dd85d3264e1a7374d1e34e8f7fde5a083fd8ae115b927d453941c5a4be9942d3",
-        "9038342c0343567dd339168dc77a1dc54c3eccb1b35adf5c06bfd693196491c5",
+        "9b2ea9e45f4dc66682608e514220369de94d1fe23e5d55a44e0ea962a747d860",
         "07cb535db57cca0e4f13b44a2ad75a2716461abe283517bb6cfe67d0409757c6",
         "5769abf0ed4b9a57c849a168da2536cb6397d2b24dc514d06b8c45e54633c7a8",
-        "040bee0d0228ab50ee17bcb60110d25770e8c5a5277e13bf9ff8f04a89dcaa2e"
+        "3b75cf54f9d2d2c120cf9d6c349e6dfe8e61be8b5c3b514df466af4884b31c28"
       ],
       "configuration_sources": [
         {
@@ -455,7 +459,7 @@
       "source_sha256": [
         "90a31939b5325fb4ec774edd91789ef40b51c70ff35d97206f2393e6f756d3ef",
         "dd85d3264e1a7374d1e34e8f7fde5a083fd8ae115b927d453941c5a4be9942d3",
-        "9038342c0343567dd339168dc77a1dc54c3eccb1b35adf5c06bfd693196491c5",
+        "9b2ea9e45f4dc66682608e514220369de94d1fe23e5d55a44e0ea962a747d860",
         "5769abf0ed4b9a57c849a168da2536cb6397d2b24dc514d06b8c45e54633c7a8"
       ],
       "configuration_sources": [

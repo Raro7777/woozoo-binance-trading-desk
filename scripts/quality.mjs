@@ -1178,6 +1178,9 @@ const actions = {
   "test:failure": async () => {
     await phase7DataScenario("failure", "AUTH-002", [
       "tests/failure/test_trading_room_authorization_failures.py::test_auth_002_stale_state_before_human_decision_has_zero_order_effect",
+      "tests/integration/test_phase7_paper_first_attempt_authority.py::test_denied_and_error_risk_reject_commands_have_no_db_or_api_effects",
+      "tests/integration/test_phase7_paper_first_attempt_authority.py::test_sql_worker_recheck_blocks_approve_after_healthy_api_snapshot_without_effects",
+      "tests/integration/test_trading_room_migration_contract.py::test_approval_sql_authority_requires_allowed_risk_and_rechecks_worker_atomically",
       "tests/integration/test_phase7_paper_first_attempt_authority.py::test_approval_rejects_checkpoint_that_predates_a_paper_effect",
       "tests/integration/test_phase7_paper_first_attempt_authority.py::test_kill_first_attempt_stays_blocked_after_recovery_and_retry",
       "tests/integration/test_phase7_paper_first_attempt_authority.py::test_missing_reconciliation_consumes_authorization_without_financial_effects",

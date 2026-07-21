@@ -823,7 +823,7 @@ def upgrade() -> None:
               AND decision.risk_input->>'risk_input_schema_version'='woozoo.risk-input/v3'
               AND decision.risk_input->>'namespace'='paper'
               AND decision.kill_switch_version=NEW.expected_kill_switch_version
-              AND (NEW.decision='REJECTED' OR decision.verdict='ALLOWED')
+              AND decision.verdict='ALLOWED'
               AND session.actor_id=NEW.actor_id
               AND session.issued_at<=NEW.decided_at
               AND session.last_seen_at<=NEW.decided_at
@@ -972,7 +972,8 @@ def upgrade() -> None:
         RETURNS TABLE(created boolean,response jsonb) AS $$
         DECLARE
           prior record; proposal_row record; decision_row record; kill_row record;
-          checkpoint_row record; portfolio_version bigint; ledger_version bigint;
+          checkpoint_row record; worker_row record;
+          portfolio_version bigint; ledger_version bigint;
           approval_unsigned jsonb; approval_payload jsonb; approval_hash varchar;
           approval_id varchar; authorization_payload jsonb; authorization_id varchar;
           authorization_input_digest varchar; expires_at timestamptz;
@@ -1012,7 +1013,7 @@ def upgrade() -> None:
              OR decision_row.paper_order_preview_hash<>p_preview_hash
              OR decision_row.proposal_hash<>proposal_row.proposal_hash
              OR decision_row.risk_input->'proposal'->'payload'<>proposal_row.payload
-             OR (p_decision='APPROVED' AND decision_row.verdict<>'ALLOWED')
+             OR decision_row.verdict<>'ALLOWED'
              OR p_decided_at<decision_row.decision_as_of
              OR p_decided_at>decision_row.decision_as_of+interval '5 minutes'
           THEN RAISE EXCEPTION 'RISK_DECISION_DRIFT'; END IF;
@@ -1035,8 +1036,19 @@ def upgrade() -> None:
                   'checkpoint_id',checkpoint_row.checkpoint_id,
                   'health',checkpoint_row.status,
                   'mismatch_codes',checkpoint_row.mismatch_codes)),'UTF8'),'sha256'),'hex')
-                <>decision_row.reconciliation_checkpoint_hash
+                 <>decision_row.reconciliation_checkpoint_hash
           THEN RAISE EXCEPTION 'RECONCILIATION_DRIFT'; END IF;
+          IF p_decision='APPROVED' THEN
+            -- Lock order is Paper account advisory -> Kill row -> worker row.
+            -- Risk, Kill and reconciliation retain their deterministic rejection
+            -- precedence; this lock still precedes every approval-side write.
+            SELECT * INTO worker_row FROM paper_authorization_worker_state
+              WHERE worker_name='phase7-paper-authorization' FOR SHARE;
+            IF NOT FOUND OR worker_row.status<>'RUNNING'
+               OR worker_row.heartbeat_at>clock_timestamp()
+               OR worker_row.heartbeat_at<clock_timestamp()-interval '2 minutes'
+            THEN RAISE EXCEPTION 'PAPER_WORKER_NOT_READY'; END IF;
+          END IF;
           SELECT COALESCE(max(version),0) INTO portfolio_version
             FROM paper_asset_balances WHERE account_id='{PAPER_DEFAULT_ACCOUNT_ID}';
           SELECT count(*) INTO ledger_version FROM paper_ledger_transactions

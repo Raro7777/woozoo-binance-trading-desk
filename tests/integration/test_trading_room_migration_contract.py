@@ -159,6 +159,37 @@ def test_phase7_migration_closes_auth_approval_authorization_and_recovery_bounda
     assert 'op.execute(f"REVOKE ALL ON {view} FROM PUBLIC")' in source
 
 
+def test_approval_sql_authority_requires_allowed_risk_and_rechecks_worker_atomically() -> None:
+    source = MIGRATION.read_text("utf-8")
+    approval_binding = source.split("CREATE FUNCTION enforce_phase7_approval_binding", 1)[1].split(
+        "CREATE FUNCTION enforce_phase7_revocation_binding", 1
+    )[0]
+    approval_command = source.split("CREATE FUNCTION issue_paper_approval_v1", 1)[1].split(
+        "CREATE FUNCTION revoke_paper_approval_v1", 1
+    )[0]
+
+    assert "AND decision.verdict='ALLOWED'" in approval_binding
+    assert "NEW.decision='REJECTED' OR decision.verdict='ALLOWED'" not in approval_binding
+    assert "OR decision_row.verdict<>'ALLOWED'" in approval_command
+    assert "p_decision='APPROVED' AND decision_row.verdict<>'ALLOWED'" not in approval_command
+
+    worker_guard = approval_command.split("THEN RAISE EXCEPTION 'RECONCILIATION_DRIFT'", 1)[
+        1
+    ].split("SELECT COALESCE(max(version),0) INTO portfolio_version", 1)[0]
+    assert "FROM paper_authorization_worker_state" in worker_guard
+    assert "worker_name='phase7-paper-authorization' FOR SHARE" in worker_guard
+    assert "worker_row.status<>'RUNNING'" in worker_guard
+    assert "worker_row.heartbeat_at>clock_timestamp()" in worker_guard
+    assert "worker_row.heartbeat_at<clock_timestamp()-interval '2 minutes'" in worker_guard
+    assert "RAISE EXCEPTION 'PAPER_WORKER_NOT_READY'" in worker_guard
+    assert approval_command.index("FROM paper_authorization_worker_state") < approval_command.index(
+        "INSERT INTO paper_approvals"
+    )
+    assert approval_command.index("RECONCILIATION_DRIFT") < approval_command.index(
+        "FROM paper_authorization_worker_state"
+    )
+
+
 def test_phase7_migration_preserves_frozen_namespaces_as_legacy_and_adds_paper() -> None:
     source = MIGRATION.read_text("utf-8")
 
