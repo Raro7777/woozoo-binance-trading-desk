@@ -220,7 +220,7 @@
       "source_sha256": [
         "c69138d0379deaa38656b20c1ef50fe08d586d2da3348f0b9b1a8d9117bf0026",
         "9aee089bc0aa944c9a96eec974f6cf583218bfdf99c34e6ca7dfdd04acf74738",
-        "8be926907d2f4cbe19cc8340fdc26a5ff0032331dde5859c68a693f63c6e6417"
+        "16c4257805a95a32de14f5f9286c35176aa32eff888287289c1d1e6b1805a3ec"
       ],
       "oracle": "A committed response lost before acknowledgement is replayed after restart with zero additional order, fill, posting or event effect."
     }
@@ -270,7 +270,7 @@
       ],
       "source_sha256": [
         "9d5d32d65c8bf17db096b4ecd718969c96b4be5f613db594f8021b7ff2325abc",
-        "6d173e376d91691a3fa82f77bf7f6369fb1e14797fb941e8b524d33df3b49966",
+        "9038342c0343567dd339168dc77a1dc54c3eccb1b35adf5c06bfd693196491c5",
         "9aee089bc0aa944c9a96eec974f6cf583218bfdf99c34e6ca7dfdd04acf74738"
       ],
       "oracle": "Approval issuance rejects a reconciliation checkpoint whose stamped authority sequence predates any committed Paper effect. Kill, reconciliation, revocation, stale books and execution-quality drift are revalidated at the first Paper attempt; any failure consumes or blocks the authorization terminally with no order, hold, fill or ledger effect."
@@ -303,7 +303,7 @@
       "source_sha256": [
         "9f93757c6e5c131a0a40a00109bce87170d87c6b742ac546cc748bf2e5214f57",
         "dd85d3264e1a7374d1e34e8f7fde5a083fd8ae115b927d453941c5a4be9942d3",
-        "6d173e376d91691a3fa82f77bf7f6369fb1e14797fb941e8b524d33df3b49966",
+        "9038342c0343567dd339168dc77a1dc54c3eccb1b35adf5c06bfd693196491c5",
         "07cb535db57cca0e4f13b44a2ad75a2716461abe283517bb6cfe67d0409757c6",
         "5769abf0ed4b9a57c849a168da2536cb6397d2b24dc514d06b8c45e54633c7a8",
         "040bee0d0228ab50ee17bcb60110d25770e8c5a5277e13bf9ff8f04a89dcaa2e"
@@ -406,7 +406,7 @@
       "source_sha256": [
         "9f93757c6e5c131a0a40a00109bce87170d87c6b742ac546cc748bf2e5214f57",
         "dd85d3264e1a7374d1e34e8f7fde5a083fd8ae115b927d453941c5a4be9942d3",
-        "6d173e376d91691a3fa82f77bf7f6369fb1e14797fb941e8b524d33df3b49966",
+        "9038342c0343567dd339168dc77a1dc54c3eccb1b35adf5c06bfd693196491c5",
         "5769abf0ed4b9a57c849a168da2536cb6397d2b24dc514d06b8c45e54633c7a8"
       ],
       "configuration_sources": [

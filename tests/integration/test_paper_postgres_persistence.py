@@ -13,6 +13,7 @@ from threading import Barrier
 from typing import Iterator
 
 import psycopg
+from psycopg.types.json import Jsonb
 import pytest
 
 from docker_infrastructure_lock import docker_infrastructure_lock
@@ -2309,18 +2310,80 @@ def test_rejected_command_is_durable_orderless_and_restart_idempotent() -> None:
     assert hydrated.command_receipts[write.receipt.idempotency_key].error_code == (
         "INSUFFICIENT_FUNDS"
     )
+    authorization_id = write.authorization_attempt.authorization_id
+    baseline_response = {"error_code": "INSUFFICIENT_FUNDS"}
+
+    def set_receipt_response(response: dict[str, str]) -> None:
+        with psycopg.connect(DATABASE_URL) as connection:
+            connection.execute("SET session_replication_role='replica'")
+            connection.execute(
+                "UPDATE paper_command_receipts SET response=%s WHERE authorization_id=%s",
+                (Jsonb(response), authorization_id),
+            )
+            connection.execute("SET session_replication_role='origin'")
+
+    for corrupt_response in (
+        {"reason_code": "INSUFFICIENT_FUNDS"},
+        {
+            "error_code": "INSUFFICIENT_FUNDS",
+            "reason_code": "INSUFFICIENT_FUNDS",
+        },
+        {},
+    ):
+        set_receipt_response(corrupt_response)
+        try:
+            with pytest.raises(RuntimeError, match="PAPER_REJECTED_RECEIPT_CORRUPT"):
+                PostgresPaperStore(PAPER_WRITER_URL).hydrate_engine(write.account_id)
+        finally:
+            set_receipt_response(baseline_response)
+
     with psycopg.connect(DATABASE_URL) as connection:
         connection.execute("SET session_replication_role='replica'")
         connection.execute(
             "UPDATE paper_authorization_attempts SET request_hash=%s WHERE authorization_id=%s",
-            (
-                digest("corrupt-legacy-rejected-receipt"),
-                write.authorization_attempt.authorization_id,
-            ),
+            (digest("corrupt-legacy-rejected-receipt"), authorization_id),
         )
         connection.execute("SET session_replication_role='origin'")
-    with pytest.raises(RuntimeError, match="PAPER_REJECTED_RECEIPT_CORRUPT"):
-        PostgresPaperStore(PAPER_WRITER_URL).hydrate_engine(write.account_id)
+    try:
+        with pytest.raises(RuntimeError, match="PAPER_REJECTED_RECEIPT_CORRUPT"):
+            PostgresPaperStore(PAPER_WRITER_URL).hydrate_engine(write.account_id)
+    finally:
+        with psycopg.connect(DATABASE_URL) as connection:
+            connection.execute("SET session_replication_role='replica'")
+            connection.execute(
+                "UPDATE paper_authorization_attempts SET request_hash=%s WHERE authorization_id=%s",
+                (write.receipt.request_hash, authorization_id),
+            )
+            connection.execute("SET session_replication_role='origin'")
+
+    with psycopg.connect(DATABASE_URL) as connection:
+        connection.execute("SET session_replication_role='replica'")
+        connection.execute(
+            "ALTER TABLE paper_authorization_attempts DROP CONSTRAINT ck_paper_attempt_reason"
+        )
+        connection.execute(
+            "UPDATE paper_authorization_attempts SET outcome='CONSUMED_ORDER_CREATED' "
+            "WHERE authorization_id=%s",
+            (authorization_id,),
+        )
+        connection.execute("SET session_replication_role='origin'")
+    try:
+        with pytest.raises(RuntimeError, match="PAPER_REJECTED_RECEIPT_CORRUPT"):
+            PostgresPaperStore(PAPER_WRITER_URL).hydrate_engine(write.account_id)
+    finally:
+        with psycopg.connect(DATABASE_URL) as connection:
+            connection.execute("SET session_replication_role='replica'")
+            connection.execute(
+                "UPDATE paper_authorization_attempts SET outcome='BLOCKED' "
+                "WHERE authorization_id=%s",
+                (authorization_id,),
+            )
+            connection.execute(
+                "ALTER TABLE paper_authorization_attempts "
+                "ADD CONSTRAINT ck_paper_attempt_reason "
+                "CHECK ((outcome='BLOCKED')=(reason_code IS NOT NULL))"
+            )
+            connection.execute("SET session_replication_role='origin'")
     with psycopg.connect(DATABASE_URL) as connection:
         assert connection.execute(
             "SELECT count(*) FROM paper_orders WHERE account_id=%s", (write.account_id,)

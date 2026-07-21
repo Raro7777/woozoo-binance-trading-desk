@@ -844,43 +844,83 @@ def test_kill_first_attempt_stays_blocked_after_recovery_and_retry(
     _assert_blocked_only(authorization_id, "KILL_SWITCH_ACTIVE")
     hydrated = store.hydrate_engine(ACCOUNT_ID)
     assert hydrated.command_receipts[authorization_id].error_code == "KILL_SWITCH_ACTIVE"
+    baseline_response = dict(first.response)
+
+    def set_receipt_response(response: dict[str, object]) -> None:
+        with psycopg.connect(DATABASE_URL) as connection:
+            connection.execute("SET session_replication_role='replica'")
+            connection.execute(
+                "UPDATE paper_command_receipts SET response=%s WHERE authorization_id=%s",
+                (Jsonb(response), authorization_id),
+            )
+            connection.execute("SET session_replication_role='origin'")
+
+    for corrupt_response in (
+        {**baseline_response, "reason_code": "DATA_STALE"},
+        {
+            **baseline_response,
+            "error_code": "KILL_SWITCH_ACTIVE",
+            "reason_code": None,
+        },
+        {**baseline_response, "error_code": "KILL_SWITCH_ACTIVE"},
+        {key: value for key, value in baseline_response.items() if key != "reason_code"},
+    ):
+        if corrupt_response.get("reason_code") is None:
+            corrupt_response.pop("reason_code", None)
+        set_receipt_response(corrupt_response)
+        try:
+            with pytest.raises(RuntimeError, match="PAPER_REJECTED_RECEIPT_CORRUPT"):
+                store.hydrate_engine(ACCOUNT_ID)
+        finally:
+            set_receipt_response(baseline_response)
+
     with psycopg.connect(DATABASE_URL) as connection:
         connection.execute("SET session_replication_role='replica'")
-        connection.execute(
-            "UPDATE paper_command_receipts "
-            "SET response=jsonb_set(response,'{reason_code}','\"DATA_STALE\"'::jsonb) "
-            "WHERE authorization_id=%s",
-            (authorization_id,),
-        )
-        connection.execute("SET session_replication_role='origin'")
-    with pytest.raises(RuntimeError, match="PAPER_REJECTED_RECEIPT_CORRUPT"):
-        store.hydrate_engine(ACCOUNT_ID)
-    with psycopg.connect(DATABASE_URL) as connection:
-        connection.execute("SET session_replication_role='replica'")
-        connection.execute(
-            "UPDATE paper_command_receipts "
-            "SET response=jsonb_set(response,'{reason_code}','\"KILL_SWITCH_ACTIVE\"'::jsonb) "
-            "WHERE authorization_id=%s",
-            (authorization_id,),
-        )
         connection.execute(
             "UPDATE paper_authorization_attempts SET request_hash=%s WHERE authorization_id=%s",
             (canonical_hash({"corrupt": authorization_id}), authorization_id),
         )
         connection.execute("SET session_replication_role='origin'")
-    with pytest.raises(RuntimeError, match="PAPER_REJECTED_RECEIPT_CORRUPT"):
-        store.hydrate_engine(ACCOUNT_ID)
+    try:
+        with pytest.raises(RuntimeError, match="PAPER_REJECTED_RECEIPT_CORRUPT"):
+            store.hydrate_engine(ACCOUNT_ID)
+    finally:
+        with psycopg.connect(DATABASE_URL) as connection:
+            connection.execute("SET session_replication_role='replica'")
+            connection.execute(
+                "UPDATE paper_authorization_attempts SET request_hash=%s WHERE authorization_id=%s",
+                (_request_hash, authorization_id),
+            )
+            connection.execute("SET session_replication_role='origin'")
+
     with psycopg.connect(DATABASE_URL) as connection:
         connection.execute("SET session_replication_role='replica'")
         connection.execute(
-            "UPDATE paper_authorization_attempts "
-            "SET request_hash=%s,outcome='CONSUMED_ORDER_CREATED',reason_code=NULL "
+            "ALTER TABLE paper_authorization_attempts DROP CONSTRAINT ck_paper_attempt_reason"
+        )
+        connection.execute(
+            "UPDATE paper_authorization_attempts SET outcome='CONSUMED_ORDER_CREATED' "
             "WHERE authorization_id=%s",
-            (_request_hash, authorization_id),
+            (authorization_id,),
         )
         connection.execute("SET session_replication_role='origin'")
-    with pytest.raises(RuntimeError, match="PAPER_REJECTED_RECEIPT_CORRUPT"):
-        store.hydrate_engine(ACCOUNT_ID)
+    try:
+        with pytest.raises(RuntimeError, match="PAPER_REJECTED_RECEIPT_CORRUPT"):
+            store.hydrate_engine(ACCOUNT_ID)
+    finally:
+        with psycopg.connect(DATABASE_URL) as connection:
+            connection.execute("SET session_replication_role='replica'")
+            connection.execute(
+                "UPDATE paper_authorization_attempts SET outcome='BLOCKED' "
+                "WHERE authorization_id=%s",
+                (authorization_id,),
+            )
+            connection.execute(
+                "ALTER TABLE paper_authorization_attempts "
+                "ADD CONSTRAINT ck_paper_attempt_reason "
+                "CHECK ((outcome='BLOCKED')=(reason_code IS NOT NULL))"
+            )
+            connection.execute("SET session_replication_role='origin'")
 
 
 def test_missing_reconciliation_consumes_authorization_without_financial_effects(
