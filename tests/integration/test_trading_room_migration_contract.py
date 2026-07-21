@@ -199,6 +199,28 @@ def test_approval_sql_authority_requires_allowed_risk_and_rechecks_worker_atomic
     ) < approval_command.index("FROM paper_authorization_worker_state")
     for latest_guard in (approval_binding, first_attempt, attempt_binding):
         assert "ORDER BY latest.recorded_at DESC,latest.decision_id DESC LIMIT 1" in latest_guard
+    for blocker in (
+        "expected_block_reason:='HASH_MISMATCH'",
+        "expected_block_reason:='KILL_SWITCH_ACTIVE'",
+        "expected_block_reason:='KILL_VERSION_MISMATCH'",
+        "expected_block_reason:='AUTHORIZATION_EXPIRED'",
+        "expected_block_reason:='AUTHORIZATION_REVOKED'",
+    ):
+        assert blocker in attempt_binding
+    assert attempt_binding.index("expected_block_reason:='HASH_MISMATCH'") < attempt_binding.index(
+        "expected_block_reason:='KILL_SWITCH_ACTIVE'"
+    )
+    assert attempt_binding.index(
+        "expected_block_reason:='KILL_SWITCH_ACTIVE'"
+    ) < attempt_binding.index("expected_block_reason:='KILL_VERSION_MISMATCH'")
+    assert attempt_binding.index(
+        "expected_block_reason:='KILL_VERSION_MISMATCH'"
+    ) < attempt_binding.index("expected_block_reason:='AUTHORIZATION_EXPIRED'")
+    assert attempt_binding.index(
+        "expected_block_reason:='AUTHORIZATION_EXPIRED'"
+    ) < attempt_binding.index("expected_block_reason:='AUTHORIZATION_REVOKED'")
+    assert "NEW.created_at>=authorized_row.expires_at" in attempt_binding
+    assert "NEW.reason_code<>expected_block_reason" in attempt_binding
     assert "NEW.decision='REJECTED' OR decision.verdict='ALLOWED'" not in approval_binding
     assert "OR decision_row.verdict<>'ALLOWED'" in approval_command
     assert "p_decision='APPROVED' AND decision_row.verdict<>'ALLOWED'" not in approval_command

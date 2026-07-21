@@ -1541,7 +1541,9 @@ def upgrade() -> None:
     )
     op.execute("""
         CREATE FUNCTION enforce_phase7_attempt_binding() RETURNS trigger AS $$
-        DECLARE authorized_row record;
+        DECLARE
+          authorized_row record; kill_row record; kill_row_found boolean;
+          expected_block_reason varchar;
         BEGIN
           IF NEW.namespace='test' THEN
             RETURN NULL;
@@ -1552,23 +1554,38 @@ def upgrade() -> None:
              OR NEW.authorization_nonce<>authorized_row.authorization_nonce
              OR NEW.account_id<>authorized_row.paper_account_id
              OR NEW.created_at<authorized_row.issued_at
-             OR (NEW.created_at>authorized_row.expires_at AND
-                 (NEW.outcome<>'BLOCKED' OR NEW.reason_code<>'AUTHORIZATION_EXPIRED'))
-             OR (EXISTS (
-                   SELECT 1 FROM paper_approval_revocations revocation
-                   WHERE revocation.approval_id=authorized_row.approval_id)
-                 AND (NEW.outcome<>'BLOCKED' OR NEW.reason_code<>'AUTHORIZATION_REVOKED'))
-             OR ((NOT EXISTS (
-                    SELECT 1 FROM risk_decisions decision
-                    WHERE decision.decision_id=authorized_row.risk_decision_id
-                      AND decision.verdict='ALLOWED')
-                  OR authorized_row.risk_decision_id<>(
-                    SELECT latest.decision_id FROM risk_decisions latest
-                    WHERE latest.proposal_id=authorized_row.proposal_id
-                    ORDER BY latest.recorded_at DESC,latest.decision_id DESC LIMIT 1))
-                 AND (NEW.outcome<>'BLOCKED' OR NEW.reason_code<>'HASH_MISMATCH'))
           THEN
             RAISE EXCEPTION 'Paper authorization attempt is not bound to one current authorization';
+          END IF;
+          SELECT active,version INTO kill_row FROM kill_switch_state
+          WHERE scope='paper-global';
+          kill_row_found:=FOUND;
+          IF NOT EXISTS (
+               SELECT 1 FROM risk_decisions decision
+               WHERE decision.decision_id=authorized_row.risk_decision_id
+                 AND decision.verdict='ALLOWED')
+             OR authorized_row.risk_decision_id<>(
+               SELECT latest.decision_id FROM risk_decisions latest
+               WHERE latest.proposal_id=authorized_row.proposal_id
+               ORDER BY latest.recorded_at DESC,latest.decision_id DESC LIMIT 1)
+          THEN
+            expected_block_reason:='HASH_MISMATCH';
+          ELSIF NOT kill_row_found OR kill_row.active THEN
+            expected_block_reason:='KILL_SWITCH_ACTIVE';
+          ELSIF kill_row.version<>authorized_row.kill_switch_version THEN
+            expected_block_reason:='KILL_VERSION_MISMATCH';
+          ELSIF NEW.created_at>=authorized_row.expires_at THEN
+            expected_block_reason:='AUTHORIZATION_EXPIRED';
+          ELSIF EXISTS (
+            SELECT 1 FROM paper_approval_revocations revocation
+            WHERE revocation.approval_id=authorized_row.approval_id)
+          THEN
+            expected_block_reason:='AUTHORIZATION_REVOKED';
+          END IF;
+          IF expected_block_reason IS NOT NULL
+             AND (NEW.outcome<>'BLOCKED' OR NEW.reason_code<>expected_block_reason)
+          THEN
+            RAISE EXCEPTION 'Paper authorization attempt blocker precedence mismatch';
           END IF;
           RETURN NULL;
         END;

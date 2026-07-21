@@ -276,6 +276,9 @@
         "tests/integration/test_phase7_paper_first_attempt_authority.py::test_sql_worker_authority_blocks_failed_worker_without_effects",
         "tests/integration/test_phase7_paper_first_attempt_authority.py::test_newer_denied_risk_serializes_before_waiting_approval_without_stale_effects",
         "tests/integration/test_phase7_paper_first_attempt_authority.py::test_first_attempt_rejects_authorization_superseded_by_newer_denied_risk",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_expired_and_revoked_authorization_uses_expiry_precedence",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_revoked_and_newer_denied_risk_uses_risk_precedence",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_kill_and_expired_authorization_uses_kill_precedence_and_drains",
         "tests/integration/test_trading_room_migration_contract.py::test_approval_sql_authority_requires_allowed_risk_and_rechecks_worker_atomically",
         "tests/integration/test_phase7_paper_first_attempt_authority.py::test_approval_rejects_checkpoint_that_predates_a_paper_effect",
         "tests/integration/test_phase7_paper_first_attempt_authority.py::test_kill_first_attempt_stays_blocked_after_recovery_and_retry",
@@ -289,11 +292,11 @@
       ],
       "source_sha256": [
         "9d5d32d65c8bf17db096b4ecd718969c96b4be5f613db594f8021b7ff2325abc",
-        "e41b1cc45ebf787c31b0000a740fd3029d81f0705ea250998bb4a88dbcda18e5",
-        "ad51f22e213b4b5a10c93563f2d29a6a430b07494a183a73cfbd14ec9195f21d",
+        "fced920a65f6e5c72d8221b700feaf6e9a1b9aa63d03e65941dbe327b2e041cd",
+        "052b0a4ef1328502cf87d9d648125b616d4108828ebfcd5f8bc3b74da5619cfd",
         "5df68171d47cfbf6dc19e8c6672e326380dc7ab60a978905e09941cab81fad42"
       ],
-      "oracle": "A direct human decision is recorded only for a complete latest ALLOWED Risk decision: DENIED or ERROR blocks both APPROVE and REJECT with zero approval, receipt, outbox, authorization, attempt or order effect. New APPROVE locks and rechecks the authoritative worker row inside the issuance transaction; worker readiness never blocks a valid human REJECT. Risk persistence, approval and the first Paper attempt share one proposal authority lock: a newer DENIED decision wins before a waiting approval and supersedes an already-issued authorization at first attempt without an order. Approval issuance rejects a reconciliation checkpoint whose stamped authority sequence predates any committed Paper effect. Kill, reconciliation, revocation, stale books and execution-quality drift are revalidated at the first Paper attempt; any failure consumes or blocks the authorization terminally with no order, hold, fill or ledger effect."
+      "oracle": "A direct human decision is recorded only for a complete latest ALLOWED Risk decision: DENIED or ERROR blocks both APPROVE and REJECT with zero approval, receipt, outbox, authorization, attempt or order effect. New APPROVE locks and rechecks the authoritative worker row inside the issuance transaction; worker readiness never blocks a valid human REJECT. Risk persistence, approval and the first Paper attempt share one proposal authority lock: a newer DENIED decision wins before a waiting approval and supersedes an already-issued authorization at first attempt without an order. Approval issuance rejects a reconciliation checkpoint whose stamped authority sequence predates any committed Paper effect. Composite first-attempt blockers resolve to exactly one database-enforced reason in Risk drift, Kill active, Kill version drift, expiry at or after the boundary, then revocation priority; expired plus revoked, revoked plus newer DENIED, and Kill plus expired each create one terminal attempt, receipt, broker input and blocked outbox with zero order, hold, fill or ledger effect, replay immutably, and do not stall the Kill drain. Reconciliation, stale books and execution-quality drift remain terminal fail-closed checks."
     },
     {
       "id": "E2E-001",
@@ -323,10 +326,10 @@
       "source_sha256": [
         "90a31939b5325fb4ec774edd91789ef40b51c70ff35d97206f2393e6f756d3ef",
         "dd85d3264e1a7374d1e34e8f7fde5a083fd8ae115b927d453941c5a4be9942d3",
-        "e41b1cc45ebf787c31b0000a740fd3029d81f0705ea250998bb4a88dbcda18e5",
+        "fced920a65f6e5c72d8221b700feaf6e9a1b9aa63d03e65941dbe327b2e041cd",
         "07cb535db57cca0e4f13b44a2ad75a2716461abe283517bb6cfe67d0409757c6",
         "5769abf0ed4b9a57c849a168da2536cb6397d2b24dc514d06b8c45e54633c7a8",
-        "ad51f22e213b4b5a10c93563f2d29a6a430b07494a183a73cfbd14ec9195f21d"
+        "052b0a4ef1328502cf87d9d648125b616d4108828ebfcd5f8bc3b74da5619cfd"
       ],
       "configuration_sources": [
         {
@@ -462,7 +465,7 @@
       "source_sha256": [
         "90a31939b5325fb4ec774edd91789ef40b51c70ff35d97206f2393e6f756d3ef",
         "dd85d3264e1a7374d1e34e8f7fde5a083fd8ae115b927d453941c5a4be9942d3",
-        "e41b1cc45ebf787c31b0000a740fd3029d81f0705ea250998bb4a88dbcda18e5",
+        "fced920a65f6e5c72d8221b700feaf6e9a1b9aa63d03e65941dbe327b2e041cd",
         "5769abf0ed4b9a57c849a168da2536cb6397d2b24dc514d06b8c45e54633c7a8"
       ],
       "configuration_sources": [

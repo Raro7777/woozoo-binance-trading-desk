@@ -135,6 +135,7 @@ def _seed_authorization(
     healthy_reconciliation: bool,
     book_age_seconds: int = 0,
     insert_authority: bool = True,
+    authorization_age_minutes: int = 0,
 ) -> tuple[str, str]:
     store = PostgresPaperStore(PAPER_WRITER_URL)
     checkpoint_id = f"phase7-{suffix}"
@@ -163,7 +164,7 @@ def _seed_authorization(
             {"checkpoint_id": checkpoint_id, "health": "HEALTHY", "mismatch_codes": []}
         )
     ledger_snapshot_hash = store.semantic_digest(ACCOUNT_ID)
-    now = datetime.now(UTC)
+    now = datetime.now(UTC) - timedelta(minutes=authorization_age_minutes)
     expires_at = now + timedelta(minutes=5)
     authorization_id = canonical_hash({"authorization": suffix})
     request_hash = canonical_hash({"authorization_input": suffix})
@@ -1034,6 +1035,199 @@ def _assert_blocked_only(authorization_id: str, reason_code: str) -> None:
         ]
         for _, payload in events:
             _validate_phase7_event(payload)
+
+
+def _revoke_seeded_authorization(suffix: str, authorization_id: str) -> None:
+    observed_at = datetime.now(UTC)
+    session_digest, csrf_digest = _seed_operator_csrf(suffix, observed_at)
+    with psycopg.connect(DATABASE_URL) as connection:
+        approval = connection.execute(
+            "SELECT approval_id FROM paper_execution_authorizations WHERE authorization_id=%s",
+            (authorization_id,),
+        ).fetchone()
+        assert approval is not None
+        revoked = connection.execute(
+            "SELECT created,response FROM revoke_paper_approval_v1("
+            "%s,%s,%s,1,%s,'operator-local-1',%s,%s,%s,%s,%s)",
+            (
+                f"phase7-{suffix}",
+                canonical_hash({"revocation": authorization_id}),
+                approval[0],
+                "composite blocker precedence proof",
+                session_digest,
+                csrf_digest,
+                canonical_hash({"origin": suffix}),
+                f"revocation-nonce-{suffix}-0000000000000000",
+                observed_at,
+            ),
+        ).fetchone()
+    assert revoked is not None and revoked[0] is True
+
+
+def _assert_composite_block_is_terminal(
+    authorization_id: str,
+    reason_code: str,
+) -> None:
+    with psycopg.connect(DATABASE_URL) as connection:
+        counts = connection.execute(
+            "SELECT "
+            "(SELECT count(*) FROM paper_authorization_attempts "
+            " WHERE paper_execution_authorization_id=%s AND namespace='paper'),"
+            "(SELECT count(*) FROM paper_command_receipts WHERE authorization_id=%s),"
+            "(SELECT count(*) FROM paper_broker_inputs "
+            " WHERE paper_execution_authorization_id=%s),"
+            "(SELECT count(*) FROM paper_orders WHERE authorization_id=%s),"
+            "(SELECT count(*) FROM paper_fills),"
+            "(SELECT count(*) FROM paper_ledger_transactions WHERE account_id=%s)",
+            (
+                authorization_id,
+                authorization_id,
+                authorization_id,
+                authorization_id,
+                ACCOUNT_ID,
+            ),
+        ).fetchone()
+        terminal = connection.execute(
+            "SELECT attempt.outcome,attempt.reason_code,receipt.outcome,"
+            "receipt.response->>'reason_code' "
+            "FROM paper_authorization_attempts attempt "
+            "JOIN paper_command_receipts receipt ON receipt.authorization_id=attempt.authorization_id "
+            "WHERE attempt.paper_execution_authorization_id=%s AND attempt.namespace='paper'",
+            (authorization_id,),
+        ).fetchone()
+        blocked_outbox = connection.execute(
+            "SELECT count(*) FROM outbox_events event "
+            "JOIN paper_outbox_links link USING(event_id) "
+            "WHERE link.account_id=%s AND event.event_type='paper.authorization.blocked.v2' "
+            "AND event.aggregate_id=%s",
+            (ACCOUNT_ID, authorization_id),
+        ).fetchone()
+    assert counts == (1, 1, 1, 0, 0, 1)
+    assert terminal == ("BLOCKED", reason_code, "REJECTED", reason_code)
+    assert blocked_outbox == (1,)
+
+
+def test_expired_and_revoked_authorization_uses_expiry_precedence(postgres: None) -> None:
+    authorization_id, _ = _seed_authorization(
+        "expired-revoked-precedence",
+        healthy_reconciliation=True,
+        authorization_age_minutes=6,
+    )
+    _revoke_seeded_authorization("expired-revoked-precedence", authorization_id)
+    store = PostgresPaperStore(PAPER_WRITER_URL)
+
+    first = store.attempt_phase7_authorization(authorization_id)
+
+    assert first.created is True
+    assert first.response == {
+        "result": "BLOCKED",
+        "authorization_id": authorization_id,
+        "reason_code": "AUTHORIZATION_EXPIRED",
+    }
+    _assert_composite_block_is_terminal(authorization_id, "AUTHORIZATION_EXPIRED")
+    retry = store.attempt_phase7_authorization(authorization_id)
+    assert retry.created is False
+    assert retry.response == first.response
+    assert retry.semantic_digest == first.semantic_digest
+    _assert_composite_block_is_terminal(authorization_id, "AUTHORIZATION_EXPIRED")
+
+
+def test_revoked_and_newer_denied_risk_uses_risk_precedence(postgres: None) -> None:
+    authorization_id, _ = _seed_authorization(
+        "revoked-risk-precedence", healthy_reconciliation=True
+    )
+    _revoke_seeded_authorization("revoked-risk-precedence", authorization_id)
+    with psycopg.connect(DATABASE_URL) as connection:
+        proposal = connection.execute(
+            "SELECT proposal_id FROM paper_execution_authorizations WHERE authorization_id=%s",
+            (authorization_id,),
+        ).fetchone()
+    assert proposal is not None
+    with psycopg.connect(RISK_WRITER_URL) as connection:
+        denied_id = _persist_newer_denied_risk(proposal[0], connection)
+    store = PostgresPaperStore(PAPER_WRITER_URL)
+
+    first = store.attempt_phase7_authorization(authorization_id)
+
+    assert first.created is True
+    assert first.response == {
+        "result": "BLOCKED",
+        "authorization_id": authorization_id,
+        "reason_code": "HASH_MISMATCH",
+    }
+    with psycopg.connect(DATABASE_URL) as connection:
+        assert connection.execute(
+            "SELECT decision_id,verdict FROM risk_decisions WHERE proposal_id=%s "
+            "ORDER BY recorded_at DESC,decision_id DESC LIMIT 1",
+            (proposal[0],),
+        ).fetchone() == (denied_id, "DENIED")
+    _assert_composite_block_is_terminal(authorization_id, "HASH_MISMATCH")
+    retry = store.attempt_phase7_authorization(authorization_id)
+    assert retry.created is False
+    assert retry.response == first.response
+    assert retry.semantic_digest == first.semantic_digest
+    _assert_composite_block_is_terminal(authorization_id, "HASH_MISMATCH")
+
+
+def test_kill_and_expired_authorization_uses_kill_precedence_and_drains(
+    postgres: None,
+) -> None:
+    authorization_id, _ = _seed_authorization(
+        "kill-expired-precedence",
+        healthy_reconciliation=True,
+        authorization_age_minutes=6,
+    )
+    activated = PostgresKillSwitch(DATABASE_URL).activate(
+        KillActivation(
+            request_id="phase7-kill-expired-precedence",
+            expected_version=0,
+            trigger_kind="MANUAL",
+            actor_id="operator:phase7-test",
+            reason_code="MANUAL_SAFETY_STOP",
+            reason="prove composite blockers cannot stall the Kill drain",
+            observed_at=datetime.now(UTC),
+            context_digest=canonical_hash({"kill-expired": authorization_id}),
+        )
+    )
+    with psycopg.connect(DATABASE_URL) as connection:
+        payload_hash = connection.execute(
+            "SELECT payload_hash FROM outbox_events WHERE event_id=%s",
+            (activated.outbox_event_id,),
+        ).fetchone()[0]
+    store = PostgresPaperStore(PAPER_WRITER_URL)
+    waiting = store.consume_kill_activation(
+        activated.activation_event_id,
+        payload_hash,
+        received_at=datetime.now(UTC),
+    )
+    assert waiting.has_more is True
+    assert waiting.completion_created is False
+
+    first = store.attempt_phase7_authorization(authorization_id)
+
+    assert first.created is True
+    assert first.response == {
+        "result": "BLOCKED",
+        "authorization_id": authorization_id,
+        "reason_code": "KILL_SWITCH_ACTIVE",
+    }
+    _assert_composite_block_is_terminal(authorization_id, "KILL_SWITCH_ACTIVE")
+    with psycopg.connect(DATABASE_URL) as connection:
+        assert connection.execute(
+            "SELECT count(*) FROM paper_pending_authorizations_v1"
+        ).fetchone() == (0,)
+        assert connection.execute(
+            "SELECT count(*) FROM paper_pending_kill_activations_v1"
+        ).fetchone() == (0,)
+        assert connection.execute(
+            "SELECT count(*) FROM paper_kill_cancel_completions WHERE activation_event_id=%s",
+            (activated.activation_event_id,),
+        ).fetchone() == (1,)
+    retry = store.attempt_phase7_authorization(authorization_id)
+    assert retry.created is False
+    assert retry.response == first.response
+    assert retry.semantic_digest == first.semantic_digest
+    _assert_composite_block_is_terminal(authorization_id, "KILL_SWITCH_ACTIVE")
 
 
 def test_approval_rejects_checkpoint_that_predates_a_paper_effect(
