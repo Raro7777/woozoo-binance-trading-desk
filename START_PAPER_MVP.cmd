@@ -9,7 +9,7 @@ set "woozoo_exit_code=%ERRORLEVEL%"
 
 if not "%woozoo_exit_code%"=="0" (
   echo.
-  echo [Woozoo] 시작에 실패했습니다. 위 오류를 확인한 뒤 다시 실행하세요.
+  echo [Woozoo] Startup failed. Check the error shown above, then try again.
   pause
 )
 

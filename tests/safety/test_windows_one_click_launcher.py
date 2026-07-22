@@ -33,3 +33,12 @@ def test_windows_launcher_uses_only_the_approved_paper_mvp_entry_points() -> Non
     assert "start-paper-mvp.ps1" in start_wrapper
     assert "corepack pnpm paper:mvp:stop" in stop_wrapper
     assert "docker compose down -v" not in stop_wrapper
+
+
+def test_windows_launcher_files_use_windows_safe_encodings() -> None:
+    attributes = (ROOT / ".gitattributes").read_text(encoding="utf-8")
+    powershell_bytes = (ROOT / "scripts/start-paper-mvp.ps1").read_bytes()
+
+    assert "*.cmd text eol=crlf" in attributes
+    assert "*.ps1 text eol=crlf" in attributes
+    assert powershell_bytes.startswith(b"\xef\xbb\xbf")

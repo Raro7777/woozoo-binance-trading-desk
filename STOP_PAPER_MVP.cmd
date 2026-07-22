@@ -3,15 +3,15 @@ setlocal
 chcp 65001 >nul
 cd /d "%~dp0"
 
-title Woozoo Paper MVP 종료
+title Stop Woozoo Paper MVP
 corepack pnpm paper:mvp:stop
 set "woozoo_exit_code=%ERRORLEVEL%"
 
 echo.
 if "%woozoo_exit_code%"=="0" (
-  echo [Woozoo] PostgreSQL과 Redis 컨테이너를 종료했습니다. 데이터는 보존됩니다.
+  echo [Woozoo] PostgreSQL and Redis stopped. Local data was preserved.
 ) else (
-  echo [Woozoo] 종료에 실패했습니다. 위 오류를 확인하세요.
+  echo [Woozoo] Shutdown failed. Check the error shown above.
 )
 pause
 
