@@ -12,6 +12,7 @@ export const metadata: Metadata = {
 const navigation = [
   ["트레이딩룸", "/"],
   ["모의투자 데스크", "/paper"],
+  ["Spot Testnet", "/testnet"],
   ["감사 기록", "/audit"],
   ["운영", "/operations"],
 ] as const;
@@ -32,8 +33,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
             <span className="brand-mark" aria-hidden="true">우주</span>
             <span><strong>우주</strong><small>트레이딩룸</small></span>
           </Link>
-          <div className="mode-lock" title="외부 거래소 주문 실행은 사용할 수 없습니다">
-            <span aria-hidden="true">●</span> 모의투자 전용
+          <div className="mode-lock" title="실거래는 금지되며 Spot Testnet은 별도 승인 후에만 사용할 수 있습니다">
+            <span aria-hidden="true">●</span> 실거래 금지
           </div>
           <nav aria-label="주요 메뉴">
             {navigation.map(([label, href]) => <Link key={href} href={href}>{label}</Link>)}
@@ -42,7 +43,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         </header>
         <main id="trading-room-content" tabIndex={-1}>{children}</main>
         <footer>
-          <p>로컬 모의투자 운영 · 사람 승인 필수 · 금융 판단 권한은 서버에 유지</p>
+          <p>모의투자 및 Binance Spot Testnet · 별도 사람 승인 필수 · 실거래 금지 · 금융 판단 권한은 서버에 유지</p>
         </footer>
       </body>
     </html>

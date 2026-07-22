@@ -124,6 +124,8 @@ def test_kill_002_scans_every_executable_config_and_tool_registry_for_recovery_w
     assert sorted(matches) == sorted(
         [
             "services/control-api/src/control_api/command_ports.py:recover_kill_switch",
+            "services/testnet-execution-service/src/testnet_execution/persistence.py:set active=false",
+            "services/testnet-execution-service/src/testnet_execution/reconciliation.py:set active=false",
             "db/migrations/versions/20260720_0007_trading_room.py:recover_kill_switch",
             "db/migrations/versions/20260720_0007_trading_room.py:set active=false",
         ]

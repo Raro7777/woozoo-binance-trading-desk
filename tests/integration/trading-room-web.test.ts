@@ -161,28 +161,21 @@ async function availablePort(): Promise<number> {
 }
 
 function startWeb(port: number) {
-  const argumentsForPnpm = [
-    "pnpm",
-    "--filter",
-    "@woozoo/trading-room-web",
-    "run",
+  const app = resolve(root, "apps", "trading-room-web");
+  const nextCli = resolve(app, "node_modules", "next", "dist", "bin", "next");
+  return spawn(process.execPath, [
+    nextCli,
     "start",
     "--hostname",
     "127.0.0.1",
     "--port",
     String(port),
-  ];
-  return process.platform === "win32"
-    ? spawn(process.env.ComSpec ?? "cmd.exe", ["/d", "/s", "/c", ["corepack", ...argumentsForPnpm].join(" ")], {
-        cwd: root,
-        stdio: ["ignore", "pipe", "pipe"],
-        windowsHide: true,
-      })
-    : spawn("corepack", argumentsForPnpm, {
-        cwd: root,
-        detached: true,
-        stdio: ["ignore", "pipe", "pipe"],
-      });
+  ], {
+    cwd: app,
+    detached: process.platform !== "win32",
+    stdio: ["ignore", "pipe", "pipe"],
+    windowsHide: true,
+  });
 }
 
 function processGroupExists(processGroupId: number): boolean {
@@ -238,7 +231,7 @@ async function stopWeb(processToStop: ReturnType<typeof startWeb>): Promise<void
   }
 }
 
-test("PLAT-001 serves the Phase 7 Trading Room routes without configuration disclosure", async () => {
+test("PLAT-001 serves the Phase 8 Trading Room routes without configuration disclosure", async () => {
   const port = await availablePort();
   const web = startWeb(port);
   let output = "";
@@ -263,9 +256,10 @@ test("PLAT-001 serves the Phase 7 Trading Room routes without configuration disc
     assert.equal(response.status, 200);
     const body = await response.text();
     assert.match(body, /우주 트레이딩룸/);
-    assert.match(body, /모의투자 전용/);
+    assert.match(body, /실거래 금지/);
+    assert.match(body, /Spot Testnet/);
     assert.match(body, /트레이딩룸 본문으로 건너뛰기/);
-    assert.doesNotMatch(body, /postgresql:|redis:|TRADING_MODE|testnet|api[_-]?key/i);
+    assert.doesNotMatch(body, /postgresql:|redis:|TRADING_MODE|api[_-]?key/i);
 
     const routes = [
       "/login",
@@ -281,7 +275,7 @@ test("PLAT-001 serves the Phase 7 Trading Room routes without configuration disc
       const routeBody = await routeResponse.text();
       assert.match(routeBody, /우주 트레이딩룸/);
       assert.match(routeBody, /보류|로그인|서버 확정 상태를 불러오는 중/);
-      assert.doesNotMatch(routeBody, /postgresql:|redis:|TRADING_MODE|testnet|api[_-]?key/i);
+      assert.doesNotMatch(routeBody, /postgresql:|redis:|TRADING_MODE|api[_-]?key/i);
     }
   } finally {
     await stopWeb(web);

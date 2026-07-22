@@ -21,6 +21,7 @@ test("SAFE-002 through SAFE-004 keep Phase 1 capability-zero", async () => {
     "infra",
     "alembic.ini",
     "compose.yaml",
+    "compose.phase8.yaml",
     ".env.example",
     "pnpm-workspace.yaml",
     "pyproject.toml",

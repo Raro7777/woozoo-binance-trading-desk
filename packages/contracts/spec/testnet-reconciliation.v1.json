@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "woozoo.testnet-reconciliation/v1",
+  "x-creation-phase": 8,
+  "x-activation-phase": 8,
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "environment", "account_binding_id", "account_generation", "checkpoint_id", "checkpoint_digest", "observation_set_digest", "status", "mismatch_codes", "confirmed_by_operator", "new_commands_allowed", "watermark_at", "created_at", "version"],
+  "properties": {
+    "schema_version": {"const": "woozoo.testnet-reconciliation/v1"},
+    "environment": {"const": "BINANCE_SPOT_TESTNET"},
+    "account_binding_id": {"$ref": "#/$defs/hash"},
+    "account_generation": {"type": "integer", "minimum": 1},
+    "checkpoint_id": {"$ref": "#/$defs/hash"},
+    "checkpoint_digest": {"$ref": "#/$defs/hash"},
+    "observation_set_digest": {"$ref": "#/$defs/hash"},
+    "status": {"enum": ["HEALTHY", "RUNNING", "FAILED", "RESET_SUSPECTED", "AWAITING_OPERATOR_CONFIRMATION", "UNKNOWN"]},
+    "mismatch_codes": {"type": "array", "items": {"enum": ["ORDER_MISMATCH", "FILL_MISMATCH", "FEE_MISMATCH", "BALANCE_MISMATCH", "LEDGER_MISMATCH", "AUTHORIZATION_RECEIPT_MISMATCH", "USER_DATA_GAP", "ACCOUNT_GENERATION_MISMATCH", "RESET_SIGNAL"]}, "uniqueItems": true},
+    "confirmed_by_operator": {"type": "boolean"},
+    "new_commands_allowed": {"type": "boolean"},
+    "watermark_at": {"type": "string", "format": "date-time"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "version": {"type": "integer", "minimum": 1}
+  },
+  "$defs": {"hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}
+}

@@ -1,6 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
 const httpsPort = 3443;
+const artifactDirectory = process.env.WOOZOO_E2E_ARTIFACT_DIR ?? "artifacts/e2e";
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -9,8 +10,8 @@ export default defineConfig({
   forbidOnly: true,
   retries: process.env.CI === undefined ? 0 : 1,
   workers: 1,
-  reporter: [["line"], ["html", { outputFolder: "artifacts/e2e/playwright-report", open: "never" }]],
-  outputDir: "artifacts/e2e/test-results",
+  reporter: [["line"], ["html", { outputFolder: `${artifactDirectory}/playwright-report`, open: "never" }]],
+  outputDir: `${artifactDirectory}/test-results`,
   use: {
     baseURL: `https://localhost:${httpsPort}`,
     ignoreHTTPSErrors: true,

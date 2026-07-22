@@ -19,6 +19,7 @@ function runChecked(spawnSyncImpl, command, args, options, label) {
 export function removeInfrastructure({
   composeFile,
   composeProject = E2E_COMPOSE_PROJECT,
+  environment = process.env,
   root,
   spawnSyncImpl = spawnSync,
   volumeName = E2E_POSTGRES_VOLUME,
@@ -28,14 +29,14 @@ export function removeInfrastructure({
     spawnSyncImpl,
     "docker",
     [...composePrefix, "down", "-v", "--remove-orphans"],
-    { cwd: root, stdio: "inherit" },
+    { cwd: root, env: environment, stdio: "inherit" },
     "E2E infrastructure cleanup",
   );
   const volumeResult = runChecked(
     spawnSyncImpl,
     "docker",
     ["volume", "ls", "--quiet", "--filter", `name=^${volumeName}$`],
-    { cwd: root, encoding: "utf8" },
+    { cwd: root, encoding: "utf8", env: environment },
     "E2E volume absence check",
   );
   const remainingVolumes = (volumeResult.stdout ?? "")
@@ -64,6 +65,7 @@ export function startFreshInfrastructure({
   afterStart,
   composeFile,
   composeProject = E2E_COMPOSE_PROJECT,
+  environment = process.env,
   root,
   spawnSyncImpl = spawnSync,
   volumeName = E2E_POSTGRES_VOLUME,
@@ -71,6 +73,7 @@ export function startFreshInfrastructure({
   const removal = removeInfrastructure({
     composeFile,
     composeProject,
+    environment,
     root,
     spawnSyncImpl,
     volumeName,
@@ -90,7 +93,7 @@ export function startFreshInfrastructure({
       "postgres",
       "redis",
     ],
-    { cwd: root, stdio: "inherit" },
+    { cwd: root, env: environment, stdio: "inherit" },
     "E2E infrastructure startup",
   );
   const downstream = afterStart();

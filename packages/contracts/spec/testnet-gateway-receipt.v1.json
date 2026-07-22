@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "woozoo.testnet-gateway-receipt/v1",
+  "x-creation-phase": 8,
+  "x-activation-phase": 8,
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "receipt_id", "command_id", "request_digest", "environment", "account_binding_id", "account_generation", "client_order_id", "status", "external_effect_count", "same_client_order_id_query_count", "observed_at", "payload_hash"],
+  "properties": {
+    "schema_version": {"const": "woozoo.testnet-gateway-receipt/v1"},
+    "receipt_id": {"$ref": "#/$defs/hash"},
+    "command_id": {"$ref": "#/$defs/hash"},
+    "request_digest": {"$ref": "#/$defs/hash"},
+    "environment": {"const": "BINANCE_SPOT_TESTNET"},
+    "account_binding_id": {"$ref": "#/$defs/hash"},
+    "account_generation": {"type": "integer", "minimum": 1},
+    "client_order_id": {"type": "string", "pattern": "^wz8-[a-f0-9]{32}$"},
+    "status": {"enum": ["ACCEPTED", "REJECTED_LOCAL", "DISPATCH_RECORDED", "SUBMISSION_UNKNOWN", "EXCHANGE_ACKNOWLEDGED", "RESOLUTION_REQUIRED", "RESOLVED_FOUND", "RESOLVED_REJECTED", "RESOLVED_NOT_FOUND_CONFIRMED"]},
+    "external_effect_count": {"type": "integer", "minimum": 0, "maximum": 1},
+    "same_client_order_id_query_count": {"type": "integer", "minimum": 0},
+    "observed_at": {"type": "string", "format": "date-time"},
+    "payload_hash": {"$ref": "#/$defs/hash"}
+  },
+  "$defs": {"hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}
+}

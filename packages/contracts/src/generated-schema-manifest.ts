@@ -13,7 +13,7 @@ export const MARKET_STATUS_PATH_TEMPLATE = "/api/v1/markets/{symbol}/status" as 
 export const EVIDENCE_PATH_TEMPLATE = "/api/v1/evidence/{evidence_id}" as const;
 export const EVIDENCE_COMMAND_PATH = "/api/v1/commands/evidence-snapshots" as const;
 export const CONTRACT_SOURCE_DIGESTS = {
-  "openapi.v1.json": "e578e4f8c5b6817fe98619c6474b0e5bb86e0af0bcb3c5c0d784acf8a1974504",
+  "openapi.v1.json": "cc2b20e07e8dcd4d1c42477f63ec39522360c5c10c4b51aafd93909bd992456f",
   "event-envelope.v1.json": "a244451fe765951a6e6246d3d03c68d6924876f9a5a3525a36101ec29ba9891b",
   "market-event.v1.json": "6eedfb52b8d28748542a5851df6960b4b495e520f1386a0b4efca933069511dd",
   "market-domain-events.v1.json": "c0e883dc53c6394355c9baa70e4ef642307eb2a0f13ef0fe9cb581f6dcf2dfc4",
@@ -42,7 +42,20 @@ export const CONTRACT_SOURCE_DIGESTS = {
   "approval-view.v1.json": "72aa3bdec35ce52d42e48e3e3a1237ce7c51b80f0c7949c2732a09c10f19374c",
   "local-session.v1.json": "6698a0d8be20ae5281a8820f635691adb432945727aa179ac482e2b44c63630e",
   "risk-domain-events.v2.json": "90aeb936e34084fbae0c54dd72b69ba4005dbf1016f4bbdca903a19dd2fb0b1d",
-  "paper-domain-events.v2.json": "88a581b9e640eddc70d6bacb6c50fbfdcc9ad9a376def37f85f06224f78591ec"
+  "paper-domain-events.v2.json": "88a581b9e640eddc70d6bacb6c50fbfdcc9ad9a376def37f85f06224f78591ec",
+  "testnet-order-preview.v1.json": "813d6ac4b1e977506916088684526d1d228e5daded4faf8d207ba3b96c47c63f",
+  "testnet-risk-input.v1.json": "a99bb8d28a6b3aa7312e1b1c73ce6af46d48e05c60fd5caadae7af4e315afd81",
+  "testnet-risk-decision.v1.json": "e54c53c623557d0cd40c824a86bac23f21464a10f6b48d957141f1b170e563cc",
+  "testnet-approval.v1.json": "a75d7bd933b4beec78a3ee31390048d921068c8e830c02c86f5259605f45e206",
+  "testnet-approval-revocation.v1.json": "0d61d08369b46fe2aff4394dc8f28c20270bf1c4503f14df14192b46e76551cc",
+  "testnet-execution-authorization.v1.json": "8c0c7719b4a5693a63638fe6e43e84153e8dbd8385ae060071d9952ee19e840a",
+  "testnet-gateway-command.v1.json": "1744418bb8a43ad933eba120bbd4f7cf91eff15cf8ce22eb8adfce2a1219d12c",
+  "testnet-gateway-receipt.v1.json": "8454fffe2bf3e497633982afdef3c708254d7b57209646010e8b75d71a229481",
+  "testnet-order.v1.json": "4b394c7bf778f21d623099bcf83e325d492559c48b391fea864935aae7ff9d22",
+  "testnet-reconciliation.v1.json": "1c594b50db41bbeb1aa6f2b2385eedba436f4f47474f104f1ba1657dc70d5546",
+  "testnet-account-generation.v1.json": "5b330025f14dd3bb83ede0a4a3c423b711de6e4880795020429fbd303f9d0b0c",
+  "testnet-gateway-status.v1.json": "306b24906472a16420d3933168704797e01fa9ae000ebf5fdde2dd86fa155eb5",
+  "testnet-domain-events.v1.json": "92185943efdc048e7066c7f1e746c8bbc77fcb5203bf32c3389db2e9ef9d2d07"
 } as const;
 export const RISK_INPUT_SPEC_VERSION = "woozoo.risk-input/v1" as const;
 export const RISK_DECISION_SPEC_VERSION = "woozoo.risk-decision/v1" as const;
@@ -68,3 +81,19 @@ export const LOCAL_SESSION_SPEC_VERSION = "woozoo.local-session/v1" as const;
 export const RISK_DOMAIN_EVENT_V2_SPEC_VERSION = "woozoo.risk-domain-events/v2" as const;
 export const PAPER_DOMAIN_EVENT_V2_SPEC_VERSION = "woozoo.paper-domain-events/v2" as const;
 export const TRADING_ROOM_ACTIVATION_PHASE = 7 as const;
+export const TESTNET_ACTIVATION_PHASE = 8 as const;
+export const TESTNET_CONTRACT_SPEC_VERSIONS = {
+  "testnet-order-preview.v1.json": "woozoo.testnet-order-preview/v1",
+  "testnet-risk-input.v1.json": "woozoo.testnet-risk-input/v1",
+  "testnet-risk-decision.v1.json": "woozoo.testnet-risk-decision/v1",
+  "testnet-approval.v1.json": "woozoo.testnet-approval/v1",
+  "testnet-approval-revocation.v1.json": "woozoo.testnet-approval-revocation/v1",
+  "testnet-execution-authorization.v1.json": "woozoo.testnet-execution-authorization/v1",
+  "testnet-gateway-command.v1.json": "woozoo.testnet-gateway-command/v1",
+  "testnet-gateway-receipt.v1.json": "woozoo.testnet-gateway-receipt/v1",
+  "testnet-order.v1.json": "woozoo.testnet-order/v1",
+  "testnet-reconciliation.v1.json": "woozoo.testnet-reconciliation/v1",
+  "testnet-account-generation.v1.json": "woozoo.testnet-account-generation/v1",
+  "testnet-gateway-status.v1.json": "woozoo.testnet-gateway-status/v1",
+  "testnet-domain-events.v1.json": "woozoo.testnet-domain-events/v1"
+} as const;

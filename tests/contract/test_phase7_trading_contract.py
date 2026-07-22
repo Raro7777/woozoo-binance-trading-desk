@@ -372,6 +372,11 @@ def test_phase7_openapi_is_browser_only_and_closes_mutation_guards() -> None:
         ("/api/v1/paper-orders/{order_id}/cancel", "post"),
         ("/api/v1/kill-switch/activate", "post"),
         ("/api/v1/kill-switch/recover", "post"),
+        ("/api/v1/testnet-activations", "post"),
+        ("/api/v1/testnet-activations/{activation_id}/deactivations", "post"),
+        ("/api/v1/testnet-approvals", "post"),
+        ("/api/v1/testnet-approvals/{approval_id}/revocations", "post"),
+        ("/api/v1/testnet-reconciliation/{checkpoint_id}/confirmations", "post"),
     }
     for path, method in body_routes:
         assert paths[path][method]["responses"]["422"] == {

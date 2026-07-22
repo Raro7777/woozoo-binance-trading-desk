@@ -297,9 +297,9 @@ def test_phase_five_downgrade_fails_closed_when_immutable_history_exists() -> No
             )
             with psycopg.connect(DATABASE_URL) as connection:
                 assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == (
-                    # PostgreSQL transactional DDL rolls the successful P7->P6 step back
-                    # together with the later fail-closed P5 downgrade.
-                    "20260720_0007",
+                    # PostgreSQL transactional DDL rolls every attempted downgrade step
+                    # back together, so the approved Phase 8 head remains authoritative.
+                    "20260722_0008",
                 )
                 assert connection.execute(
                     "SELECT active,version,last_activation_event_id FROM kill_switch_state "

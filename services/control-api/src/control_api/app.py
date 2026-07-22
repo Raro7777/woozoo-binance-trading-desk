@@ -35,6 +35,11 @@ from .market_projection import (
     PostgresMarketStatusProjection,
 )
 from .security import LocalOperatorSecurity
+from .testnet_operator import (
+    InMemoryTestnetOperatorRoom,
+    PostgresTestnetOperatorRoom,
+    TestnetOperatorRoom,
+)
 from .trading_room import PostgresTradingRoom, TradingRoom
 from .trading_room_routes import load_local_security, register_trading_room_routes
 
@@ -93,6 +98,7 @@ def create_app(
     evidence_projection: EvidenceProjection | None = None,
     operator_security: LocalOperatorSecurity | None = None,
     trading_room: TradingRoom | None = None,
+    testnet_room: TestnetOperatorRoom | None = None,
 ) -> FastAPI:
     values = os.environ if environment is None else environment
     settings = PlatformSettings.from_mapping(values).require_service_dependencies()
@@ -271,10 +277,18 @@ def create_app(
                     PostgresRiskEvaluationPort(risk_database_url) if risk_database_url else None
                 ),
             )
+        testnet = testnet_room
+        if testnet is None:
+            testnet = (
+                InMemoryTestnetOperatorRoom()
+                if trading_room is not None
+                else PostgresTestnetOperatorRoom(values.get("CONTROL_DATABASE_URL", ""))
+            )
         register_trading_room_routes(
             app,
             local_security,
             room,
+            testnet,
         )
 
     return app

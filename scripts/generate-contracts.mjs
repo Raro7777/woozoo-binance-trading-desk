@@ -35,6 +35,21 @@ const phase7SpecNames = [
   "risk-domain-events.v2.json",
   "paper-domain-events.v2.json",
 ];
+const phase8SpecNames = [
+  "testnet-order-preview.v1.json",
+  "testnet-risk-input.v1.json",
+  "testnet-risk-decision.v1.json",
+  "testnet-approval.v1.json",
+  "testnet-approval-revocation.v1.json",
+  "testnet-execution-authorization.v1.json",
+  "testnet-gateway-command.v1.json",
+  "testnet-gateway-receipt.v1.json",
+  "testnet-order.v1.json",
+  "testnet-reconciliation.v1.json",
+  "testnet-account-generation.v1.json",
+  "testnet-gateway-status.v1.json",
+  "testnet-domain-events.v1.json",
+];
 const check = process.argv.includes("--check");
 
 const stable = (value) => {
@@ -69,6 +84,10 @@ const phase7Specs = Object.fromEntries(await Promise.all(phase7SpecNames.map(asy
   name,
   JSON.parse(await readFile(resolve(root, "packages/contracts/spec", name), "utf8")),
 ])));
+const phase8Specs = Object.fromEntries(await Promise.all(phase8SpecNames.map(async (name) => [
+  name,
+  JSON.parse(await readFile(resolve(root, "packages/contracts/spec", name), "utf8")),
+])));
 
 const expectedOpenApiPaths = [
   "/api/v1/health",
@@ -92,9 +111,17 @@ const expectedOpenApiPaths = [
   "/api/v1/kill-switch",
   "/api/v1/kill-switch/activate",
   "/api/v1/kill-switch/recover",
+  "/api/v1/testnet/operator-state",
+  "/api/v1/testnet-activations",
+  "/api/v1/testnet-activations/{activation_id}/deactivations",
+  "/api/v1/proposals/{proposal_id}/testnet-approval-view",
+  "/api/v1/testnet-approvals",
+  "/api/v1/testnet-approvals/{approval_id}/revocations",
+  "/api/v1/testnet-executions/{execution_id}",
+  "/api/v1/testnet-reconciliation/{checkpoint_id}/confirmations",
 ];
 if (JSON.stringify(Object.keys(openApi.paths)) !== JSON.stringify(expectedOpenApiPaths)) {
-  throw new Error("OpenAPI paths must exactly match the approved Phase 3 and Phase 7 browser API");
+  throw new Error("OpenAPI paths must exactly match the approved Phase 3, Phase 7, and Phase 8 browser API");
 }
 if (expectedOpenApiPaths.some((path) => path.includes("/internal/"))) {
   throw new Error("Browser OpenAPI must not expose internal service routes");
@@ -208,6 +235,30 @@ if (
 ) {
   throw new Error("Phase 7 production contracts must bind paper namespace and the server actor");
 }
+const expectedPhase8Ids = Object.fromEntries(phase8SpecNames.map((name) => [
+  name,
+  `woozoo.${name.replace(".v1.json", "").replaceAll("-", "-")}/v1`,
+]));
+for (const [name, id] of Object.entries(expectedPhase8Ids)) {
+  const contract = phase8Specs[name];
+  if (
+    contract?.$id !== id ||
+    contract?.["x-creation-phase"] !== 8 ||
+    contract?.["x-activation-phase"] !== 8 ||
+    (contract.type === "object" && contract.additionalProperties !== false)
+  ) {
+    throw new Error(`Phase 8 contract ${name} must be closed and active only in Phase 8`);
+  }
+}
+if (
+  phase8Specs["testnet-risk-input.v1.json"].properties?.namespace?.const !== "testnet" ||
+  phase8Specs["testnet-approval.v1.json"].properties?.actor_id?.const !== "operator-local-1" ||
+  phase8Specs["testnet-execution-authorization.v1.json"].properties?.namespace?.const !== "testnet" ||
+  phase8Specs["testnet-gateway-command.v1.json"].properties?.producer?.const !== "testnet-execution-service" ||
+  phase8Specs["testnet-gateway-command.v1.json"].properties?.environment?.const !== "BINANCE_SPOT_TESTNET"
+) {
+  throw new Error("Phase 8 contracts must bind the separate Testnet namespace, operator, producer, and environment");
+}
 
 const cookieScheme = openApi.components?.securitySchemes?.LocalOperatorSession;
 if (
@@ -224,6 +275,13 @@ const phase7Mutations = [
   ["/api/v1/paper-orders/{order_id}/cancel", true],
   ["/api/v1/kill-switch/activate", true],
   ["/api/v1/kill-switch/recover", true],
+];
+const phase8Mutations = [
+  "/api/v1/testnet-activations",
+  "/api/v1/testnet-activations/{activation_id}/deactivations",
+  "/api/v1/testnet-approvals",
+  "/api/v1/testnet-approvals/{approval_id}/revocations",
+  "/api/v1/testnet-reconciliation/{checkpoint_id}/confirmations",
 ];
 const loginOperation = openApi.paths["/api/v1/session/login"]?.post;
 if (
@@ -247,6 +305,23 @@ for (const [path, requiresVersion] of phase7Mutations) {
     (requiresVersion && !refs.includes("#/components/parameters/IfMatchHeader"))
   ) {
     throw new Error(`Phase 7 mutation ${path} must bind session, Origin, CSRF, idempotency, and version where mutable`);
+  }
+}
+for (const path of phase8Mutations) {
+  const operation = openApi.paths[path]?.post;
+  const refs = operation?.parameters?.map((parameter) => parameter.$ref).filter(Boolean) ?? [];
+  const required = [
+    "#/components/parameters/OriginHeader",
+    "#/components/parameters/CsrfHeader",
+    "#/components/parameters/IdempotencyHeader",
+    "#/components/parameters/IfMatchHeader",
+  ];
+  if (
+    operation === undefined ||
+    JSON.stringify(operation.security) !== JSON.stringify([{ LocalOperatorSession: [] }]) ||
+    required.some((reference) => !refs.includes(reference))
+  ) {
+    throw new Error(`Phase 8 mutation ${path} must bind session, Origin, CSRF, idempotency, and version`);
   }
 }
 
@@ -412,6 +487,10 @@ const manifest = {
   risk_domain_event_v2_spec_version: phase7Specs["risk-domain-events.v2.json"].$id,
   paper_domain_event_v2_spec_version: phase7Specs["paper-domain-events.v2.json"].$id,
   trading_room_activation_phase: 7,
+  testnet_activation_phase: 8,
+  testnet_contract_spec_versions: Object.fromEntries(
+    phase8SpecNames.map((name) => [name, phase8Specs[name].$id]),
+  ),
   market_source: marketEvent.properties.source.const,
   health_path: "/api/v1/health",
   market_status_path_template: "/api/v1/markets/{symbol}/status",
@@ -438,6 +517,7 @@ const manifest = {
     "agent-domain-events.v1.json": digest(agentDomainEvents),
     "risk-input.v2.json": digest(riskInputV2),
     ...Object.fromEntries(phase7SpecNames.map((name) => [name, digest(phase7Specs[name])])),
+    ...Object.fromEntries(phase8SpecNames.map((name) => [name, digest(phase8Specs[name])])),
   },
 };
 const manifestJson = `${JSON.stringify(manifest, null, 2)}\n`;
@@ -644,6 +724,69 @@ export type PaperApprovalRevocationBindingV1 = { revocation_id: string; approval
 export type PaperExecutionAuthorizationBindingV1 = { authorization_id: string; namespace: "paper"; approval_id: string; approval_hash: string; approval_nonce_hash: string; authorization_nonce: string; proposal_id: string; proposal_hash: string; risk_decision_id: string; risk_decision_hash: string; risk_input_digest: string; risk_policy_version: string; paper_order_preview_hash: string; authorization_input_digest: string; current_data_state_hash: string; current_data_as_of: string; current_knowledge_cutoff: string; kill_switch_version: number; reconciliation_checkpoint_hash: string; ledger_snapshot_hash: string; paper_account_id: string; issued_at: string; expires_at: string };
 export type LocalSessionBindingV1 = { actor_id: "operator-local-1"; issued_at: string; idle_expires_at: string; absolute_expires_at: string; csrf_token: string; csrf_expires_at: string };
 export type KillRecoveryDataBindingV2 = { recovery_event_id: string; scope: "paper-global"; active: false; prior_version: number; version: number; actor_id: "operator-local-1"; session_binding_hash: string; csrf_binding_hash: string; origin_hash: string; incident_reference: string; reason: string; observed_at: string; context_digest: string; data_status: "HEALTHY"; data_state_hash: string; reconciliation_status: "PASS"; reconciliation_checkpoint_hash: string; ledger_status: "BALANCED"; ledger_snapshot_hash: string };
+`;
+
+const phase8TsBindings = `export type TestnetEnvironmentBindingV1 = "BINANCE_SPOT_TESTNET";
+export type TestnetGatewayHealthBindingV1 = "DISABLED" | "ACTIVATING" | "READY" | "DEGRADED" | "UNKNOWN" | "RESET_HOLD" | "KILLED";
+export type TestnetReconciliationStatusBindingV1 = "HEALTHY" | "RUNNING" | "FAILED" | "RESET_SUSPECTED" | "AWAITING_OPERATOR_CONFIRMATION" | "UNKNOWN";
+export type TestnetOrderPreviewBindingV1 = { schema_version: "woozoo.testnet-order-preview/v1"; environment: TestnetEnvironmentBindingV1; account_binding_id: string; account_generation: number; proposal_id: string; proposal_hash: string; evidence_id: string; evidence_digest: string; data_state_digest: string; as_of: string; knowledge_cutoff: string; symbol: "BTCUSDT" | "ETHUSDT"; side: "BUY" | "SELL"; order_type: "LIMIT"; time_in_force: "GTC"; quantity: string; limit_price: string; worst_case_notional: string; fee_reserve: string; preview_policy_version: "woozoo.testnet-order-preview-policy/v1"; calculator_version: "woozoo.decimal-calculator/v1"; symbol_rules_digest: string; ledger_snapshot_digest: string; reconciliation_checkpoint_digest: string; paper_kill_version: number; testnet_barrier_version: number; client_order_id: string; created_at: string; expires_at: string; testnet_order_preview_digest: string };
+export type TestnetApprovalBindingV1 = { schema_version: "woozoo.testnet-approval/v1"; approval_id: string; proposal_id: string; proposal_hash: string; risk_decision_id: string; risk_decision_hash: string; risk_input_digest: string; risk_policy_version: "woozoo.testnet-risk-policy/v1"; preview_policy_version: "woozoo.testnet-order-preview-policy/v1"; environment: TestnetEnvironmentBindingV1; account_binding_id: string; account_generation: number; testnet_order_preview: TestnetOrderPreviewBindingV1; testnet_order_preview_digest: string; approval_input_digest: string; actor_id: "operator-local-1"; session_binding_hash: string; csrf_binding_hash: string; origin_hash: string; decision: "APPROVED" | "REJECTED"; validity: "ACTIVE" | "EXPIRED" | "REVOKED" | "INVALIDATED"; approval_nonce: string; expected_activation_version: number; expected_paper_kill_version: number; expected_testnet_barrier_version: number; expected_ledger_version: number; expected_reconciliation_version: number; approved_at: string; expires_at: string; revocation_state: "NOT_REVOKED" | "REVOKED"; payload_hash: string };
+export type TestnetExecutionAuthorizationBindingV1 = { schema_version: "woozoo.testnet-execution-authorization/v1"; authorization_id: string; namespace: "testnet"; environment: TestnetEnvironmentBindingV1; account_binding_id: string; account_generation: number; approval_id: string; approval_hash: string; approval_nonce_hash: string; authorization_nonce: string; proposal_id: string; proposal_hash: string; risk_decision_id: string; risk_decision_hash: string; risk_input_digest: string; risk_policy_version: "woozoo.testnet-risk-policy/v1"; preview_policy_version: "woozoo.testnet-order-preview-policy/v1"; testnet_order_preview_digest: string; authorization_input_digest: string; data_state_digest: string; activation_version: number; paper_kill_version: number; testnet_barrier_version: number; gateway_configuration_digest: string; gateway_allowlist_digest: string; reconciliation_checkpoint_digest: string; ledger_snapshot_digest: string; client_order_id: string; issued_at: string; expires_at: string };
+export type TestnetGatewayCommandBindingV1 = { schema_version: "woozoo.testnet-gateway-command/v1"; command_id: string; command_type: "SUBMIT_LIMIT_ORDER" | "CANCEL_EXISTING_ORDER" | "QUERY_EXISTING_ORDER" | "RECONCILIATION_OBSERVATION"; effect_class: "CREATE_ORDER" | "REDUCE_OR_CANCEL" | "OBSERVE_ONLY"; producer: "testnet-execution-service"; environment: TestnetEnvironmentBindingV1; account_binding_id: string; account_generation: number; idempotency_key: string; request_digest: string; correlation_id: string; causation_id: string; capability_id: "SPOT_TESTNET_SUBMIT_LIMIT_GTC" | "SPOT_TESTNET_CANCEL_BY_CLIENT_ID" | "SPOT_TESTNET_QUERY_BY_CLIENT_ID" | "SPOT_TESTNET_RECONCILIATION"; gateway_allowlist_digest: string; gateway_configuration_digest: string; activation_version: number; testnet_barrier_version: number; original_authorization_id: string; original_approval_id: string; original_proposal_hash: string; original_risk_decision_hash: string; client_order_id: string; symbol: "BTCUSDT" | "ETHUSDT"; side: "BUY" | "SELL"; quantity: string; limit_price: string; query_reason: "INITIAL_SUBMIT" | "OPERATOR_CANCEL" | "SAFETY_CANCEL" | "UNKNOWN_OUTCOME" | "PERIODIC_RECONCILIATION"; issued_at: string; expires_at: string };
+export type TestnetGatewayReceiptBindingV1 = { schema_version: "woozoo.testnet-gateway-receipt/v1"; receipt_id: string; command_id: string; request_digest: string; environment: TestnetEnvironmentBindingV1; account_binding_id: string; account_generation: number; client_order_id: string; status: "ACCEPTED" | "REJECTED_LOCAL" | "DISPATCH_RECORDED" | "SUBMISSION_UNKNOWN" | "EXCHANGE_ACKNOWLEDGED" | "RESOLUTION_REQUIRED" | "RESOLVED_FOUND" | "RESOLVED_REJECTED" | "RESOLVED_NOT_FOUND_CONFIRMED"; external_effect_count: number; same_client_order_id_query_count: number; observed_at: string; payload_hash: string };
+export type TestnetOperatorStateBindingV1 = { environment: TestnetEnvironmentBindingV1; account_binding_id: string; account_label: string; account_generation: number; activation_id: string | null; activation_status: "DISABLED" | "PENDING" | "ACTIVE" | "EXPIRED" | "REVOKED"; activation_version: number; activation_view_digest: string; gateway_health: TestnetGatewayHealthBindingV1; capability_allowlist_digest: string; configuration_digest: string; testnet_barrier_status: "ACTIVE" | "INACTIVE"; paper_kill_active: boolean; reconciliation_status: TestnetReconciliationStatusBindingV1; reconciliation_checkpoint_id: string | null; reconciliation_checkpoint_digest: string | null; reset_state: "NONE" | "SUSPECTED" | "AWAITING_CONFIRMATION" | "CONFIRMED"; new_commands_allowed: boolean; reason_codes: string[]; activate_action_allowed: boolean; deactivate_action_allowed: boolean; reset_confirmation_allowed: boolean; served_at: string };
+export type TestnetApprovalCommandBindingV1 = { proposal_id: string; decision: "APPROVE" | "REJECT"; expected_version: number; testnet_order_preview_digest: string; approval_input_digest: string; reason: string };
+`;
+
+const phase8PyBindings = `
+TestnetEnvironmentBindingV1 = Literal["BINANCE_SPOT_TESTNET"]
+TestnetGatewayHealthBindingV1 = Literal["DISABLED", "ACTIVATING", "READY", "DEGRADED", "UNKNOWN", "RESET_HOLD", "KILLED"]
+TestnetReconciliationStatusBindingV1 = Literal["HEALTHY", "RUNNING", "FAILED", "RESET_SUSPECTED", "AWAITING_OPERATOR_CONFIRMATION", "UNKNOWN"]
+
+class TestnetGatewayCommandBindingV1(TypedDict):
+    schema_version: Literal["woozoo.testnet-gateway-command/v1"]
+    command_id: str
+    command_type: Literal["SUBMIT_LIMIT_ORDER", "CANCEL_EXISTING_ORDER", "QUERY_EXISTING_ORDER", "RECONCILIATION_OBSERVATION"]
+    effect_class: Literal["CREATE_ORDER", "REDUCE_OR_CANCEL", "OBSERVE_ONLY"]
+    producer: Literal["testnet-execution-service"]
+    environment: TestnetEnvironmentBindingV1
+    account_binding_id: str
+    account_generation: int
+    idempotency_key: str
+    request_digest: str
+    correlation_id: str
+    causation_id: str
+    capability_id: str
+    gateway_allowlist_digest: str
+    gateway_configuration_digest: str
+    activation_version: int
+    testnet_barrier_version: int
+    original_authorization_id: str
+    original_approval_id: str
+    original_proposal_hash: str
+    original_risk_decision_hash: str
+    client_order_id: str
+    symbol: Literal["BTCUSDT", "ETHUSDT"]
+    side: Literal["BUY", "SELL"]
+    quantity: str
+    limit_price: str
+    query_reason: str
+    issued_at: str
+    expires_at: str
+
+TESTNET_ORDER_PREVIEW_SCHEMA: dict[str, object] = json.loads(${JSON.stringify(JSON.stringify(phase8Specs["testnet-order-preview.v1.json"]))})
+TESTNET_RISK_INPUT_SCHEMA: dict[str, object] = json.loads(${JSON.stringify(JSON.stringify(phase8Specs["testnet-risk-input.v1.json"]))})
+TESTNET_RISK_DECISION_SCHEMA: dict[str, object] = json.loads(${JSON.stringify(JSON.stringify(phase8Specs["testnet-risk-decision.v1.json"]))})
+TESTNET_APPROVAL_SCHEMA: dict[str, object] = json.loads(${JSON.stringify(JSON.stringify(phase8Specs["testnet-approval.v1.json"]))})
+TESTNET_APPROVAL_REVOCATION_SCHEMA: dict[str, object] = json.loads(${JSON.stringify(JSON.stringify(phase8Specs["testnet-approval-revocation.v1.json"]))})
+TESTNET_EXECUTION_AUTHORIZATION_SCHEMA: dict[str, object] = json.loads(${JSON.stringify(JSON.stringify(phase8Specs["testnet-execution-authorization.v1.json"]))})
+TESTNET_GATEWAY_COMMAND_SCHEMA: dict[str, object] = json.loads(${JSON.stringify(JSON.stringify(phase8Specs["testnet-gateway-command.v1.json"]))})
+TESTNET_GATEWAY_RECEIPT_SCHEMA: dict[str, object] = json.loads(${JSON.stringify(JSON.stringify(phase8Specs["testnet-gateway-receipt.v1.json"]))})
+TESTNET_ORDER_SCHEMA: dict[str, object] = json.loads(${JSON.stringify(JSON.stringify(phase8Specs["testnet-order.v1.json"]))})
+TESTNET_RECONCILIATION_SCHEMA: dict[str, object] = json.loads(${JSON.stringify(JSON.stringify(phase8Specs["testnet-reconciliation.v1.json"]))})
+TESTNET_ACCOUNT_GENERATION_SCHEMA: dict[str, object] = json.loads(${JSON.stringify(JSON.stringify(phase8Specs["testnet-account-generation.v1.json"]))})
+TESTNET_GATEWAY_STATUS_SCHEMA: dict[str, object] = json.loads(${JSON.stringify(JSON.stringify(phase8Specs["testnet-gateway-status.v1.json"]))})
+TESTNET_DOMAIN_EVENTS_SCHEMA: dict[str, object] = json.loads(${JSON.stringify(JSON.stringify(phase8Specs["testnet-domain-events.v1.json"]))})
 `;
 
 const phase7PyBindings = `
@@ -872,15 +1015,17 @@ export const LOCAL_SESSION_SPEC_VERSION = ${JSON.stringify(manifest.local_sessio
 export const RISK_DOMAIN_EVENT_V2_SPEC_VERSION = ${JSON.stringify(manifest.risk_domain_event_v2_spec_version)} as const;
 export const PAPER_DOMAIN_EVENT_V2_SPEC_VERSION = ${JSON.stringify(manifest.paper_domain_event_v2_spec_version)} as const;
 export const TRADING_ROOM_ACTIVATION_PHASE = ${JSON.stringify(manifest.trading_room_activation_phase)} as const;
+export const TESTNET_ACTIVATION_PHASE = ${JSON.stringify(manifest.testnet_activation_phase)} as const;
+export const TESTNET_CONTRACT_SPEC_VERSIONS = ${JSON.stringify(manifest.testnet_contract_spec_versions, null, 2)} as const;
 `;
 
 const outputs = new Map([
   [resolve(root, "packages/contracts/schema-manifest.json"), manifestJson],
   [resolve(root, "packages/contracts/src/generated-schema-manifest.ts"), `${tsManifest}${riskTsManifest}`],
-  [resolve(root, "packages/typescript/contract-bindings/src/generated.ts"), `${tsBindings}${marketTsBindings}${domainTsBindings}${strictEvidenceTsBindings}${paperTsBindings}${riskTsBindings}${agentTsBindings}${phase7TsBindings}`],
+  [resolve(root, "packages/typescript/contract-bindings/src/generated.ts"), `${tsBindings}${marketTsBindings}${domainTsBindings}${strictEvidenceTsBindings}${paperTsBindings}${riskTsBindings}${agentTsBindings}${phase7TsBindings}${phase8TsBindings}`],
   [
     resolve(root, "packages/python/platform-core/src/platform_core/generated_contracts.py"),
-    `${strictPyBindings}${riskSchemaPyBindings}${agentSchemaPyBindings}${evidencePyBindings}${paperPyBindings}${paperPyEventBindings}${riskPyBindings}${phase7PyBindings}`
+    `${strictPyBindings}${riskSchemaPyBindings}${agentSchemaPyBindings}${evidencePyBindings}${paperPyBindings}${paperPyEventBindings}${riskPyBindings}${phase7PyBindings}${phase8PyBindings}`
       .replace(
         'Literal["SCHEMA_INVALID", "IDEMPOTENCY_CONFLICT"]',
         'Literal["SCHEMA_INVALID", "IDEMPOTENCY_CONFLICT", "CALLER_UNAUTHORIZED"]',

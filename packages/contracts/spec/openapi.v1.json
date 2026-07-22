@@ -248,6 +248,66 @@
         "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/KillRecoveryCommandV1"}}}},
         "responses": {"200": {"description": "exact idempotent replay", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/KillRecoveryReceiptV1"}}}}, "201": {"description": "manual audited recovery", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/KillRecoveryReceiptV1"}}}}, "403": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "409": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "412": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "422": {"$ref": "#/components/responses/Phase7ErrorResponse"}}
       }
+    },
+    "/api/v1/testnet/operator-state": {
+      "get": {
+        "operationId": "getTestnetOperatorState", "security": [{"LocalOperatorSession": []}],
+        "responses": {"200": {"description": "sanitized local Testnet operator projection", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TestnetOperatorStateV1"}}}}, "401": {"$ref": "#/components/responses/Phase7ErrorResponse"}}
+      }
+    },
+    "/api/v1/testnet-activations": {
+      "post": {
+        "operationId": "createTestnetActivationIntent", "security": [{"LocalOperatorSession": []}],
+        "parameters": [{"$ref": "#/components/parameters/OriginHeader"}, {"$ref": "#/components/parameters/CsrfHeader"}, {"$ref": "#/components/parameters/IdempotencyHeader"}, {"$ref": "#/components/parameters/IfMatchHeader"}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TestnetActivationCommandV1"}}}},
+        "responses": {"200": {"description": "idempotent activation intent receipt", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TestnetMutationReceiptV1"}}}}, "201": {"description": "activation intent recorded", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TestnetMutationReceiptV1"}}}}, "403": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "409": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "412": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "422": {"$ref": "#/components/responses/Phase7ErrorResponse"}}
+      }
+    },
+    "/api/v1/testnet-activations/{activation_id}/deactivations": {
+      "post": {
+        "operationId": "deactivateTestnet", "security": [{"LocalOperatorSession": []}],
+        "parameters": [{"name": "activation_id", "in": "path", "required": true, "schema": {"$ref": "#/components/schemas/HashV1"}}, {"$ref": "#/components/parameters/OriginHeader"}, {"$ref": "#/components/parameters/CsrfHeader"}, {"$ref": "#/components/parameters/IdempotencyHeader"}, {"$ref": "#/components/parameters/IfMatchHeader"}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/VersionedReasonCommandV1"}}}},
+        "responses": {"200": {"description": "idempotent deactivation intent receipt", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TestnetMutationReceiptV1"}}}}, "201": {"description": "deactivation intent recorded", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TestnetMutationReceiptV1"}}}}, "403": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "409": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "412": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "422": {"$ref": "#/components/responses/Phase7ErrorResponse"}}
+      }
+    },
+    "/api/v1/proposals/{proposal_id}/testnet-approval-view": {
+      "get": {
+        "operationId": "getTestnetApprovalView", "security": [{"LocalOperatorSession": []}],
+        "parameters": [{"$ref": "#/components/parameters/HashProposalId"}],
+        "responses": {"200": {"description": "server-authoritative Testnet approval view", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TestnetApprovalViewV1"}}}}, "401": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "404": {"$ref": "#/components/responses/Phase7ErrorResponse"}}
+      }
+    },
+    "/api/v1/testnet-approvals": {
+      "post": {
+        "operationId": "decideTestnetApproval", "security": [{"LocalOperatorSession": []}],
+        "parameters": [{"$ref": "#/components/parameters/OriginHeader"}, {"$ref": "#/components/parameters/CsrfHeader"}, {"$ref": "#/components/parameters/IdempotencyHeader"}, {"$ref": "#/components/parameters/IfMatchHeader"}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TestnetApprovalCommandV1"}}}},
+        "responses": {"200": {"description": "idempotent Testnet approval receipt", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TestnetApprovalReceiptV1"}}}}, "201": {"description": "Testnet decision recorded", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TestnetApprovalReceiptV1"}}}}, "403": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "409": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "412": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "422": {"$ref": "#/components/responses/Phase7ErrorResponse"}}
+      }
+    },
+    "/api/v1/testnet-approvals/{approval_id}/revocations": {
+      "post": {
+        "operationId": "revokeTestnetApproval", "security": [{"LocalOperatorSession": []}],
+        "parameters": [{"$ref": "#/components/parameters/HashApprovalId"}, {"$ref": "#/components/parameters/OriginHeader"}, {"$ref": "#/components/parameters/CsrfHeader"}, {"$ref": "#/components/parameters/IdempotencyHeader"}, {"$ref": "#/components/parameters/IfMatchHeader"}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/VersionedReasonCommandV1"}}}},
+        "responses": {"200": {"description": "idempotent Testnet revocation receipt", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TestnetMutationReceiptV1"}}}}, "201": {"description": "Testnet approval revoked", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TestnetMutationReceiptV1"}}}}, "403": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "409": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "412": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "422": {"$ref": "#/components/responses/Phase7ErrorResponse"}}
+      }
+    },
+    "/api/v1/testnet-executions/{execution_id}": {
+      "get": {
+        "operationId": "getTestnetExecution", "security": [{"LocalOperatorSession": []}],
+        "parameters": [{"name": "execution_id", "in": "path", "required": true, "schema": {"$ref": "#/components/schemas/HashV1"}}],
+        "responses": {"200": {"description": "sanitized local Testnet execution projection", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TestnetExecutionViewV1"}}}}, "401": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "404": {"$ref": "#/components/responses/Phase7ErrorResponse"}}
+      }
+    },
+    "/api/v1/testnet-reconciliation/{checkpoint_id}/confirmations": {
+      "post": {
+        "operationId": "confirmTestnetResetCheckpoint", "security": [{"LocalOperatorSession": []}],
+        "parameters": [{"name": "checkpoint_id", "in": "path", "required": true, "schema": {"$ref": "#/components/schemas/HashV1"}}, {"$ref": "#/components/parameters/OriginHeader"}, {"$ref": "#/components/parameters/CsrfHeader"}, {"$ref": "#/components/parameters/IdempotencyHeader"}, {"$ref": "#/components/parameters/IfMatchHeader"}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TestnetResetConfirmationCommandV1"}}}},
+        "responses": {"200": {"description": "idempotent reset confirmation receipt", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TestnetMutationReceiptV1"}}}}, "201": {"description": "reset confirmation recorded", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TestnetMutationReceiptV1"}}}}, "403": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "409": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "412": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "422": {"$ref": "#/components/responses/Phase7ErrorResponse"}}
+      }
     }
   },
   "components": {
@@ -566,6 +626,44 @@
       "Phase7ErrorV1": {
         "type": "object", "additionalProperties": false, "required": ["error"],
         "properties": {"error": {"type": "object", "additionalProperties": false, "required": ["code", "message"], "properties": {"code": {"type": "string", "minLength": 1, "maxLength": 64}, "message": {"type": "string", "minLength": 1, "maxLength": 512}}}}
+      },
+      "TestnetOperatorStateV1": {
+        "type": "object", "additionalProperties": false,
+        "required": ["environment", "account_binding_id", "account_label", "account_generation", "activation_id", "activation_status", "activation_version", "activation_view_digest", "gateway_health", "capability_allowlist_digest", "configuration_digest", "testnet_barrier_status", "paper_kill_active", "reconciliation_status", "reconciliation_checkpoint_id", "reconciliation_checkpoint_digest", "reset_state", "new_commands_allowed", "reason_codes", "activate_action_allowed", "deactivate_action_allowed", "reset_confirmation_allowed", "served_at"],
+        "properties": {
+          "environment": {"const": "BINANCE_SPOT_TESTNET"}, "account_binding_id": {"$ref": "#/components/schemas/HashV1"}, "account_label": {"type": "string", "minLength": 1, "maxLength": 64}, "account_generation": {"type": "integer", "minimum": 1}, "activation_id": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"}, "activation_status": {"enum": ["DISABLED", "PENDING", "ACTIVE", "EXPIRED", "REVOKED"]}, "activation_version": {"type": "integer", "minimum": 0}, "activation_view_digest": {"$ref": "#/components/schemas/HashV1"}, "gateway_health": {"enum": ["DISABLED", "ACTIVATING", "READY", "DEGRADED", "UNKNOWN", "RESET_HOLD", "KILLED"]}, "capability_allowlist_digest": {"$ref": "#/components/schemas/HashV1"}, "configuration_digest": {"$ref": "#/components/schemas/HashV1"}, "testnet_barrier_status": {"enum": ["ACTIVE", "INACTIVE"]}, "paper_kill_active": {"type": "boolean"}, "reconciliation_status": {"enum": ["HEALTHY", "RUNNING", "FAILED", "RESET_SUSPECTED", "AWAITING_OPERATOR_CONFIRMATION", "UNKNOWN"]}, "reconciliation_checkpoint_id": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"}, "reconciliation_checkpoint_digest": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"}, "reset_state": {"enum": ["NONE", "SUSPECTED", "AWAITING_CONFIRMATION", "CONFIRMED"]}, "new_commands_allowed": {"type": "boolean"}, "reason_codes": {"type": "array", "items": {"type": "string", "pattern": "^[A-Z0-9_]{1,64}$"}, "uniqueItems": true}, "activate_action_allowed": {"type": "boolean"}, "deactivate_action_allowed": {"type": "boolean"}, "reset_confirmation_allowed": {"type": "boolean"}, "served_at": {"type": "string", "format": "date-time"}
+        }
+      },
+      "TestnetActivationCommandV1": {
+        "type": "object", "additionalProperties": false, "required": ["expected_version", "activation_view_digest", "reason"],
+        "properties": {"expected_version": {"type": "integer", "minimum": 0}, "activation_view_digest": {"$ref": "#/components/schemas/HashV1"}, "reason": {"type": "string", "minLength": 1, "maxLength": 512}}
+      },
+      "TestnetApprovalCommandV1": {
+        "type": "object", "additionalProperties": false,
+        "required": ["proposal_id", "decision", "expected_version", "testnet_order_preview_digest", "approval_input_digest", "reason"],
+        "properties": {"proposal_id": {"$ref": "#/components/schemas/HashV1"}, "decision": {"enum": ["APPROVE", "REJECT"]}, "expected_version": {"type": "integer", "minimum": 1}, "testnet_order_preview_digest": {"$ref": "#/components/schemas/HashV1"}, "approval_input_digest": {"$ref": "#/components/schemas/HashV1"}, "reason": {"type": "string", "minLength": 1, "maxLength": 512}}
+      },
+      "TestnetResetConfirmationCommandV1": {
+        "type": "object", "additionalProperties": false, "required": ["expected_version", "checkpoint_digest", "reason"],
+        "properties": {"expected_version": {"type": "integer", "minimum": 1}, "checkpoint_digest": {"$ref": "#/components/schemas/HashV1"}, "reason": {"type": "string", "minLength": 1, "maxLength": 512}}
+      },
+      "TestnetMutationReceiptV1": {
+        "type": "object", "additionalProperties": false, "required": ["intent_id", "result", "resource_version"],
+        "properties": {"intent_id": {"$ref": "#/components/schemas/HashV1"}, "result": {"enum": ["ACTIVATION_PENDING", "DEACTIVATED", "REVOKED", "RESET_CONFIRMATION_RECORDED", "ALREADY_RECORDED"]}, "resource_version": {"type": "integer", "minimum": 1}}
+      },
+      "TestnetApprovalReceiptV1": {
+        "type": "object", "additionalProperties": false, "required": ["result", "approval_id", "approval_decision", "approval_validity", "authorization_status", "execution_id"],
+        "properties": {"result": {"enum": ["REJECTED", "BLOCKED", "AUTHORIZATION_ISSUED", "COMMAND_QUEUED"]}, "approval_id": {"$ref": "#/components/schemas/HashV1"}, "approval_decision": {"enum": ["APPROVED", "REJECTED"]}, "approval_validity": {"enum": ["ACTIVE", "EXPIRED", "REVOKED", "INVALIDATED"]}, "authorization_status": {"enum": ["NOT_ISSUED", "ISSUED", "CONSUMED", "BLOCKED", "EXPIRED", "REVOKED", "INVALIDATED"]}, "execution_id": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"}}
+      },
+      "TestnetApprovalViewV1": {
+        "type": "object", "additionalProperties": false,
+        "required": ["environment", "account_binding_id", "account_generation", "proposal_id", "proposal_hash", "risk_decision_id", "risk_decision_hash", "risk_input_digest", "risk_verdict", "risk_policy_version", "preview_policy_version", "testnet_order_preview", "testnet_order_preview_digest", "approval_input_digest", "approval_id", "approval_decision", "approval_validity", "authorization_id", "authorization_status", "execution_id", "approval_ttl_seconds", "view_version", "reason_codes", "approve_action_allowed", "reject_action_allowed", "served_at"],
+        "properties": {"environment": {"const": "BINANCE_SPOT_TESTNET"}, "account_binding_id": {"$ref": "#/components/schemas/HashV1"}, "account_generation": {"type": "integer", "minimum": 1}, "proposal_id": {"$ref": "#/components/schemas/HashV1"}, "proposal_hash": {"$ref": "#/components/schemas/HashV1"}, "risk_decision_id": {"$ref": "#/components/schemas/HashV1"}, "risk_decision_hash": {"$ref": "#/components/schemas/HashV1"}, "risk_input_digest": {"$ref": "#/components/schemas/HashV1"}, "risk_verdict": {"enum": ["ALLOWED", "DENIED", "ERROR"]}, "risk_policy_version": {"const": "woozoo.testnet-risk-policy/v1"}, "preview_policy_version": {"const": "woozoo.testnet-order-preview-policy/v1"}, "testnet_order_preview": {"$ref": "testnet-order-preview.v1.json"}, "testnet_order_preview_digest": {"$ref": "#/components/schemas/HashV1"}, "approval_input_digest": {"$ref": "#/components/schemas/HashV1"}, "approval_id": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"}, "approval_decision": {"enum": ["APPROVED", "REJECTED", null]}, "approval_validity": {"enum": ["ACTIVE", "EXPIRED", "REVOKED", "INVALIDATED", null]}, "authorization_id": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"}, "authorization_status": {"enum": ["NOT_ISSUED", "ISSUED", "CONSUMED", "BLOCKED", "EXPIRED", "REVOKED", "INVALIDATED"]}, "execution_id": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"}, "approval_ttl_seconds": {"const": 300}, "view_version": {"type": "integer", "minimum": 1}, "reason_codes": {"type": "array", "items": {"type": "string", "pattern": "^[A-Z0-9_]{1,64}$"}, "uniqueItems": true}, "approve_action_allowed": {"type": "boolean"}, "reject_action_allowed": {"type": "boolean"}, "served_at": {"type": "string", "format": "date-time"}}
+      },
+      "TestnetExecutionViewV1": {
+        "type": "object", "additionalProperties": false,
+        "required": ["execution_id", "authorization_id", "command_id", "client_order_id", "environment", "account_generation", "command_status", "external_outcome", "order_status", "reconciliation_status", "reconciliation_checkpoint_id", "reset_state", "reason_codes", "submitted_at", "last_observed_at"],
+        "properties": {"execution_id": {"$ref": "#/components/schemas/HashV1"}, "authorization_id": {"$ref": "#/components/schemas/HashV1"}, "command_id": {"$ref": "#/components/schemas/HashV1"}, "client_order_id": {"type": "string", "pattern": "^wz8-[a-f0-9]{32}$"}, "environment": {"const": "BINANCE_SPOT_TESTNET"}, "account_generation": {"type": "integer", "minimum": 1}, "command_status": {"enum": ["QUEUED", "DISPATCHED", "UNKNOWN_OUTCOME", "RECONCILING", "FOUND", "REJECTED", "NOT_FOUND_CONFIRMED", "BLOCKED"]}, "external_outcome": {"enum": ["UNKNOWN", "FOUND", "REJECTED", "NOT_FOUND_CONFIRMED"]}, "order_status": {"enum": ["PENDING_SUBMIT", "NEW", "PARTIALLY_FILLED", "FILLED", "CANCELED", "EXPIRED", null]}, "reconciliation_status": {"enum": ["HEALTHY", "RUNNING", "FAILED", "RESET_SUSPECTED", "AWAITING_OPERATOR_CONFIRMATION", "UNKNOWN"]}, "reconciliation_checkpoint_id": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"}, "reset_state": {"enum": ["NONE", "SUSPECTED", "AWAITING_CONFIRMATION", "CONFIRMED"]}, "reason_codes": {"type": "array", "items": {"type": "string", "pattern": "^[A-Z0-9_]{1,64}$"}, "uniqueItems": true}, "submitted_at": {"type": ["string", "null"], "format": "date-time"}, "last_observed_at": {"type": ["string", "null"], "format": "date-time"}}
       },
       "AnalysisCommandV2": {
         "type": "object", "additionalProperties": false, "required": ["symbol"],

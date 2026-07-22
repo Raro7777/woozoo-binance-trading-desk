@@ -1,6 +1,17 @@
 import { resolve } from "node:path";
 
-const PHASE_8_OPEN_EVIDENCE_TARGETS = new Set(["test:safety"]);
+const PHASE_8_OPEN_EVIDENCE_TARGETS = new Set([
+  "test:unit",
+  "test:contracts",
+  "test:safety",
+  "test:integration",
+  "test:property",
+  "test:replay",
+  "test:failure",
+  "test:e2e",
+  "test:acceptance",
+  "ci",
+]);
 
 export function validateActivePhase(value) {
   if (!Number.isInteger(value) || value < 0 || value > 9) {

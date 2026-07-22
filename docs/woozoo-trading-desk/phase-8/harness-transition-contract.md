@@ -2,34 +2,32 @@
 
 ## 상태와 권위
 
-- Phase 7 승인 snapshot commit은 `cecbe3c7fe43dda466e645ec3c94edf0549fb380`이다.
-- 승인된 Phase 7 manifest SHA-256은 `a7d13e1d04f80bbcee94bcdad997357aa191e6510739a7e3415edd5d25ad194f`이며, 결속된 65개 파일은 해당 commit에 byte-for-byte 보존한다.
-- `phase-state.json`은 사용자 승인에 결속된 단조 P7→P8 전환을 기록하고 현재 Phase 8 `active`다.
-- 이 계약은 Testnet Gateway 구현 완료나 Phase 8 acceptance가 아니다.
+- Phase 7 인수 스냅샷과 승인 다이제스트는 이전 기록 그대로 보존한다.
+- `phase-state.json`은 사용자의 다이제스트 결속 승인에 따른 P7→P8 전환과 현재 Phase 8 `active` 상태의 유일한 권위다.
+- 이 문서는 Phase 8 구현 완료나 인수 승인을 뜻하지 않는다.
 
 ## Phase 8 증거 격리
 
-- Phase 8에서 생성하는 JUnit과 scenario evidence는 `artifacts/phase-8/` 아래에만 기록한다.
-- Phase 7의 `artifacts/`, `_workspace/` 검토 보고서와 acceptance manifest는 재실행 출력으로 덮어쓰지 않는다.
-- 현재 전환 하네스가 개방한 evidence target은 `corepack pnpm test:safety` 하나다.
-- 다른 `test:*`와 `ci` target은 Phase 8 전용 scenario manifest와 artifact namespace가 정의될 때까지 시작 전에 fail-closed한다. lint, typecheck와 build는 evidence를 생성하지 않으므로 이 임시 차단 대상이 아니다.
+- Phase 8의 JUnit·Playwright·시나리오·집계 증거는 `artifacts/phase-8/` 아래에만 생성한다.
+- Phase 7의 `artifacts/`, `_workspace/` 검토 보고서와 인수 매니페스트를 Phase 8 재실행 출력으로 덮어쓰지 않는다.
+- `p8-scenario-manifest.json`이 단위·계약·안전·통합·속성·재현·실패·E2E의 8개 필수 분모와 출력 경로를 고정한다.
+- lint, typecheck, build는 증거를 생성하지 않지만 `pnpm ci`의 필수 선행 게이트다.
+- `pnpm ci`는 실제 코드·안전·통합·E2E·빌드가 통과하면 성공한다. 단계 인수 시에만 별도 `pnpm test:acceptance`가 8개 필수 산출물을 현재 Git·작업 트리 다이제스트에 결속하고 `artifacts/phase-8/acceptance/P8-8.json`을 만든다.
 
-## 유지되는 안전 불변조건
+## 안전 불변조건
 
-- Kill recovery writer token scan과 허용된 수동 recovery writer 정확한 목록은 Phase 7과 동일하다.
-- scanner의 적용 Phase만 승인된 로드맵 범위 `7..9`로 확장한다.
-- Phase 8 Risk/Kill regression은 `p8-risk-regression-manifest.json`의 source SHA-256과 `artifacts/phase-8/...` 경로에 결속한다.
-- Mainnet private/live, 출금, Futures, 마진, 레버리지, 숏, 브라우저·AI 직접 Gateway 접근과 secret 노출은 계속 금지다.
-- Gateway, credential, private exchange dependency/configuration/schema와 외부 Testnet 호출은 이 전환 하네스 변경에 포함하지 않는다.
+- Testnet Gateway는 기본 OFF이며 `TRADING_MODE=paper`가 아니면 시작하지 않는다.
+- 자동 인수에서는 실제 Testnet 네트워크와 자격증명을 사용하지 않는다.
+- Mainnet private/live, 출금, Futures, Margin, leverage, short, 브라우저·AI 직접 Gateway 접근과 secret 노출은 금지한다.
+- Paper Kill, Testnet barrier, activation, account generation, reconciliation 또는 구성 다이제스트가 맞지 않으면 신규 주문은 HOLD다.
+- 응답 유실·timeout·5xx·`-1007`은 거절이 아니라 `SUBMISSION_UNKNOWN`이며 같은 Client Order ID 조회와 User Data 대조만 허용한다.
 
-## 검증
+## 구현 게이트
 
-- `corepack pnpm test:safety`: PASS
-- 실행 분모: bulk safety Pytest 38 + capability Node 1, EVID-007 2, PTI-003 15, PAPER-SAFE-001 2, RISK-SAFE-001 3, KILL-002 7, AI-002 1, SEC-001 1, SEC-002 2
-- Phase 8 Risk/Kill manifest SHA-256: `4c00f037d6b02b40cd6cffd7f0f5c35d92e7c2c71008098493307fd72cca88cf`
-- Phase 8 KILL-002 source SHA-256: `830301a5ea374c1b8cfa2d97da60e5862dde8faff4e79ee4e58c597848b92c32`
-- Phase 7 acceptance package validator: `failures=[]`, 65/65 artifacts, 43/43 leaves
+1. 공식 Binance Spot Testnet 소스 잠금과 폐쇄형 계약
+2. 결정론적 실행·Risk·Decimal·원장 불변조건
+3. 분리 DB role과 inbox/domain/outbox·Gateway write-ahead 원자성
+4. 한국어 인증 UI와 intent-only 브라우저 경계
+5. `corepack pnpm ci`, 역할 분리 Safety QA, Codex 교차검토, 허용 외부 검토 또는 `external-review-unavailable`
 
-## 다음 구현 게이트
-
-Phase 8 architect와 gateway/risk/web builder가 공식 Binance Spot Testnet 전제를 다시 검증한 뒤 versioned command·event·DB·secret·egress 계약과 RED 테스트를 먼저 정의한다. 해당 계약과 namespace가 준비된 target만 순차적으로 개방하며, 외부 Testnet 주문은 별도 사람 승인·기본 OFF·reconciliation E2E 전에는 연결하지 않는다.
+정확한 Phase 8 인수 매니페스트 SHA-256을 사용자가 명시적으로 승인하기 전에는 Phase 8을 `accepted`로 바꾸거나 Phase 9로 전환하지 않는다.

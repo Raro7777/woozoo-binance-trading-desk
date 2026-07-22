@@ -1,4 +1,5 @@
 name: woozoo-p1
+x-woozoo-boundary: local-test-only
 
 services:
   postgres:

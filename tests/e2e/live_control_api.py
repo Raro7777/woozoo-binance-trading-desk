@@ -9,10 +9,13 @@ from __future__ import annotations
 
 import argparse
 from datetime import UTC, datetime, timedelta
+import json
 import os
+from pathlib import Path
 from uuid import uuid4
 
 import psycopg
+from psycopg.rows import dict_row
 import uvicorn
 from fastapi import FastAPI
 
@@ -51,6 +54,280 @@ def run_reconciliation_once() -> int:
     )
     if result.status != "HEALTHY":
         raise RuntimeError("E2E_RECONCILIATION_FAILED:" + ",".join(result.mismatch_codes))
+    return 0
+
+
+def _testnet_runtime_binding():
+    from spot_testnet_gateway.dispatch import GatewayRuntimeBinding
+
+    return GatewayRuntimeBinding(
+        gateway_instance_id=_required_environment("SPOT_TESTNET_GATEWAY_INSTANCE_ID"),
+        build_digest=_required_environment("SPOT_TESTNET_GATEWAY_BUILD_DIGEST"),
+        configuration_digest=_required_environment("SPOT_TESTNET_GATEWAY_CONFIGURATION_DIGEST"),
+        allowlist_digest=_required_environment("SPOT_TESTNET_ALLOWLIST_DIGEST"),
+    )
+
+
+def run_testnet_execution_once() -> int:
+    """Run one real execution authority cycle in its own process."""
+    from testnet_execution.persistence import ExecutionRuntimeBinding
+    from testnet_execution.worker import run_execution_cycle
+
+    database_url = _required_environment("TESTNET_EXECUTION_DATABASE_URL")
+    gateway = _testnet_runtime_binding()
+    binding = ExecutionRuntimeBinding(
+        gateway_instance_id=gateway.gateway_instance_id,
+        build_digest=gateway.build_digest,
+        configuration_digest=gateway.configuration_digest,
+        allowlist_digest=gateway.allowlist_digest,
+    )
+    result = run_execution_cycle(database_url, binding)
+    if result is None:
+        return 2
+    print("P8_EXECUTION_RESULT:" + json.dumps(result, separators=(",", ":"), sort_keys=True))
+    return 0
+
+
+class _PinnedFakeTestnetTransport:
+    """Deterministic exchange substitute with an explicit zero-network counter."""
+
+    def __init__(self, order: dict[str, object] | None = None) -> None:
+        self.order = order
+        self.fake_transport_calls = 0
+        self.external_exchange_network_calls = 0
+
+    def send(self, request):
+        from spot_testnet_gateway.capabilities import Capability, validate_request
+        from spot_testnet_gateway.transport import SanitizedTransportResult
+
+        validate_request(request)
+        self.fake_transport_calls += 1
+        observed_ms = int(datetime.now(UTC).timestamp() * 1000)
+        if request.capability is Capability.TIME:
+            observation = {
+                "schema_version": "woozoo.testnet-gateway-observation/v1",
+                "kind": "SERVER_TIME",
+                "capability_id": "SPOT_TESTNET_TIME",
+                "authoritative": True,
+                "server_time_ms": observed_ms,
+                "event_time_ms": observed_ms,
+            }
+        elif request.capability is Capability.ACCOUNT:
+            observation = {
+                "schema_version": "woozoo.testnet-gateway-observation/v1",
+                "kind": "ACCOUNT_SNAPSHOT",
+                "capability_id": "SPOT_TESTNET_ACCOUNT",
+                "authoritative": True,
+                "balances": [
+                    {"asset": "BTC", "free": "1.00000000", "locked": "0.00000000"},
+                    {"asset": "ETH", "free": "10.00000000", "locked": "0.00000000"},
+                    {"asset": "USDT", "free": "10000.00000000", "locked": "0.00000000"},
+                ],
+                "event_time_ms": observed_ms,
+            }
+        elif request.capability is Capability.OPEN_ORDERS_BY_SYMBOL:
+            observation = {
+                "schema_version": "woozoo.testnet-gateway-observation/v1",
+                "kind": "OPEN_ORDERS_SNAPSHOT",
+                "capability_id": "SPOT_TESTNET_OPEN_ORDERS_BY_SYMBOL",
+                "authoritative": True,
+                "requested_symbol": dict(request.parameters)["symbol"],
+                "orders": [],
+                "event_time_ms": observed_ms,
+            }
+        elif request.capability is Capability.SUBMIT_LIMIT_GTC:
+            parameters = dict(request.parameters)
+            observation = {
+                "schema_version": "woozoo.testnet-gateway-observation/v1",
+                "kind": "ORDER",
+                "capability_id": "SPOT_TESTNET_SUBMIT_LIMIT_GTC",
+                "authoritative": True,
+                "found": True,
+                "order": {
+                    "client_order_id": parameters["newClientOrderId"],
+                    "exchange_order_id": "12345",
+                    "symbol": parameters["symbol"],
+                    "side": parameters["side"],
+                    "status": "NEW",
+                    "quantity": parameters["quantity"],
+                    "cumulative_filled_quantity": "0",
+                    "limit_price": parameters["price"],
+                    "event_time_ms": observed_ms,
+                },
+                "event_time_ms": observed_ms,
+            }
+        elif request.capability is Capability.CANCEL_BY_CLIENT_ID:
+            parameters = dict(request.parameters)
+            if self.order is None:
+                raise ValueError("E2E_FAKE_CANCEL_ORDER_MISSING")
+            observation = {
+                "schema_version": "woozoo.testnet-gateway-observation/v1",
+                "kind": "ORDER",
+                "capability_id": "SPOT_TESTNET_CANCEL_BY_CLIENT_ID",
+                "authoritative": True,
+                "found": True,
+                "order": {
+                    "client_order_id": parameters["origClientOrderId"],
+                    "exchange_order_id": str(self.order["exchange_order_id"]),
+                    "symbol": str(self.order["symbol"]),
+                    "side": str(self.order["side"]),
+                    "status": "CANCELED",
+                    "quantity": str(self.order["quantity"]),
+                    "cumulative_filled_quantity": str(self.order["filled_quantity"]),
+                    "limit_price": str(self.order["limit_price"]),
+                    "event_time_ms": observed_ms,
+                },
+                "event_time_ms": observed_ms,
+            }
+        else:
+            raise ValueError("E2E_FAKE_TRANSPORT_CAPABILITY_NOT_PINNED")
+        return SanitizedTransportResult("EXCHANGE_ACKNOWLEDGED", 200, None, "0" * 64, observation)
+
+
+class _PinnedFakeUserDataTransport:
+    def __init__(self, order: dict[str, object], *, terminate: bool) -> None:
+        self.order = order
+        self.terminate = terminate
+        self.fake_transport_calls = 0
+        self.external_exchange_network_calls = 0
+
+    async def events(self, *, request_id: str, timestamp_ms: str):
+        del request_id, timestamp_ms
+        self.fake_transport_calls += 1
+        observed_ms = int(datetime.now(UTC).timestamp() * 1000)
+        yield {
+            "subscriptionId": 1,
+            "event": {
+                "e": "executionReport",
+                "E": observed_ms,
+                "s": self.order["symbol"],
+                "c": self.order["client_order_id"],
+                "S": self.order["side"],
+                "X": "PARTIALLY_FILLED",
+                "q": str(self.order["quantity"]),
+                "p": str(self.order["limit_price"]),
+                "z": "0.000100000000000000",
+                "l": "0.000100000000000000",
+                "L": str(self.order["limit_price"]),
+                "n": "0.000000100000000000",
+                "N": "BTC",
+                "i": int(str(self.order["exchange_order_id"])),
+                "t": 8001,
+                "T": observed_ms,
+            },
+        }
+        if self.terminate:
+            yield {
+                "subscriptionId": 1,
+                "event": {"e": "eventStreamTerminated", "E": observed_ms + 1},
+            }
+
+
+def _testnet_fake_settings():
+    from spot_testnet_gateway.settings import GatewaySettings, REST_ORIGIN, WS_URL
+
+    binding = _testnet_runtime_binding()
+    return GatewaySettings(
+        True,
+        "BINANCE_SPOT_TESTNET",
+        REST_ORIGIN,
+        WS_URL,
+        Path("/e2e/fake-api-key"),
+        Path("/e2e/fake-signing-secret"),
+        binding.allowlist_digest,
+        binding.gateway_instance_id,
+        binding.build_digest,
+        binding.configuration_digest,
+    )
+
+
+def _record_fake_transport_evidence(
+    transport: _PinnedFakeTestnetTransport | _PinnedFakeUserDataTransport, mode: str
+) -> None:
+    target = Path(_required_environment("P8_GATEWAY_E2E_EVIDENCE_FILE"))
+    target.parent.mkdir(parents=True, exist_ok=True)
+    prior_calls = 0
+    if target.exists():
+        prior = json.loads(target.read_text(encoding="utf-8"))
+        prior_calls = int(prior.get("fake_transport_calls", 0))
+    evidence = {
+        "schema_version": "woozoo.phase8-gateway-process-e2e/v1",
+        "status": "PASS",
+        "transport": "pinned-fake-spot-testnet-v1",
+        "last_mode": mode,
+        "production_worker_orchestration": True,
+        "fake_transport_calls": prior_calls + transport.fake_transport_calls,
+        "external_exchange_network_calls": transport.external_exchange_network_calls,
+        "caller_supplied_endpoint_allowed": False,
+    }
+    target.write_text(json.dumps(evidence, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def run_testnet_gateway_preflight_fake() -> int:
+    """Run production reconciliation orchestration with a pinned fake transport."""
+    from spot_testnet_gateway.worker import run_gateway_reconciliation_cycle
+
+    transport = _PinnedFakeTestnetTransport()
+    result = run_gateway_reconciliation_cycle(
+        _testnet_fake_settings(),
+        _required_environment("SPOT_TESTNET_GATEWAY_DATABASE_URL"),
+        transport=transport,
+    )
+    _record_fake_transport_evidence(transport, "preflight")
+    print("P8_GATEWAY_PREFLIGHT:" + json.dumps(result, separators=(",", ":"), sort_keys=True))
+    return 0
+
+
+def _latest_testnet_order(*, require_exchange_id: bool) -> dict[str, object] | None:
+    predicate = "WHERE exchange_order_id IS NOT NULL " if require_exchange_id else ""
+    with psycopg.connect(
+        _required_environment("TESTNET_EXECUTION_DATABASE_URL"), row_factory=dict_row
+    ) as connection:
+        row = connection.execute(
+            "SELECT client_order_id,symbol,side,quantity,limit_price,filled_quantity,"
+            "exchange_order_id FROM testnet_orders "
+            + predicate
+            + "ORDER BY version DESC,order_id DESC LIMIT 1"
+        ).fetchone()
+    return dict(row) if row is not None else None
+
+
+def run_testnet_gateway_dispatch_fake() -> int:
+    """Run production command orchestration with a pinned fake transport."""
+    from spot_testnet_gateway.worker import run_gateway_command_cycle
+
+    transport = _PinnedFakeTestnetTransport(_latest_testnet_order(require_exchange_id=False))
+    result = run_gateway_command_cycle(
+        _testnet_fake_settings(),
+        _required_environment("SPOT_TESTNET_GATEWAY_DATABASE_URL"),
+        transport=transport,
+    )
+    if result is None:
+        return 2
+    _record_fake_transport_evidence(transport, "dispatch")
+    print("P8_GATEWAY_RESULT:" + json.dumps(result, separators=(",", ":"), sort_keys=True))
+    return 0
+
+
+def run_testnet_gateway_user_data_fake(*, terminate: bool) -> int:
+    """Run the production User Data pump for a fill or an intentional gap."""
+    import asyncio
+
+    from spot_testnet_gateway.worker import run_gateway_user_data_session
+
+    order = _latest_testnet_order(require_exchange_id=True)
+    if order is None:
+        return 2
+    transport = _PinnedFakeUserDataTransport(order, terminate=terminate)
+    result = asyncio.run(
+        run_gateway_user_data_session(
+            _testnet_fake_settings(),
+            _required_environment("SPOT_TESTNET_GATEWAY_DATABASE_URL"),
+            transport=transport,
+        )
+    )
+    _record_fake_transport_evidence(transport, "user-data-fill" if terminate else "user-data-gap")
+    print("P8_GATEWAY_USER_DATA:" + json.dumps(result, separators=(",", ":"), sort_keys=True))
     return 0
 
 
@@ -588,6 +865,11 @@ def create_live_app() -> FastAPI:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--worker-once", action="store_true")
+    parser.add_argument("--testnet-execution-once", action="store_true")
+    parser.add_argument("--testnet-gateway-preflight-fake", action="store_true")
+    parser.add_argument("--testnet-gateway-dispatch-fake", action="store_true")
+    parser.add_argument("--testnet-gateway-user-data-fill-fake", action="store_true")
+    parser.add_argument("--testnet-gateway-user-data-gap-fake", action="store_true")
     parser.add_argument("--reconcile-once", action="store_true")
     parser.add_argument("--bootstrap-public-data", action="store_true")
     parser.add_argument("--refresh-evidence", choices=("BTCUSDT", "ETHUSDT"))
@@ -598,6 +880,16 @@ def main() -> int:
     args = parser.parse_args()
     if args.worker_once:
         return run_worker_once()
+    if args.testnet_execution_once:
+        return run_testnet_execution_once()
+    if args.testnet_gateway_preflight_fake:
+        return run_testnet_gateway_preflight_fake()
+    if args.testnet_gateway_dispatch_fake:
+        return run_testnet_gateway_dispatch_fake()
+    if args.testnet_gateway_user_data_fill_fake:
+        return run_testnet_gateway_user_data_fake(terminate=True)
+    if args.testnet_gateway_user_data_gap_fake:
+        return run_testnet_gateway_user_data_fake(terminate=False)
     if args.reconcile_once:
         return run_reconciliation_once()
     if args.bootstrap_public_data:

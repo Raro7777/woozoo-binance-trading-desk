@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "woozoo.testnet-order/v1",
+  "x-creation-phase": 8,
+  "x-activation-phase": 8,
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "order_id", "command_id", "authorization_id", "approval_id", "proposal_hash", "risk_decision_hash", "environment", "account_binding_id", "account_generation", "client_order_id", "symbol", "side", "order_type", "time_in_force", "quantity", "limit_price", "filled_quantity", "status", "external_outcome", "version", "last_observed_at"],
+  "properties": {
+    "schema_version": {"const": "woozoo.testnet-order/v1"},
+    "order_id": {"$ref": "#/$defs/hash"},
+    "command_id": {"$ref": "#/$defs/hash"},
+    "authorization_id": {"$ref": "#/$defs/hash"},
+    "approval_id": {"$ref": "#/$defs/hash"},
+    "proposal_hash": {"$ref": "#/$defs/hash"},
+    "risk_decision_hash": {"$ref": "#/$defs/hash"},
+    "environment": {"const": "BINANCE_SPOT_TESTNET"},
+    "account_binding_id": {"$ref": "#/$defs/hash"},
+    "account_generation": {"type": "integer", "minimum": 1},
+    "client_order_id": {"type": "string", "pattern": "^wz8-[a-f0-9]{32}$"},
+    "symbol": {"enum": ["BTCUSDT", "ETHUSDT"]},
+    "side": {"enum": ["BUY", "SELL"]},
+    "order_type": {"const": "LIMIT"},
+    "time_in_force": {"const": "GTC"},
+    "quantity": {"$ref": "#/$defs/positiveDecimal"},
+    "limit_price": {"$ref": "#/$defs/positiveDecimal"},
+    "filled_quantity": {"$ref": "#/$defs/nonNegativeDecimal"},
+    "status": {"enum": ["PENDING_SUBMIT", "NEW", "PARTIALLY_FILLED", "FILLED", "CANCELED", "EXPIRED"]},
+    "external_outcome": {"enum": ["QUEUED", "DISPATCHED", "UNKNOWN_OUTCOME", "RECONCILING", "FOUND", "REJECTED", "NOT_FOUND_CONFIRMED", "BLOCKED"]},
+    "version": {"type": "integer", "minimum": 1},
+    "last_observed_at": {"type": "string", "format": "date-time"}
+  },
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "positiveDecimal": {"type": "string", "pattern": "^(?:0\\.(?:0*[1-9][0-9]*)|[1-9][0-9]*(?:\\.[0-9]+)?)$"},
+    "nonNegativeDecimal": {"type": "string", "pattern": "^(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$"}
+  }
+}

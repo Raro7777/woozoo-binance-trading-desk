@@ -2,6 +2,10 @@ import { readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
+const activePhaseState = JSON.parse(
+  await readFile(resolve(root, "docs", "woozoo-trading-desk", "phase-state.json"), "utf8"),
+);
+const activePhase = activePhaseState.current_phase;
 export const productRoots = [
   ".github",
   "apps",
@@ -14,6 +18,7 @@ export const productRoots = [
   "infra",
   "alembic.ini",
   "compose.yaml",
+  "compose.phase8.yaml",
   ".env.example",
   "pnpm-workspace.yaml",
   "pyproject.toml",
@@ -67,6 +72,97 @@ function isApprovedDomainVocabulary(projectPath, pattern) {
     projectPath.startsWith("packages/python/platform-core/src/platform_core/generated_contracts.py") ||
     projectPath.startsWith("packages/typescript/contract-bindings/src/generated.ts") ||
     projectPath === "db/migrations/versions/20260720_0007_trading_room.py";
+  const phaseEightGateway =
+    activePhase >= 8 && projectPath.startsWith("services/spot-testnet-gateway/");
+  const phaseEightExecution =
+    activePhase >= 8 && projectPath.startsWith("services/testnet-execution-service/");
+  const phaseEightControl =
+    activePhase >= 8 && (
+      projectPath === "services/control-api/src/control_api/testnet_operator.py"
+      || projectPath === "services/control-api/src/control_api/app.py"
+      || projectPath === "services/control-api/src/control_api/trading_room_routes.py"
+    );
+  const phaseEightBrowser =
+    activePhase >= 8 && projectPath.startsWith("apps/trading-room-web/");
+  const phaseEightContracts =
+    activePhase >= 8 && (
+      projectPath === "scripts/generate-contracts.mjs"
+      || projectPath.startsWith("packages/contracts/")
+      || projectPath === "packages/python/platform-core/src/platform_core/generated_contracts.py"
+      || projectPath.startsWith("packages/typescript/contract-bindings/")
+    );
+  const phaseEightInfrastructure =
+    activePhase >= 8 && (
+      projectPath === "db/migrations/versions/20260722_0008_testnet_gateway.py"
+      || projectPath === "pyproject.toml"
+      || projectPath === "package.json"
+      || projectPath === ".env.example"
+      || projectPath === "scripts/env-init.mjs"
+      || projectPath === "scripts/run-testnet-execution-worker.py"
+      || projectPath === "scripts/run-spot-testnet-gateway-worker.py"
+      || projectPath === "scripts/phase8-runtime-metadata.py"
+      || projectPath === "scripts/run-phase8-testnet-local.mjs"
+      || projectPath === "scripts/setup-phase8-testnet.ps1"
+      || projectPath === "scripts/start-phase8-testnet.ps1"
+      || projectPath === "scripts/quality.mjs"
+      || projectPath === "scripts/capability-zero.mjs"
+      || projectPath === "compose.phase8.yaml"
+      || projectPath === "infra/compose/README.md"
+      || (
+        projectPath.startsWith("infra/containers/phase8-")
+        && projectPath.endsWith(".Dockerfile")
+      )
+      || projectPath === "infra/runtime/phase8-entrypoint.py"
+    );
+  const phaseEightOwned =
+    phaseEightGateway
+    || phaseEightExecution
+    || phaseEightControl
+    || phaseEightBrowser
+    || phaseEightContracts
+    || phaseEightInfrastructure;
+  if (phaseEightOwned && pattern.source === phaseFourPatternB.source) return true;
+  if (
+    (
+      phaseEightGateway
+      || phaseEightExecution
+      || phaseEightControl
+      || phaseEightContracts
+      || phaseEightInfrastructure
+    )
+    && pattern.source === orderCapabilityPattern.source
+  ) return true;
+  if (
+    (
+      phaseEightGateway
+      || phaseEightExecution
+      || phaseEightBrowser
+      || phaseEightContracts
+      || phaseEightInfrastructure
+    )
+    && pattern.source === insensitive("user[_-]?", "data").source
+  ) return true;
+  if (
+    (
+      phaseEightGateway
+      || phaseEightContracts
+      || phaseEightInfrastructure
+      || projectPath === ".env.example"
+      || projectPath === "scripts/env-init.mjs"
+      || projectPath === "compose.phase8.yaml"
+    )
+    && [apiKeyPattern.source, insensitive("sign", "ature").source].includes(pattern.source)
+  ) return true;
+  if (
+    (
+      phaseEightGateway
+      || phaseEightExecution
+      || phaseEightControl
+      || phaseEightContracts
+      || phaseEightInfrastructure
+    )
+    && pattern.source === phaseFourPatternA.source
+  ) return true;
   if (
     (paperOwned || phaseFiveInternalRiskAuthority) &&
     pattern.source === phaseFourPatternA.source
@@ -91,6 +187,10 @@ function isApprovedDomainVocabulary(projectPath, pattern) {
 const publicOrigins = new Set([
   "https://data-" + "api.bin" + "ance.vision",
   "wss://data-" + "stream.bin" + "ance.vision",
+]);
+const testnetOrigins = new Set([
+  "https://testnet.bin" + "ance.vision",
+  "wss://ws-api.testnet.bin" + "ance.vision",
 ]);
 const approvedRestPaths = new Set([
   "/api/v3/" + "ping",
@@ -193,14 +293,42 @@ export async function scanPaths(paths = productRoots.map((path) => resolve(root,
       }
     }
     for (const candidate of inspected.match(urlPattern) ?? []) {
-      if (candidate.toLowerCase().includes("bin" + "ance") && !publicOrigins.has(candidate)) {
+      const gatewayTestnetOrigin =
+        activePhase >= 8
+        && (
+          projectPath.startsWith("services/spot-testnet-gateway/")
+          || projectPath === ".env.example"
+          || projectPath === "compose.phase8.yaml"
+          || projectPath === "scripts/run-phase8-testnet-local.mjs"
+          || projectPath === "scripts/setup-phase8-testnet.ps1"
+        )
+        && testnetOrigins.has(candidate);
+      if (
+        candidate.toLowerCase().includes("bin" + "ance")
+        && !publicOrigins.has(candidate)
+        && !gatewayTestnetOrigin
+      ) {
         findings.push(`${projectPath}:unapproved-public-origin`);
       }
     }
     for (const candidate of inspected.match(restPathPattern) ?? []) {
-      if (!approvedRestPaths.has(candidate)) findings.push(`${projectPath}:unapproved-public-path`);
+      const gatewayPrivatePath =
+        activePhase >= 8
+        && projectPath.startsWith("services/spot-testnet-gateway/")
+        && new Set([
+          "/api/v3/" + "order",
+          "/api/v3/" + "openOrders",
+          "/api/v3/" + "account",
+          "/api/v3/" + "myTrades",
+        ]).has(candidate);
+      if (!approvedRestPaths.has(candidate) && !gatewayPrivatePath) {
+        findings.push(`${projectPath}:unapproved-public-path`);
+      }
     }
-    if (forbiddenPublicPath.test(inspected)) findings.push(`${projectPath}:forbidden-public-path`);
+    if (
+      forbiddenPublicPath.test(inspected)
+      && !(activePhase >= 8 && projectPath.startsWith("services/spot-testnet-gateway/"))
+    ) findings.push(`${projectPath}:forbidden-public-path`);
   }
   if (findings.length > 0) {
     throw new Error(`Phase 2 public-only capability violation: ${findings.join(", ")}`);
@@ -219,6 +347,8 @@ export async function verifyCanaryFailure() {
     "apps/trading-room-web/.capability-zero-canary.ts",
     "scripts/.capability-zero-canary.mjs",
     "services/control-api/.capability-zero-canary.py",
+    "services/spot-testnet-gateway/.capability-zero-canary.py",
+    "services/testnet-execution-service/.capability-zero-canary.py",
     "packages/contracts/.capability-zero-canary.json",
     "packages/python/platform-core/.capability-zero-canary.py",
     "packages/typescript/.capability-zero-canary.ts",

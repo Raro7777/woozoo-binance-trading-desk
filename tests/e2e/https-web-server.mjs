@@ -1,5 +1,6 @@
 import { spawn, spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { readFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer as createHttpsServer } from "node:https";
 import { request as httpRequest } from "node:http";
@@ -23,9 +24,31 @@ await recordTemporaryCertificate(temporaryRoot);
 const originalDirectory = process.cwd();
 const composeProject = E2E_COMPOSE_PROJECT;
 const composeFile = resolve(root, "tests/e2e/compose.yaml");
-const infrastructureEvidencePath = resolve(root, "artifacts/e2e/E2E-INFRA-001.json");
+const artifactDirectory = process.env.WOOZOO_E2E_ARTIFACT_DIR ?? "artifacts/e2e";
+const infrastructureEvidencePath = resolve(root, artifactDirectory, "E2E-INFRA-001.json");
 const verifierFile = resolve(temporaryRoot, "operator.argon2id");
 const secretFile = resolve(temporaryRoot, "operator.secret");
+const runtimeHandlePath = resolve(root, ".tmp/phase8-e2e-runtime.json");
+const postgresSuperuserPasswordFile = resolve(temporaryRoot, "postgres-superuser.secret");
+const rolePasswordFiles = {
+  woozoo_control_reader: resolve(temporaryRoot, "control-reader.secret"),
+  woozoo_control_api: resolve(temporaryRoot, "control-api.secret"),
+  woozoo_market_writer: resolve(temporaryRoot, "market-writer.secret"),
+  woozoo_evidence_writer: resolve(temporaryRoot, "evidence-writer.secret"),
+  woozoo_agent_orchestrator: resolve(temporaryRoot, "agent-orchestrator.secret"),
+  woozoo_risk_engine: resolve(temporaryRoot, "risk-engine.secret"),
+  woozoo_paper_engine: resolve(temporaryRoot, "paper-engine.secret"),
+  woozoo_testnet_execution: resolve(temporaryRoot, "testnet-execution.secret"),
+  woozoo_spot_testnet_gateway: resolve(temporaryRoot, "spot-testnet-gateway.secret"),
+};
+const postgresSuperuserPassword = randomBytes(32).toString("base64url");
+const rolePasswords = Object.fromEntries(
+  Object.keys(rolePasswordFiles).map((role) => [role, randomBytes(32).toString("base64url")]),
+);
+const infrastructureEnvironment = {
+  ...process.env,
+  E2E_POSTGRES_SUPERUSER_PASSWORD_FILE: postgresSuperuserPasswordFile,
+};
 const pythonPath = [
   resolve(root, "packages/python/platform-core/src"),
   resolve(root, "services/control-api/src"),
@@ -34,6 +57,8 @@ const pythonPath = [
   resolve(root, "services/agent-orchestrator/src"),
   resolve(root, "services/market-data-worker/src"),
   resolve(root, "services/evidence-worker/src"),
+  resolve(root, "services/testnet-execution-service/src"),
+  resolve(root, "services/spot-testnet-gateway/src"),
   process.env.PYTHONPATH,
 ].filter(Boolean).join(delimiter);
 const serviceEnvironment = {
@@ -45,6 +70,11 @@ const serviceEnvironment = {
   PAPER_RECONCILIATION_INTERVAL_MS: "250",
   LOCAL_OPERATOR_ORIGIN: "https://localhost:3443",
   LOCAL_OPERATOR_VERIFIER_FILE: verifierFile,
+  SPOT_TESTNET_GATEWAY_INSTANCE_ID: "8".repeat(64),
+  SPOT_TESTNET_GATEWAY_BUILD_DIGEST: "9".repeat(64),
+  SPOT_TESTNET_GATEWAY_CONFIGURATION_DIGEST: "5291ea27d80daaec1dd0669feb4295e25853c5d60a8c6f7b6945829daad5fa75",
+  SPOT_TESTNET_ALLOWLIST_DIGEST: "a56608938d3d7f7cb94472a1354e8b73c7a0d409dc62463dc13f4612dd06e33a",
+  P8_GATEWAY_E2E_EVIDENCE_FILE: resolve(root, "artifacts/phase-8/e2e/P8-RUNTIME-001-gateway.json"),
   PYTHONPATH: pythonPath,
 };
 
@@ -57,6 +87,7 @@ function stopInfrastructure() {
   return removeInfrastructure({
     composeFile,
     composeProject,
+    environment: infrastructureEnvironment,
     root,
     volumeName: E2E_POSTGRES_VOLUME,
   });
@@ -66,7 +97,7 @@ function publishedPort(service, containerPort) {
   const result = spawnSync(
     "docker",
     ["compose", "-f", composeFile, "-p", composeProject, "port", service, String(containerPort)],
-    { cwd: root, encoding: "utf8" },
+    { cwd: root, encoding: "utf8", env: infrastructureEnvironment },
   );
   if (result.status !== 0) throw new Error(`Cannot resolve ${service} E2E port`);
   const match = result.stdout.trim().match(/:(\d+)$/);
@@ -94,41 +125,90 @@ try {
   // The plaintext fixture exists only in the validated disposable directory and
   // is removed with the certificate after the run. It is never an environment value.
   await writeFile(secretFile, "paper-only-password\n", { encoding: "utf8", mode: 0o600 });
+  await writeFile(
+    postgresSuperuserPasswordFile,
+    `${postgresSuperuserPassword}\n`,
+    { encoding: "utf8", mode: 0o600 },
+  );
+  for (const [role, path] of Object.entries(rolePasswordFiles)) {
+    await writeFile(path, `${rolePasswords[role]}\n`, { encoding: "utf8", mode: 0o600 });
+  }
   checked("python", [
     "-m", "uv", "run", "--locked", "python", "scripts/bootstrap-local-operator.py",
     "--secret-file", secretFile,
     "--verifier-file", verifierFile,
   ]);
   await rm(infrastructureEvidencePath, { force: true });
+  await rm(serviceEnvironment.P8_GATEWAY_E2E_EVIDENCE_FILE, { force: true });
   const lifecycleEvidence = startFreshInfrastructure({
     afterStart: () => {
       const postgresPort = publishedPort("postgres", 5432);
       const redisPort = publishedPort("redis", 6379);
+      const databaseUrl = (role) =>
+        `postgresql://${role}:${encodeURIComponent(rolePasswords[role])}@127.0.0.1:${postgresPort}/woozoo`;
       Object.assign(serviceEnvironment, {
-        DATABASE_URL: `postgresql://woozoo_control_reader@127.0.0.1:${postgresPort}/woozoo`,
-        CONTROL_DATABASE_URL: `postgresql://woozoo_control_api@127.0.0.1:${postgresPort}/woozoo`,
-        AGENT_DATABASE_URL: `postgresql://woozoo_agent_orchestrator@127.0.0.1:${postgresPort}/woozoo`,
-        RISK_DATABASE_URL: `postgresql://woozoo_risk_engine@127.0.0.1:${postgresPort}/woozoo`,
-        PAPER_DATABASE_URL: `postgresql://woozoo_paper_engine@127.0.0.1:${postgresPort}/woozoo`,
-        MARKET_DATABASE_URL: `postgresql://woozoo_market_writer@127.0.0.1:${postgresPort}/woozoo`,
-        EVIDENCE_DATABASE_URL: `postgresql://woozoo_evidence_writer@127.0.0.1:${postgresPort}/woozoo`,
+        DATABASE_URL: databaseUrl("woozoo_control_reader"),
+        CONTROL_DATABASE_URL: databaseUrl("woozoo_control_api"),
+        AGENT_DATABASE_URL: databaseUrl("woozoo_agent_orchestrator"),
+        RISK_DATABASE_URL: databaseUrl("woozoo_risk_engine"),
+        PAPER_DATABASE_URL: databaseUrl("woozoo_paper_engine"),
+        MARKET_DATABASE_URL: databaseUrl("woozoo_market_writer"),
+        EVIDENCE_DATABASE_URL: databaseUrl("woozoo_evidence_writer"),
+        TESTNET_EXECUTION_DATABASE_URL: databaseUrl("woozoo_testnet_execution"),
+        SPOT_TESTNET_GATEWAY_DATABASE_URL: databaseUrl("woozoo_spot_testnet_gateway"),
         REDIS_URL: `redis://127.0.0.1:${redisPort}/0`,
       });
-      const adminDatabaseUrl = `postgresql://postgres@127.0.0.1:${postgresPort}/woozoo`;
+      const adminDatabaseUrl = `postgresql://postgres:${encodeURIComponent(postgresSuperuserPassword)}@127.0.0.1:${postgresPort}/woozoo`;
       checked("python", ["-m", "uv", "run", "--locked", "alembic", "upgrade", "head"], {
         env: { ...process.env, TRADING_MODE: "paper", DATABASE_URL: adminDatabaseUrl },
       });
+      checked("python", [
+        "-m", "uv", "run", "--locked", "python", "tests/e2e/configure-postgres-roles.py",
+      ], {
+        env: {
+          ...process.env,
+          E2E_POSTGRES_ADMIN_URL: adminDatabaseUrl,
+          E2E_CONTROL_READER_PASSWORD_FILE: rolePasswordFiles.woozoo_control_reader,
+          E2E_CONTROL_API_PASSWORD_FILE: rolePasswordFiles.woozoo_control_api,
+          E2E_MARKET_WRITER_PASSWORD_FILE: rolePasswordFiles.woozoo_market_writer,
+          E2E_EVIDENCE_WRITER_PASSWORD_FILE: rolePasswordFiles.woozoo_evidence_writer,
+          E2E_AGENT_ORCHESTRATOR_PASSWORD_FILE: rolePasswordFiles.woozoo_agent_orchestrator,
+          E2E_RISK_ENGINE_PASSWORD_FILE: rolePasswordFiles.woozoo_risk_engine,
+          E2E_PAPER_ENGINE_PASSWORD_FILE: rolePasswordFiles.woozoo_paper_engine,
+          E2E_TESTNET_EXECUTION_PASSWORD_FILE: rolePasswordFiles.woozoo_testnet_execution,
+          E2E_SPOT_TESTNET_GATEWAY_PASSWORD_FILE: rolePasswordFiles.woozoo_spot_testnet_gateway,
+        },
+      });
+      mkdirSync(resolve(runtimeHandlePath, ".."), { recursive: true });
+      writeFileSync(
+        runtimeHandlePath,
+        `${JSON.stringify({ database_urls: Object.fromEntries(
+          Object.keys(rolePasswordFiles).map((role) => [role, databaseUrl(role)]),
+        ) })}\n`,
+        { encoding: "utf8", mode: 0o600 },
+      );
       checked("python", [
         "-m", "uv", "run", "--locked", "python", "tests/e2e/live_control_api.py",
         "--bootstrap-public-data",
       ], { env: serviceEnvironment });
       return {
         migration: { status: "PASS", target: "head" },
+        postgres_authentication: {
+          status: "PASS",
+          host_method: "scram-sha-256",
+          distinct_application_roles: [
+            "woozoo_control_api",
+            "woozoo_testnet_execution",
+            "woozoo_spot_testnet_gateway",
+          ],
+          committed_secret_values: false,
+        },
         public_data_bootstrap: { status: "PASS", source: "recorded" },
       };
     },
     composeFile,
     composeProject,
+    environment: infrastructureEnvironment,
     root,
     volumeName: E2E_POSTGRES_VOLUME,
   });
@@ -260,6 +340,7 @@ async function removeTemporaryCertificate() {
     throw new Error(`Refusing to remove unexpected E2E path: ${resolvedTarget}`);
   }
   await rm(resolvedTarget, { recursive: true, force: true });
+  await rm(runtimeHandlePath, { force: true });
   await cleanupRecordedCertificate();
 }
 async function stop(signal) {

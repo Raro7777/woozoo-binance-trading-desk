@@ -5,8 +5,10 @@ services:
     image: postgres:17-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
     environment:
       POSTGRES_DB: woozoo
-      POSTGRES_HOST_AUTH_METHOD: trust
       POSTGRES_USER: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_superuser_password
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+    secrets: [postgres_superuser_password]
     ports:
       - "127.0.0.1::5432"
     volumes:
@@ -29,3 +31,7 @@ services:
 
 volumes:
   postgres_data:
+
+secrets:
+  postgres_superuser_password:
+    file: ${E2E_POSTGRES_SUPERUSER_PASSWORD_FILE:?set E2E_POSTGRES_SUPERUSER_PASSWORD_FILE}

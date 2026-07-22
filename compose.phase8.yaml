@@ -1,0 +1,258 @@
+name: woozoo-phase8
+x-woozoo-boundary: phase8-authenticated-runtime
+
+x-python-service: &python-service
+  environment: &postgres-client-environment
+    TRADING_MODE: paper
+    PHASE8_POSTGRES_HOST: postgres
+    PHASE8_POSTGRES_PORT: "5432"
+    PHASE8_POSTGRES_DATABASE: woozoo
+  networks: [authority-network]
+
+services:
+  postgres:
+    image: postgres:17-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
+    environment:
+      POSTGRES_DB: woozoo
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_superuser_password
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+    secrets: [postgres_superuser_password]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d woozoo"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    volumes: [phase8_postgres_data:/var/lib/postgresql/data]
+    ports:
+      - "127.0.0.1:${PHASE8_POSTGRES_PORT:-5438}:5432"
+    networks: [authority-network]
+
+  redis:
+    image: redis:7.4-alpine@sha256:6ab0b6e7381779332f97b8ca76193e45b0756f38d4c0dcda72dbb3c32061ab99
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--protected-mode", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    networks: [authority-network]
+
+  phase8-bootstrap:
+    <<: *python-service
+    build:
+      context: .
+      dockerfile: infra/containers/phase8-control-api.Dockerfile
+    image: woozoo/phase8-control-api:local
+    restart: "no"
+    command: ["bootstrap"]
+    environment:
+      <<: *postgres-client-environment
+      PHASE8_POSTGRES_SUPERUSER_PASSWORD_FILE: /run/secrets/postgres_superuser_password
+      PHASE8_CONTROL_READER_DATABASE_PASSWORD_FILE: /run/secrets/woozoo_control_reader_password
+      PHASE8_CONTROL_API_DATABASE_PASSWORD_FILE: /run/secrets/woozoo_control_api_password
+      PHASE8_MARKET_WRITER_DATABASE_PASSWORD_FILE: /run/secrets/woozoo_market_writer_password
+      PHASE8_EVIDENCE_WRITER_DATABASE_PASSWORD_FILE: /run/secrets/woozoo_evidence_writer_password
+      PHASE8_AGENT_ORCHESTRATOR_DATABASE_PASSWORD_FILE: /run/secrets/woozoo_agent_orchestrator_password
+      PHASE8_RISK_ENGINE_DATABASE_PASSWORD_FILE: /run/secrets/woozoo_risk_engine_password
+      PHASE8_PAPER_ENGINE_DATABASE_PASSWORD_FILE: /run/secrets/woozoo_paper_engine_password
+      PHASE8_TESTNET_EXECUTION_DATABASE_PASSWORD_FILE: /run/secrets/woozoo_testnet_execution_password
+      PHASE8_SPOT_TESTNET_GATEWAY_DATABASE_PASSWORD_FILE: /run/secrets/woozoo_spot_testnet_gateway_password
+    secrets:
+      - postgres_superuser_password
+      - woozoo_control_reader_password
+      - woozoo_control_api_password
+      - woozoo_market_writer_password
+      - woozoo_evidence_writer_password
+      - woozoo_agent_orchestrator_password
+      - woozoo_risk_engine_password
+      - woozoo_paper_engine_password
+      - woozoo_testnet_execution_password
+      - woozoo_spot_testnet_gateway_password
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  control-api:
+    <<: *python-service
+    build:
+      context: .
+      dockerfile: infra/containers/phase8-control-api.Dockerfile
+    image: woozoo/phase8-control-api:local
+    restart: "unless-stopped"
+    command: ["control-api"]
+    environment:
+      <<: *postgres-client-environment
+      PHASE8_CONTROL_READER_DATABASE_PASSWORD_FILE: /run/secrets/woozoo_control_reader_password
+      PHASE8_CONTROL_API_DATABASE_PASSWORD_FILE: /run/secrets/woozoo_control_api_password
+      PHASE8_AGENT_ORCHESTRATOR_DATABASE_PASSWORD_FILE: /run/secrets/woozoo_agent_orchestrator_password
+      PHASE8_RISK_ENGINE_DATABASE_PASSWORD_FILE: /run/secrets/woozoo_risk_engine_password
+      PHASE8_PAPER_ENGINE_DATABASE_PASSWORD_FILE: /run/secrets/woozoo_paper_engine_password
+      REDIS_URL: redis://redis:6379/0
+      MARKET_DATA_SOURCE: recorded
+      LLM_PROVIDER: mock
+      LOCAL_OPERATOR_ORIGIN: ${LOCAL_OPERATOR_ORIGIN:-https://localhost:3443}
+      LOCAL_OPERATOR_VERIFIER_FILE: /run/secrets/local_operator_verifier
+    secrets:
+      - woozoo_control_reader_password
+      - woozoo_control_api_password
+      - woozoo_agent_orchestrator_password
+      - woozoo_risk_engine_password
+      - woozoo_paper_engine_password
+      - local_operator_verifier
+    depends_on:
+      phase8-bootstrap: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    ports:
+      - "127.0.0.1:${PHASE8_CONTROL_API_PORT:-8008}:8000"
+    networks: [authority-network, operator-network]
+
+  testnet-execution-worker:
+    <<: *python-service
+    build:
+      context: .
+      dockerfile: infra/containers/phase8-testnet-execution.Dockerfile
+    image: woozoo/phase8-testnet-execution:local
+    restart: "unless-stopped"
+    profiles: [runtime]
+    command: ["testnet-execution"]
+    environment:
+      <<: *postgres-client-environment
+      PHASE8_TESTNET_EXECUTION_DATABASE_PASSWORD_FILE: /run/secrets/woozoo_testnet_execution_password
+      SPOT_TESTNET_GATEWAY_INSTANCE_ID: ${SPOT_TESTNET_GATEWAY_INSTANCE_ID:-}
+      SPOT_TESTNET_GATEWAY_BUILD_DIGEST: ${SPOT_TESTNET_GATEWAY_BUILD_DIGEST:-}
+      SPOT_TESTNET_GATEWAY_CONFIGURATION_DIGEST: ${SPOT_TESTNET_GATEWAY_CONFIGURATION_DIGEST:-}
+      SPOT_TESTNET_ALLOWLIST_DIGEST: ${SPOT_TESTNET_ALLOWLIST_DIGEST:-}
+    depends_on:
+      phase8-bootstrap: { condition: service_completed_successfully }
+    secrets: [woozoo_testnet_execution_password]
+
+  spot-testnet-gateway-command:
+    <<: *python-service
+    build:
+      context: .
+      dockerfile: infra/containers/phase8-spot-testnet-gateway.Dockerfile
+    image: woozoo/phase8-spot-testnet-gateway:local
+    restart: "unless-stopped"
+    profiles: [testnet-gateway]
+    command: ["spot-testnet-gateway"]
+    environment:
+      <<: *postgres-client-environment
+      PHASE8_SPOT_TESTNET_GATEWAY_DATABASE_PASSWORD_FILE: /run/secrets/woozoo_spot_testnet_gateway_password
+      SPOT_TESTNET_GATEWAY_ENABLED: ${SPOT_TESTNET_GATEWAY_ENABLED:-false}
+      SPOT_TESTNET_GATEWAY_RUN_MODE: command
+      SPOT_TESTNET_ENVIRONMENT: BINANCE_SPOT_TESTNET
+      SPOT_TESTNET_REST_ORIGIN: https://testnet.binance.vision
+      SPOT_TESTNET_WS_URL: wss://ws-api.testnet.binance.vision/ws-api/v3
+      SPOT_TESTNET_API_KEY_FILE: /run/secrets/spot_testnet_api_key
+      SPOT_TESTNET_SIGNING_SECRET_FILE: /run/secrets/spot_testnet_signing_secret
+      SPOT_TESTNET_GATEWAY_INSTANCE_ID: ${SPOT_TESTNET_GATEWAY_INSTANCE_ID:-}
+      SPOT_TESTNET_GATEWAY_BUILD_DIGEST: ${SPOT_TESTNET_GATEWAY_BUILD_DIGEST:-}
+      SPOT_TESTNET_GATEWAY_CONFIGURATION_DIGEST: ${SPOT_TESTNET_GATEWAY_CONFIGURATION_DIGEST:-}
+      SPOT_TESTNET_ALLOWLIST_DIGEST: ${SPOT_TESTNET_ALLOWLIST_DIGEST:-}
+    secrets:
+      - woozoo_spot_testnet_gateway_password
+      - spot_testnet_api_key
+      - spot_testnet_signing_secret
+    depends_on:
+      phase8-bootstrap: { condition: service_completed_successfully }
+    networks: [authority-network, exchange-egress-network]
+
+  spot-testnet-gateway-reconciliation:
+    <<: *python-service
+    build:
+      context: .
+      dockerfile: infra/containers/phase8-spot-testnet-gateway.Dockerfile
+    image: woozoo/phase8-spot-testnet-gateway:local
+    restart: "unless-stopped"
+    profiles: [testnet-gateway]
+    command: ["spot-testnet-gateway"]
+    environment:
+      <<: *postgres-client-environment
+      PHASE8_SPOT_TESTNET_GATEWAY_DATABASE_PASSWORD_FILE: /run/secrets/woozoo_spot_testnet_gateway_password
+      SPOT_TESTNET_GATEWAY_ENABLED: ${SPOT_TESTNET_GATEWAY_ENABLED:-false}
+      SPOT_TESTNET_GATEWAY_RUN_MODE: reconciliation
+      SPOT_TESTNET_ENVIRONMENT: BINANCE_SPOT_TESTNET
+      SPOT_TESTNET_REST_ORIGIN: https://testnet.binance.vision
+      SPOT_TESTNET_WS_URL: wss://ws-api.testnet.binance.vision/ws-api/v3
+      SPOT_TESTNET_API_KEY_FILE: /run/secrets/spot_testnet_api_key
+      SPOT_TESTNET_SIGNING_SECRET_FILE: /run/secrets/spot_testnet_signing_secret
+      SPOT_TESTNET_GATEWAY_INSTANCE_ID: ${SPOT_TESTNET_GATEWAY_INSTANCE_ID:-}
+      SPOT_TESTNET_GATEWAY_BUILD_DIGEST: ${SPOT_TESTNET_GATEWAY_BUILD_DIGEST:-}
+      SPOT_TESTNET_GATEWAY_CONFIGURATION_DIGEST: ${SPOT_TESTNET_GATEWAY_CONFIGURATION_DIGEST:-}
+      SPOT_TESTNET_ALLOWLIST_DIGEST: ${SPOT_TESTNET_ALLOWLIST_DIGEST:-}
+    secrets:
+      - woozoo_spot_testnet_gateway_password
+      - spot_testnet_api_key
+      - spot_testnet_signing_secret
+    depends_on:
+      phase8-bootstrap: { condition: service_completed_successfully }
+    networks: [authority-network, exchange-egress-network]
+
+  spot-testnet-gateway-user-data:
+    <<: *python-service
+    build:
+      context: .
+      dockerfile: infra/containers/phase8-spot-testnet-gateway.Dockerfile
+    image: woozoo/phase8-spot-testnet-gateway:local
+    restart: "unless-stopped"
+    profiles: [testnet-gateway]
+    command: ["spot-testnet-gateway"]
+    environment:
+      <<: *postgres-client-environment
+      PHASE8_SPOT_TESTNET_GATEWAY_DATABASE_PASSWORD_FILE: /run/secrets/woozoo_spot_testnet_gateway_password
+      SPOT_TESTNET_GATEWAY_ENABLED: ${SPOT_TESTNET_GATEWAY_ENABLED:-false}
+      SPOT_TESTNET_GATEWAY_RUN_MODE: user-data
+      SPOT_TESTNET_ENVIRONMENT: BINANCE_SPOT_TESTNET
+      SPOT_TESTNET_REST_ORIGIN: https://testnet.binance.vision
+      SPOT_TESTNET_WS_URL: wss://ws-api.testnet.binance.vision/ws-api/v3
+      SPOT_TESTNET_API_KEY_FILE: /run/secrets/spot_testnet_api_key
+      SPOT_TESTNET_SIGNING_SECRET_FILE: /run/secrets/spot_testnet_signing_secret
+      SPOT_TESTNET_GATEWAY_INSTANCE_ID: ${SPOT_TESTNET_GATEWAY_INSTANCE_ID:-}
+      SPOT_TESTNET_GATEWAY_BUILD_DIGEST: ${SPOT_TESTNET_GATEWAY_BUILD_DIGEST:-}
+      SPOT_TESTNET_GATEWAY_CONFIGURATION_DIGEST: ${SPOT_TESTNET_GATEWAY_CONFIGURATION_DIGEST:-}
+      SPOT_TESTNET_ALLOWLIST_DIGEST: ${SPOT_TESTNET_ALLOWLIST_DIGEST:-}
+    secrets:
+      - woozoo_spot_testnet_gateway_password
+      - spot_testnet_api_key
+      - spot_testnet_signing_secret
+    depends_on:
+      phase8-bootstrap: { condition: service_completed_successfully }
+    networks: [authority-network, exchange-egress-network]
+
+networks:
+  authority-network:
+    internal: true
+  operator-network:
+    internal: true
+  exchange-egress-network: {}
+
+volumes:
+  phase8_postgres_data:
+
+secrets:
+  postgres_superuser_password:
+    file: ${PHASE8_POSTGRES_SUPERUSER_PASSWORD_FILE:?set PHASE8_POSTGRES_SUPERUSER_PASSWORD_FILE}
+  woozoo_control_reader_password:
+    file: ${PHASE8_CONTROL_READER_DATABASE_PASSWORD_FILE:?set PHASE8_CONTROL_READER_DATABASE_PASSWORD_FILE}
+  woozoo_control_api_password:
+    file: ${PHASE8_CONTROL_API_DATABASE_PASSWORD_FILE:?set PHASE8_CONTROL_API_DATABASE_PASSWORD_FILE}
+  woozoo_market_writer_password:
+    file: ${PHASE8_MARKET_WRITER_DATABASE_PASSWORD_FILE:?set PHASE8_MARKET_WRITER_DATABASE_PASSWORD_FILE}
+  woozoo_evidence_writer_password:
+    file: ${PHASE8_EVIDENCE_WRITER_DATABASE_PASSWORD_FILE:?set PHASE8_EVIDENCE_WRITER_DATABASE_PASSWORD_FILE}
+  woozoo_agent_orchestrator_password:
+    file: ${PHASE8_AGENT_ORCHESTRATOR_DATABASE_PASSWORD_FILE:?set PHASE8_AGENT_ORCHESTRATOR_DATABASE_PASSWORD_FILE}
+  woozoo_risk_engine_password:
+    file: ${PHASE8_RISK_ENGINE_DATABASE_PASSWORD_FILE:?set PHASE8_RISK_ENGINE_DATABASE_PASSWORD_FILE}
+  woozoo_paper_engine_password:
+    file: ${PHASE8_PAPER_ENGINE_DATABASE_PASSWORD_FILE:?set PHASE8_PAPER_ENGINE_DATABASE_PASSWORD_FILE}
+  woozoo_testnet_execution_password:
+    file: ${PHASE8_TESTNET_EXECUTION_DATABASE_PASSWORD_FILE:?set PHASE8_TESTNET_EXECUTION_DATABASE_PASSWORD_FILE}
+  woozoo_spot_testnet_gateway_password:
+    file: ${PHASE8_SPOT_TESTNET_GATEWAY_DATABASE_PASSWORD_FILE:?set PHASE8_SPOT_TESTNET_GATEWAY_DATABASE_PASSWORD_FILE}
+  local_operator_verifier:
+    file: ${LOCAL_OPERATOR_VERIFIER_FILE:?set LOCAL_OPERATOR_VERIFIER_FILE}
+  spot_testnet_api_key:
+    file: ${SPOT_TESTNET_API_KEY_FILE:?set SPOT_TESTNET_API_KEY_FILE}
+  spot_testnet_signing_secret:
+    file: ${SPOT_TESTNET_SIGNING_SECRET_FILE:?set SPOT_TESTNET_SIGNING_SECRET_FILE}

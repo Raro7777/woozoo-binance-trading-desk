@@ -13,6 +13,11 @@ export default async function globalTeardown() {
     removeInfrastructure({
       composeFile,
       composeProject: E2E_COMPOSE_PROJECT,
+      environment: {
+        ...process.env,
+        E2E_POSTGRES_SUPERUSER_PASSWORD_FILE:
+          process.env.E2E_POSTGRES_SUPERUSER_PASSWORD_FILE ?? resolve(root, ".tmp/e2e-cleanup-placeholder"),
+      },
       root,
       volumeName: E2E_POSTGRES_VOLUME,
     });

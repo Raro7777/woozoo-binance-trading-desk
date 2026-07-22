@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "woozoo.testnet-approval-revocation/v1",
+  "x-creation-phase": 8,
+  "x-activation-phase": 8,
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "revocation_id", "approval_id", "approval_hash", "environment", "account_binding_id", "account_generation", "actor_id", "session_binding_hash", "csrf_binding_hash", "origin_hash", "revocation_nonce", "reason", "expected_version", "revoked_at", "payload_hash"],
+  "properties": {
+    "schema_version": {"const": "woozoo.testnet-approval-revocation/v1"},
+    "revocation_id": {"$ref": "#/$defs/hash"},
+    "approval_id": {"$ref": "#/$defs/hash"},
+    "approval_hash": {"$ref": "#/$defs/hash"},
+    "environment": {"const": "BINANCE_SPOT_TESTNET"},
+    "account_binding_id": {"$ref": "#/$defs/hash"},
+    "account_generation": {"type": "integer", "minimum": 1},
+    "actor_id": {"const": "operator-local-1"},
+    "session_binding_hash": {"$ref": "#/$defs/hash"},
+    "csrf_binding_hash": {"$ref": "#/$defs/hash"},
+    "origin_hash": {"$ref": "#/$defs/hash"},
+    "revocation_nonce": {"type": "string", "pattern": "^[A-Za-z0-9_-]{32,128}$"},
+    "reason": {"type": "string", "minLength": 1, "maxLength": 512},
+    "expected_version": {"type": "integer", "minimum": 1},
+    "revoked_at": {"type": "string", "format": "date-time"},
+    "payload_hash": {"$ref": "#/$defs/hash"}
+  },
+  "$defs": {"hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}
+}

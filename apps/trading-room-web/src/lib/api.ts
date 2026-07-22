@@ -72,8 +72,14 @@ const errorCodeLabels: Readonly<Record<string, string>> = {
   ORIGIN_INVALID: "허용되지 않은 요청 출처입니다.",
   PRECONDITION_FAILED: "화면의 버전과 서버 상태가 일치하지 않습니다. 새로 고친 뒤 다시 시도하세요.",
   REQUEST_VALIDATION_FAILED: "요청 값이 유효하지 않습니다.",
+  RESET_CONFIRMATION_BLOCKED: "계정 초기화 확인 조건이 충족되지 않았습니다.",
   SCHEMA_INVALID: "요청 형식이 유효하지 않습니다.",
   SESSION_REQUIRED: "운영자 로그인이 필요합니다.",
+  TESTNET_DEFAULT_OFF: "Spot Testnet 게이트웨이는 기본 차단 상태입니다.",
+  TESTNET_PROJECTION_UNAVAILABLE: "Spot Testnet 운영 상태를 조회할 수 없습니다.",
+  PROPOSAL_NOT_FOUND: "Testnet 검토가 가능한 제안을 찾을 수 없습니다.",
+  APPROVAL_NOT_FOUND: "Testnet 승인 기록을 찾을 수 없습니다.",
+  EXECUTION_NOT_FOUND: "Testnet 실행 기록을 찾을 수 없습니다.",
   VERSION_MISMATCH: "화면의 상태가 최신 버전이 아닙니다. 새로 고친 뒤 다시 시도하세요.",
 };
 
@@ -111,13 +117,13 @@ async function csrfToken(): Promise<string> {
 export async function apiCommand<T = unknown>(
   path: `/api/v1/${string}`,
   body: JsonRecord,
-  options: Readonly<{ ifMatch?: string; csrf?: boolean }> = {},
+  options: Readonly<{ ifMatch?: string; csrf?: boolean; idempotencyKey?: string }> = {},
 ): Promise<T> {
   const token = options.csrf === false ? undefined : await csrfToken();
   const headers = new Headers({
     Accept: "application/json",
     "Content-Type": "application/json",
-    "Idempotency-Key": crypto.randomUUID(),
+    "Idempotency-Key": options.idempotencyKey ?? crypto.randomUUID(),
   });
   if (token !== undefined) headers.set("X-CSRF-Token", token);
   if (options.ifMatch !== undefined) headers.set("If-Match", options.ifMatch);
@@ -140,11 +146,15 @@ export async function apiVersionedCommand<T = unknown>(
   path: `/api/v1/${string}`,
   body: JsonRecord,
   expectedVersion: number | undefined,
+  idempotencyKey?: string,
 ): Promise<T> {
   if (expectedVersion === undefined || !Number.isSafeInteger(expectedVersion) || expectedVersion < 0) {
     throw new ApiError("서버 확정 리소스 버전을 사용할 수 없어 명령이 보류되었습니다.", 409);
   }
-  return apiCommand<T>(path, { ...body, expected_version: expectedVersion }, { ifMatch: String(expectedVersion) });
+  return apiCommand<T>(path, { ...body, expected_version: expectedVersion }, {
+    ifMatch: String(expectedVersion),
+    idempotencyKey,
+  });
 }
 
 export function asRecord(value: unknown): JsonRecord | undefined {

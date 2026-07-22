@@ -3,7 +3,8 @@ import { tmpdir } from "node:os";
 import { basename, resolve, sep } from "node:path";
 
 const root = resolve(import.meta.dirname, "../..");
-const marker = resolve(root, "artifacts/e2e/runtime/https-temp-path.txt");
+const artifactDirectory = process.env.WOOZOO_E2E_ARTIFACT_DIR ?? "artifacts/e2e";
+const marker = resolve(root, artifactDirectory, "runtime/https-temp-path.txt");
 
 function validatedTemporaryPath(value) {
   const target = resolve(value.trim());

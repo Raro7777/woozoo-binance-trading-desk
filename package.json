@@ -25,7 +25,11 @@
     "test:replay": "node scripts/quality.mjs test:replay",
     "test:failure": "node scripts/quality.mjs test:failure",
     "test:e2e": "node scripts/quality.mjs test:e2e",
+    "test:acceptance": "node scripts/quality.mjs test:acceptance",
     "worker:paper": "python -m uv run --locked python -m paper_engine.authorization_worker",
+    "worker:testnet-execution": "python -m uv run --locked python scripts/run-testnet-execution-worker.py",
+    "worker:spot-testnet-gateway": "python -m uv run --locked python scripts/run-spot-testnet-gateway-worker.py",
+    "testnet:local:start": "node scripts/run-phase8-testnet-local.mjs",
     "build": "node scripts/quality.mjs build",
     "ci": "node scripts/quality.mjs ci"
   },

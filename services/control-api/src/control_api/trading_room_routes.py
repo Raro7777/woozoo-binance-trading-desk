@@ -22,6 +22,7 @@ from .security import (
     SessionRejected,
     token_digest,
 )
+from .testnet_operator import TestnetOperatorRoom
 from .trading_room import CommandResult, TradingRoom, TradingRoomError
 
 
@@ -70,6 +71,34 @@ class KillRecoveryCommand(ClosedModel):
     reason: str = Field(min_length=1, max_length=512)
 
 
+class TestnetActivationCommand(ClosedModel):
+    expected_version: int = Field(ge=0)
+    activation_view_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+    reason: str = Field(min_length=1, max_length=512)
+
+
+class TestnetApprovalCommand(ClosedModel):
+    proposal_id: str = Field(pattern=r"^[a-f0-9]{64}$")
+    decision: Literal["APPROVE", "REJECT"]
+    expected_version: int = Field(ge=1)
+    testnet_order_preview_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+    approval_input_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+    reason: str = Field(min_length=1, max_length=512)
+
+
+class TestnetResetConfirmationCommand(ClosedModel):
+    expected_version: int = Field(ge=1)
+    checkpoint_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+    reason: str = Field(min_length=1, max_length=512)
+
+
+class TestnetCancellationCommand(ClosedModel):
+    order_id: str = Field(pattern=r"^[a-f0-9]{64}$")
+    expected_version: int = Field(ge=1)
+    order_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+    reason: str = Field(min_length=1, max_length=512)
+
+
 def load_local_security(environment: Mapping[str, str]) -> LocalOperatorSecurity | None:
     verifier_file = environment.get("LOCAL_OPERATOR_VERIFIER_FILE", "").strip()
     origin = environment.get("LOCAL_OPERATOR_ORIGIN", "https://localhost:3443").strip()
@@ -96,7 +125,10 @@ def _result(result: CommandResult) -> JSONResponse:
 
 
 def register_trading_room_routes(
-    app: FastAPI, security: LocalOperatorSecurity, room: TradingRoom
+    app: FastAPI,
+    security: LocalOperatorSecurity,
+    room: TradingRoom,
+    testnet: TestnetOperatorRoom,
 ) -> None:
     def raw_session(request: Request) -> str | None:
         return request.cookies.get(COOKIE_NAME)
@@ -127,6 +159,22 @@ def register_trading_room_routes(
             return _result(action())
         except TradingRoomError as exc:
             return _error(exc.code, exc.message, exc.status_code)
+
+    def testnet_response(value: dict[str, object] | CommandResult) -> JSONResponse:
+        response = _result(value) if isinstance(value, CommandResult) else JSONResponse(value)
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
+    def invoke_testnet(action: object) -> JSONResponse:
+        try:
+            assert callable(action)
+            result = action()
+            assert isinstance(result, (dict, CommandResult))
+            return testnet_response(result)
+        except TradingRoomError as exc:
+            response = _error(exc.code, exc.message, exc.status_code)
+            response.headers["Cache-Control"] = "no-store"
+            return response
 
     def approval_receipt(result: CommandResult) -> JSONResponse:
         approval = result.body.get("approval")
@@ -446,6 +494,216 @@ def register_trading_room_routes(
                 command.expected_version,
                 command.activation_event_id,
                 command.incident_reference,
+                command.reason,
+                idempotency_key=idempotency_key or "",
+                session_binding_hash=guarded.digest,
+                csrf_binding_hash=token_digest(x_csrf_token or ""),
+                origin_hash=token_digest(request.headers.get("origin") or ""),
+            )
+        )
+
+    @app.get("/api/v1/testnet/operator-state")
+    def get_testnet_operator_state(request: Request) -> JSONResponse:
+        denied = require_session(request)
+        if denied:
+            return denied
+        return invoke_testnet(testnet.operator_state)
+
+    @app.post("/api/v1/testnet-activations")
+    def create_testnet_activation(
+        command: TestnetActivationCommand,
+        request: Request,
+        idempotency_key: str | None = Header(default=None),
+        if_match: str | None = Header(default=None),
+        x_csrf_token: str | None = Header(default=None),
+    ) -> JSONResponse:
+        invalid_key = require_idempotency(idempotency_key)
+        if invalid_key:
+            return invalid_key
+        precondition = require_if_match(if_match, command.expected_version)
+        if precondition:
+            return precondition
+        guarded = require_command(request, x_csrf_token)
+        if isinstance(guarded, JSONResponse):
+            return guarded
+        return invoke_testnet(
+            lambda: testnet.activate(
+                command.expected_version,
+                command.activation_view_digest,
+                command.reason,
+                idempotency_key=idempotency_key or "",
+                session_binding_hash=guarded.digest,
+                csrf_binding_hash=token_digest(x_csrf_token or ""),
+                origin_hash=token_digest(request.headers.get("origin") or ""),
+            )
+        )
+
+    @app.post("/api/v1/testnet-activations/{activation_id}/deactivations")
+    def deactivate_testnet(
+        activation_id: str,
+        command: RevocationCommand,
+        request: Request,
+        idempotency_key: str | None = Header(default=None),
+        if_match: str | None = Header(default=None),
+        x_csrf_token: str | None = Header(default=None),
+    ) -> JSONResponse:
+        invalid_key = require_idempotency(idempotency_key)
+        if invalid_key:
+            return invalid_key
+        precondition = require_if_match(if_match, command.expected_version)
+        if precondition:
+            return precondition
+        guarded = require_command(request, x_csrf_token)
+        if isinstance(guarded, JSONResponse):
+            return guarded
+        return invoke_testnet(
+            lambda: testnet.deactivate(
+                activation_id,
+                command.expected_version,
+                command.reason,
+                idempotency_key=idempotency_key or "",
+                session_binding_hash=guarded.digest,
+                csrf_binding_hash=token_digest(x_csrf_token or ""),
+                origin_hash=token_digest(request.headers.get("origin") or ""),
+            )
+        )
+
+    @app.get("/api/v1/proposals/{proposal_id}/testnet-approval-view")
+    def get_testnet_approval_view(proposal_id: str, request: Request) -> JSONResponse:
+        denied = require_session(request)
+        if denied:
+            return denied
+        return invoke_testnet(lambda: testnet.approval_view(proposal_id))
+
+    @app.post("/api/v1/testnet-approvals")
+    def decide_testnet_approval(
+        command: TestnetApprovalCommand,
+        request: Request,
+        idempotency_key: str | None = Header(default=None),
+        if_match: str | None = Header(default=None),
+        x_csrf_token: str | None = Header(default=None),
+    ) -> JSONResponse:
+        invalid_key = require_idempotency(idempotency_key)
+        if invalid_key:
+            return invalid_key
+        precondition = require_if_match(if_match, command.expected_version)
+        if precondition:
+            return precondition
+        guarded = require_command(request, x_csrf_token)
+        if isinstance(guarded, JSONResponse):
+            return guarded
+        return invoke_testnet(
+            lambda: testnet.decide_approval(
+                proposal_id=command.proposal_id,
+                decision=command.decision,
+                expected_version=command.expected_version,
+                preview_digest=command.testnet_order_preview_digest,
+                approval_input_digest=command.approval_input_digest,
+                reason=command.reason,
+                idempotency_key=idempotency_key or "",
+                session_binding_hash=guarded.digest,
+                csrf_binding_hash=token_digest(x_csrf_token or ""),
+                origin_hash=token_digest(request.headers.get("origin") or ""),
+            )
+        )
+
+    @app.post("/api/v1/testnet-approvals/{approval_id}/revocations")
+    def revoke_testnet_approval(
+        approval_id: str,
+        command: RevocationCommand,
+        request: Request,
+        idempotency_key: str | None = Header(default=None),
+        if_match: str | None = Header(default=None),
+        x_csrf_token: str | None = Header(default=None),
+    ) -> JSONResponse:
+        invalid_key = require_idempotency(idempotency_key)
+        if invalid_key:
+            return invalid_key
+        precondition = require_if_match(if_match, command.expected_version)
+        if precondition:
+            return precondition
+        guarded = require_command(request, x_csrf_token)
+        if isinstance(guarded, JSONResponse):
+            return guarded
+        return invoke_testnet(
+            lambda: testnet.revoke(
+                approval_id,
+                command.expected_version,
+                command.reason,
+                idempotency_key=idempotency_key or "",
+                session_binding_hash=guarded.digest,
+                csrf_binding_hash=token_digest(x_csrf_token or ""),
+                origin_hash=token_digest(request.headers.get("origin") or ""),
+            )
+        )
+
+    @app.get("/api/v1/testnet-executions/{execution_id}")
+    def get_testnet_execution(execution_id: str, request: Request) -> JSONResponse:
+        denied = require_session(request)
+        if denied:
+            return denied
+        return invoke_testnet(lambda: testnet.execution(execution_id))
+
+    @app.get("/api/v1/testnet-orders/{order_id}/cancel-view")
+    def get_testnet_cancel_view(order_id: str, request: Request) -> JSONResponse:
+        denied = require_session(request)
+        if denied:
+            return denied
+        return invoke_testnet(lambda: testnet.cancel_view(order_id))
+
+    @app.post("/api/v1/testnet-cancellations")
+    def cancel_testnet_order(
+        command: TestnetCancellationCommand,
+        request: Request,
+        idempotency_key: str | None = Header(default=None),
+        if_match: str | None = Header(default=None),
+        x_csrf_token: str | None = Header(default=None),
+    ) -> JSONResponse:
+        invalid_key = require_idempotency(idempotency_key)
+        if invalid_key:
+            return invalid_key
+        precondition = require_if_match(if_match, command.expected_version)
+        if precondition:
+            return precondition
+        guarded = require_command(request, x_csrf_token)
+        if isinstance(guarded, JSONResponse):
+            return guarded
+        return invoke_testnet(
+            lambda: testnet.cancel(
+                command.order_id,
+                command.expected_version,
+                command.order_digest,
+                command.reason,
+                idempotency_key=idempotency_key or "",
+                session_binding_hash=guarded.digest,
+                csrf_binding_hash=token_digest(x_csrf_token or ""),
+                origin_hash=token_digest(request.headers.get("origin") or ""),
+            )
+        )
+
+    @app.post("/api/v1/testnet-reconciliation/{checkpoint_id}/confirmations")
+    def confirm_testnet_reset(
+        checkpoint_id: str,
+        command: TestnetResetConfirmationCommand,
+        request: Request,
+        idempotency_key: str | None = Header(default=None),
+        if_match: str | None = Header(default=None),
+        x_csrf_token: str | None = Header(default=None),
+    ) -> JSONResponse:
+        invalid_key = require_idempotency(idempotency_key)
+        if invalid_key:
+            return invalid_key
+        precondition = require_if_match(if_match, command.expected_version)
+        if precondition:
+            return precondition
+        guarded = require_command(request, x_csrf_token)
+        if isinstance(guarded, JSONResponse):
+            return guarded
+        return invoke_testnet(
+            lambda: testnet.confirm_reset(
+                checkpoint_id,
+                command.checkpoint_digest,
+                command.expected_version,
                 command.reason,
                 idempotency_key=idempotency_key or "",
                 session_binding_hash=guarded.digest,

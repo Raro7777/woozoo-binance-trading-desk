@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "woozoo.testnet-gateway-status/v1",
+  "x-creation-phase": 8,
+  "x-activation-phase": 8,
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "environment", "account_binding_id", "account_generation", "gateway_instance_id", "deployment_enabled", "operator_activation_status", "activation_version", "activation_expires_at", "health", "configuration_digest", "capability_allowlist_digest", "testnet_barrier_status", "testnet_barrier_version", "reconciliation_status", "new_commands_allowed", "reason_codes", "observed_at"],
+  "properties": {
+    "schema_version": {"const": "woozoo.testnet-gateway-status/v1"},
+    "environment": {"const": "BINANCE_SPOT_TESTNET"},
+    "account_binding_id": {"$ref": "#/$defs/hash"},
+    "account_generation": {"type": "integer", "minimum": 1},
+    "gateway_instance_id": {"$ref": "#/$defs/hash"},
+    "deployment_enabled": {"type": "boolean"},
+    "operator_activation_status": {"enum": ["DISABLED", "PENDING", "ACTIVE", "EXPIRED", "REVOKED"]},
+    "activation_version": {"type": "integer", "minimum": 0},
+    "activation_expires_at": {"type": ["string", "null"], "format": "date-time"},
+    "health": {"enum": ["DISABLED", "ACTIVATING", "READY", "DEGRADED", "UNKNOWN", "RESET_HOLD", "KILLED"]},
+    "configuration_digest": {"$ref": "#/$defs/hash"},
+    "capability_allowlist_digest": {"$ref": "#/$defs/hash"},
+    "testnet_barrier_status": {"enum": ["ACTIVE", "INACTIVE"]},
+    "testnet_barrier_version": {"type": "integer", "minimum": 0},
+    "reconciliation_status": {"enum": ["HEALTHY", "RUNNING", "FAILED", "RESET_SUSPECTED", "AWAITING_OPERATOR_CONFIRMATION", "UNKNOWN"]},
+    "new_commands_allowed": {"type": "boolean"},
+    "reason_codes": {"type": "array", "items": {"type": "string", "pattern": "^[A-Z0-9_]{1,64}$"}, "uniqueItems": true},
+    "observed_at": {"type": "string", "format": "date-time"}
+  },
+  "$defs": {"hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}
+}

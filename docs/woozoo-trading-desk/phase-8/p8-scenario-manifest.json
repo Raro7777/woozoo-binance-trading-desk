@@ -1,0 +1,79 @@
+{
+  "schema_version": "woozoo.phase-8-scenario-manifest/v1",
+  "phase": 8,
+  "release": "Spot Testnet Validation",
+  "trading_mode": "paper",
+  "runtime_namespace": "testnet-isolated",
+  "external_testnet_network_in_acceptance": false,
+  "artifact_root": "artifacts/phase-8",
+  "implementation_contract": "docs/woozoo-trading-desk/phase-8/implementation-contract.md",
+  "source_lock": "docs/woozoo-trading-desk/phase-8/binance-spot-testnet-source-lock.md",
+  "required_ids": [
+    "P8-UNIT-001",
+    "P8-CONTRACT-001",
+    "P8-SAFETY-001",
+    "P8-INTEGRATION-001",
+    "P8-PROPERTY-001",
+    "P8-REPLAY-001",
+    "P8-FAILURE-001",
+    "P8-E2E-001"
+  ],
+  "scenarios": [
+    {
+      "id": "P8-UNIT-001",
+      "area": "unit",
+      "command": "corepack pnpm test:unit",
+      "artifact": "artifacts/phase-8/unit/P8-UNIT-001.json",
+      "oracle": "All deterministic unit suites, including Gateway signing, transport, UNKNOWN and execution-state tests, execute with zero failure or skip."
+    },
+    {
+      "id": "P8-CONTRACT-001",
+      "area": "contracts",
+      "command": "corepack pnpm test:contracts",
+      "artifact": "artifacts/phase-8/contracts/P8-CONTRACT-001.json",
+      "oracle": "Generated bindings are current and every closed Phase 8 schema and sanitized browser OpenAPI route validates."
+    },
+    {
+      "id": "P8-SAFETY-001",
+      "area": "safety",
+      "command": "corepack pnpm test:safety",
+      "artifact": "artifacts/phase-8/safety/P8-SAFETY-001.json",
+      "oracle": "Mainnet, withdrawal, derivatives, browser/AI exchange access, shared secrets, fallback origins, and default-on Gateway capability remain absent."
+    },
+    {
+      "id": "P8-INTEGRATION-001",
+      "area": "integration",
+      "command": "corepack pnpm test:integration",
+      "artifact": "artifacts/phase-8/integration/P8-INTEGRATION-001.json",
+      "oracle": "Fresh Postgres migration, role separation, intent/domain/outbox atomicity, Gateway write-ahead dispatch, and no-resend crash recovery pass."
+    },
+    {
+      "id": "P8-PROPERTY-001",
+      "area": "property",
+      "command": "corepack pnpm test:property",
+      "artifact": "artifacts/phase-8/property/P8-PROPERTY-001.json",
+      "oracle": "Generated Decimal preview, risk, ledger, quantity, and monotonic state invariants pass without float authority."
+    },
+    {
+      "id": "P8-REPLAY-001",
+      "area": "replay",
+      "command": "corepack pnpm test:replay",
+      "artifact": "artifacts/phase-8/replay/P8-REPLAY-001.json",
+      "oracle": "The complete prior replay denominator remains deterministic after the isolated Testnet extension."
+    },
+    {
+      "id": "P8-FAILURE-001",
+      "area": "failure",
+      "command": "corepack pnpm test:failure",
+      "artifact": "artifacts/phase-8/failure/P8-FAILURE-001.json",
+      "oracle": "Timeout, response loss, drift, stale authority, replay conflict, and reset failures close safely with no replacement submit."
+    },
+    {
+      "id": "P8-E2E-001",
+      "area": "e2e",
+      "command": "corepack pnpm test:e2e",
+      "artifact": "artifacts/phase-8/e2e/P8-E2E-001.json",
+      "oracle": "Authenticated Korean desktop/mobile Testnet flows expose intents and sanitized projections only, retain idempotency on response loss, and have no exchange control."
+    }
+  ]
+}

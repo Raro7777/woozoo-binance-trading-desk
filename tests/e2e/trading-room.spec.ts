@@ -1,19 +1,19 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Locator, type Page, type Route } from "@playwright/test";
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { delimiter, resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "../..");
-const composeFile = resolve(root, "tests/e2e/compose.yaml");
-const composeProject = "woozoo-e2e";
+const runtimeHandlePath = resolve(root, ".tmp/phase8-e2e-runtime.json");
 
-function paperDatabaseUrl(): string {
-  const mapping = execFileSync("docker", [
-    "compose", "-f", composeFile, "-p", composeProject, "port", "postgres", "5432",
-  ], { cwd: root, encoding: "utf8" }).trim();
-  const match = mapping.match(/:(\d+)$/);
-  if (match === null) throw new Error("Cannot resolve the disposable E2E Postgres port");
-  return `postgresql://woozoo_paper_engine@127.0.0.1:${match[1]}/woozoo`;
+function runtimeDatabaseUrl(role: string): string {
+  const handle = JSON.parse(readFileSync(runtimeHandlePath, "utf8")) as {
+    database_urls?: Record<string, string>;
+  };
+  const value = handle.database_urls?.[role];
+  if (value === undefined) throw new Error(`Disposable E2E role URL is unavailable: ${role}`);
+  return value;
 }
 
 function runLiveControl(...args: string[]) {
@@ -25,9 +25,11 @@ function runLiveControl(...args: string[]) {
     resolve(root, "services/risk-engine/src"),
     resolve(root, "services/agent-orchestrator/src"),
     resolve(root, "services/market-data-worker/src"),
+    resolve(root, "services/testnet-execution-service/src"),
+    resolve(root, "services/spot-testnet-gateway/src"),
     process.env.PYTHONPATH,
   ].filter(Boolean).join(delimiter);
-  const paperUrl = paperDatabaseUrl();
+  const paperUrl = runtimeDatabaseUrl("woozoo_paper_engine");
   return execFileSync("python", [
     "-m", "uv", "run", "--locked", "python", "tests/e2e/live_control_api.py",
     ...args,
@@ -37,10 +39,17 @@ function runLiveControl(...args: string[]) {
       ...process.env,
       TRADING_MODE: "paper",
       PAPER_DATABASE_URL: paperUrl,
-      AGENT_DATABASE_URL: paperUrl.replace("woozoo_paper_engine", "woozoo_agent_orchestrator"),
-      RISK_DATABASE_URL: paperUrl.replace("woozoo_paper_engine", "woozoo_risk_engine"),
-      MARKET_DATABASE_URL: paperUrl.replace("woozoo_paper_engine", "woozoo_market_writer"),
-      EVIDENCE_DATABASE_URL: paperUrl.replace("woozoo_paper_engine", "woozoo_evidence_writer"),
+      AGENT_DATABASE_URL: runtimeDatabaseUrl("woozoo_agent_orchestrator"),
+      RISK_DATABASE_URL: runtimeDatabaseUrl("woozoo_risk_engine"),
+      MARKET_DATABASE_URL: runtimeDatabaseUrl("woozoo_market_writer"),
+      EVIDENCE_DATABASE_URL: runtimeDatabaseUrl("woozoo_evidence_writer"),
+      TESTNET_EXECUTION_DATABASE_URL: runtimeDatabaseUrl("woozoo_testnet_execution"),
+      SPOT_TESTNET_GATEWAY_DATABASE_URL: runtimeDatabaseUrl("woozoo_spot_testnet_gateway"),
+      SPOT_TESTNET_GATEWAY_INSTANCE_ID: "8".repeat(64),
+      SPOT_TESTNET_GATEWAY_BUILD_DIGEST: "9".repeat(64),
+      SPOT_TESTNET_GATEWAY_CONFIGURATION_DIGEST: "5291ea27d80daaec1dd0669feb4295e25853c5d60a8c6f7b6945829daad5fa75",
+      SPOT_TESTNET_ALLOWLIST_DIGEST: "a56608938d3d7f7cb94472a1354e8b73c7a0d409dc62463dc13f4612dd06e33a",
+      P8_GATEWAY_E2E_EVIDENCE_FILE: resolve(root, "artifacts/phase-8/e2e/P8-RUNTIME-001-gateway.json"),
       PYTHONPATH: pythonPath,
     },
     encoding: "utf8",
@@ -167,6 +176,93 @@ const portfolio = {
   command_receipts: [{ command_id: "command-1", status: "ACCEPTED", reason: "ORDER_CREATED" }],
 };
 
+const testnetState = {
+  environment: "BINANCE_SPOT_TESTNET",
+  account_binding_id: "1".repeat(64),
+  account_label: "격리 Spot Testnet 계정",
+  account_generation: 3,
+  activation_id: "2".repeat(64),
+  activation_status: "ACTIVE",
+  activation_version: 7,
+  activation_view_digest: "3".repeat(64),
+  gateway_health: "READY",
+  capability_allowlist_digest: "4".repeat(64),
+  configuration_digest: "5".repeat(64),
+  testnet_barrier_status: "INACTIVE",
+  paper_kill_active: false,
+  reconciliation_status: "HEALTHY",
+  reconciliation_checkpoint_id: "6".repeat(64),
+  reconciliation_checkpoint_digest: "7".repeat(64),
+  reset_state: "NONE",
+  new_commands_allowed: true,
+  reason_codes: [],
+  activate_action_allowed: false,
+  deactivate_action_allowed: true,
+  reset_confirmation_allowed: false,
+  served_at: "2026-07-22T12:00:00Z",
+};
+
+const testnetProposalId = "a".repeat(64);
+const testnetApprovalView = {
+  environment: "BINANCE_SPOT_TESTNET",
+  account_binding_id: "1".repeat(64),
+  account_generation: 3,
+  proposal_id: testnetProposalId,
+  proposal_hash: "b".repeat(64),
+  risk_decision_id: "c".repeat(64),
+  risk_decision_hash: "d".repeat(64),
+  risk_input_digest: "e".repeat(64),
+  risk_verdict: "ALLOWED",
+  risk_policy_version: "woozoo.testnet-risk-policy/v1",
+  preview_policy_version: "woozoo.testnet-order-preview-policy/v1",
+  testnet_order_preview: {
+    schema_version: "woozoo.testnet-order-preview/v1",
+    environment: "BINANCE_SPOT_TESTNET",
+    account_binding_id: "1".repeat(64),
+    account_generation: 3,
+    proposal_id: testnetProposalId,
+    proposal_hash: "b".repeat(64),
+    evidence_id: "8".repeat(64),
+    evidence_digest: "9".repeat(64),
+    data_state_digest: "0".repeat(64),
+    as_of: "2026-07-22T11:59:00Z",
+    knowledge_cutoff: "2026-07-22T11:59:00Z",
+    symbol: "BTCUSDT",
+    side: "BUY",
+    order_type: "LIMIT",
+    time_in_force: "GTC",
+    quantity: "0.001000000000000000",
+    limit_price: "60000.000000000000000000",
+    worst_case_notional: "60.000000000000000000",
+    fee_reserve: "0.060000000000000000",
+    preview_policy_version: "woozoo.testnet-order-preview-policy/v1",
+    calculator_version: "woozoo.decimal-calculator/v1",
+    symbol_rules_digest: "1".repeat(64),
+    ledger_snapshot_digest: "2".repeat(64),
+    reconciliation_checkpoint_digest: "7".repeat(64),
+    paper_kill_version: 0,
+    testnet_barrier_version: 7,
+    client_order_id: `wz8-${"f".repeat(32)}`,
+    created_at: "2026-07-22T12:00:00Z",
+    expires_at: "2026-07-22T12:05:00Z",
+    testnet_order_preview_digest: "3".repeat(64),
+  },
+  testnet_order_preview_digest: "3".repeat(64),
+  approval_input_digest: "4".repeat(64),
+  approval_id: null,
+  approval_decision: null,
+  approval_validity: null,
+  authorization_id: null,
+  authorization_status: "NOT_ISSUED",
+  execution_id: null,
+  approval_ttl_seconds: 300,
+  view_version: 11,
+  reason_codes: [],
+  approve_action_allowed: true,
+  reject_action_allowed: true,
+  served_at: "2026-07-22T12:00:00Z",
+};
+
 async function json(route: Route, body: unknown, status = 200) {
   await route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
 }
@@ -202,6 +298,17 @@ async function mockControlApi(page: Page, commandDelay = 0) {
     if (path === "/api/v1/paper-portfolio") return json(route, portfolio);
     if (path === "/api/v1/audit-events") return json(route, { events: [{ event_id: "event-1", occurred_at: "2026-07-20T12:00:00Z", event_type: "paper.order.partially-filled.v1", aggregate_id: "paper-order-1", actor_id: "system", outcome: "RECORDED" }], next_cursor: "cursor-2" });
     if (path === "/api/v1/kill-switch") return json(route, { status: "INACTIVE", active: false, version: 4, data_status: "HEALTHY", reconciliation_status: "HEALTHY", ledger_status: "BALANCED", cancellation_status: "NOT_ACTIVE", recovery_allowed: false });
+    if (path === "/api/v1/testnet/operator-state") return json(route, testnetState);
+    if (path === `/api/v1/proposals/${testnetProposalId}/testnet-approval-view`) return json(route, testnetApprovalView);
+    if (path === `/api/v1/testnet-executions/${"5".repeat(64)}`) return json(route, {
+      execution_id: "5".repeat(64), authorization_id: "6".repeat(64), command_id: "5".repeat(64),
+      client_order_id: `wz8-${"f".repeat(32)}`, environment: "BINANCE_SPOT_TESTNET",
+      account_generation: 3, command_status: "UNKNOWN_OUTCOME", external_outcome: "UNKNOWN",
+      order_status: "PENDING_SUBMIT", reconciliation_status: "RUNNING",
+      reconciliation_checkpoint_id: "7".repeat(64), reset_state: "NONE",
+      reason_codes: ["SUBMISSION_UNKNOWN"], submitted_at: "2026-07-22T12:00:00Z",
+      last_observed_at: null,
+    });
     return json(route, { detail: "Not found" }, 404);
   });
 }
@@ -424,7 +531,7 @@ test("[live] E2E-003 retry is idempotent and mismatched approval has zero author
   }, idempotencyKey);
   const first = await create();
   const retry = await create();
-  expect([200, 201]).toContain(first.status);
+  expect([200, 201], JSON.stringify(first.body)).toContain(first.status);
   expect(retry.status).toBe(200);
   expect(retry.body.run_id).toBe(first.body.run_id);
   await page.goto(`/analysis/${first.body.run_id}`);
@@ -825,7 +932,7 @@ test("[ui-only] UI-003 keeps Paper cancellation and Kill controls receipt-driven
 
 test("[ui-only] UI-004 has keyboard-reachable navigation and zero serious or critical Axe findings", async ({ page }, testInfo) => {
   await mockControlApi(page);
-  for (const path of ["/", "/login", "/analysis/run-001", "/proposals/proposal-001", "/paper", "/audit", "/operations"]) {
+  for (const path of ["/", "/login", "/analysis/run-001", "/proposals/proposal-001", `/proposals/${testnetProposalId}/testnet`, "/paper", "/audit", "/operations", "/testnet", `/testnet/executions/${"5".repeat(64)}`]) {
     await page.goto(path);
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     if (path === "/analysis/run-001") {
@@ -893,4 +1000,241 @@ test("[ui-only] UI-006 renders Korean route and root error recovery screens", as
     `${testInfo.project.name} root error accessibility violations`,
   ).toEqual([]);
   expect(await page.locator("body").evaluate((body) => body.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test("[ui-only] P8-UI-001 exposes only Korean Testnet intents and no exchange controls", async ({ page }, testInfo) => {
+  await mockControlApi(page);
+  await page.goto("/testnet");
+  await expect(page.getByRole("heading", { name: "Spot Testnet 운영실" })).toBeVisible();
+  await expect(page.getByText("격리 Spot Testnet 계정", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "즉시 비활성화" })).toBeEnabled();
+  for (const forbidden of ["주문 제출", "주문 재시도", "주문 교체", "계정 잔고", "API 키", "서명 비밀"]) {
+    await expect(page.getByRole("button", { name: forbidden })).toHaveCount(0);
+  }
+  const results = await new AxeBuilder({ page }).analyze();
+  expect(results.violations.filter((item) => item.impact === "serious" || item.impact === "critical"), `${testInfo.project.name} Testnet desk accessibility`).toEqual([]);
+});
+
+test("[ui-only] P8-UI-002 retains the approval intent key after response loss", async ({ page }) => {
+  await mockControlApi(page);
+  const keys: string[] = [];
+  const bodies: string[] = [];
+  let attempt = 0;
+  await page.route("**/api/v1/testnet-approvals", async (route) => {
+    keys.push(route.request().headers()["idempotency-key"] ?? "");
+    bodies.push(route.request().postData() ?? "");
+    attempt += 1;
+    if (attempt === 1) return route.abort("failed");
+    return json(route, { intent_id: "7".repeat(64), result: "APPROVE_PENDING", resource_version: 11 }, 201);
+  });
+  await page.goto(`/proposals/${testnetProposalId}/testnet`);
+  await expect(page.getByText("0.001000000000000000", { exact: true })).toBeVisible();
+  await expect(page.getByText("60000.000000000000000000", { exact: true })).toBeVisible();
+  const approve = page.getByRole("button", { name: "이 Testnet 미리보기 승인" });
+  await approve.click();
+  await page.getByRole("dialog", { name: "정확한 Testnet 미리보기 승인" }).getByRole("button", { name: "별도 승인 제출" }).click();
+  await expect(page.getByText(/제어 API에 연결할 수 없습니다/)).toBeVisible();
+  await approve.click();
+  await page.getByRole("dialog", { name: "정확한 Testnet 미리보기 승인" }).getByRole("button", { name: "별도 승인 제출" }).click();
+  await expect(page.getByText(/결정이 접수되었습니다/)).toBeVisible();
+  expect(keys).toHaveLength(2);
+  expect(keys[0]).toBe(keys[1]);
+  expect(bodies[0]).toBe(bodies[1]);
+  const posted = JSON.parse(bodies[0]) as Record<string, unknown>;
+  expect(posted.proposal_id).toBe(testnetProposalId);
+  expect(posted.quantity).toBeUndefined();
+  expect(posted.limit_price).toBeUndefined();
+  expect(posted.client_order_id).toBeUndefined();
+});
+
+test("[live] P8-RUNTIME-001 authenticates API, worker, and pinned-fake Gateway without exchange network", async ({ page }) => {
+  test.setTimeout(120_000);
+  await login(page);
+  await page.goto("/testnet");
+  await expect(page.getByText("활성 · 신규 명령 차단", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Spot Testnet 활성화 요청" })).toBeEnabled();
+  await page.getByRole("button", { name: "Spot Testnet 활성화 요청" }).click();
+  const activationDialog = page.getByRole("dialog", { name: "Spot Testnet 활성화 요청" });
+  await activationDialog.getByLabel("운영 사유").fill("인증된 로컬 프로세스 대사 검증");
+  const activationResponse = page.waitForResponse((response) =>
+    response.url().endsWith("/api/v1/testnet-activations")
+      && response.request().method() === "POST"
+  );
+  await activationDialog.getByRole("button", { name: "의도 제출" }).click();
+  expect((await activationResponse).ok()).toBe(true);
+
+  runLiveControl("--testnet-execution-once");
+  runLiveControl("--testnet-gateway-preflight-fake");
+  for (let observation = 0; observation < 4; observation += 1) {
+    runLiveControl("--testnet-execution-once");
+  }
+  await expect.poll(async () => {
+    const response = await page.request.get("/api/v1/testnet/operator-state");
+    return await response.json() as Record<string, unknown>;
+  }).toMatchObject({
+    activation_status: "ACTIVE",
+    gateway_health: "READY",
+    testnet_barrier_status: "INACTIVE",
+    reconciliation_status: "HEALTHY",
+    new_commands_allowed: true,
+  });
+
+  refreshEvidence("BTCUSDT");
+  await page.goto("/");
+  const analysisResponse = page.waitForResponse((response) =>
+    response.url().endsWith("/api/v1/analysis-runs")
+      && response.request().method() === "POST"
+  );
+  await page.getByRole("button", { name: "BTC / USDT 분석" }).click();
+  expect((await analysisResponse).ok()).toBe(true);
+  await expect(page).toHaveURL(/\/analysis\//);
+  await page.getByRole("link", { name: "승인 화면 열기" }).click();
+  await expect(page).toHaveURL(/\/proposals\//);
+  const requestedProposalId = new URL(page.url()).pathname.split("/").at(-1);
+  expect(requestedProposalId).toMatch(/^[a-f0-9]{64}$/);
+  let proposalId = requestedProposalId;
+  let previewReady = false;
+  const previewDiagnostics: Array<Record<string, unknown>> = [];
+  const candidates = new Set<string>([String(requestedProposalId)]);
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    let worker = "IDLE";
+    try {
+      worker = runLiveControl("--testnet-execution-once").trim();
+      const materialized = worker.match(/"proposal_id":"([a-f0-9]{64})"/);
+      if (materialized !== null) candidates.add(materialized[1]);
+    } catch (error) {
+      if ((error as { status?: number }).status !== 2) throw error;
+    }
+    for (const candidate of candidates) {
+      const response = await page.request.get(
+        `/api/v1/proposals/${candidate}/testnet-approval-view?attempt=${attempt}`,
+      );
+      const body = await response.json() as Record<string, unknown>;
+      previewDiagnostics.push({ attempt, candidate, worker, status: response.status(), body });
+      if (
+        response.ok()
+        && body.approve_action_allowed === true
+        && String(body.testnet_order_preview_digest ?? "").match(/^[a-f0-9]{64}$/)
+      ) {
+        proposalId = candidate;
+        previewReady = true;
+        break;
+      }
+    }
+    if (previewReady) break;
+  }
+  expect(previewReady, JSON.stringify(previewDiagnostics)).toBe(true);
+  await page.goto(`/proposals/${proposalId}/testnet`);
+  await expect(page.getByText("정확한 Spot Testnet 주문 미리보기", { exact: true })).toBeVisible();
+  await expect(page.getByText("미리보기 다이제스트", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "이 Testnet 미리보기 승인" })).toBeEnabled();
+  await page.getByRole("button", { name: "이 Testnet 미리보기 승인" }).click();
+  const approvalResponse = page.waitForResponse((response) =>
+    response.url().endsWith("/api/v1/testnet-approvals")
+      && response.request().method() === "POST"
+  );
+  await page.getByRole("dialog", { name: "정확한 Testnet 미리보기 승인" })
+    .getByRole("button", { name: "별도 승인 제출" }).click();
+  expect((await approvalResponse).ok()).toBe(true);
+
+  runLiveControl("--testnet-execution-once");
+  const approvalView = await page.request.get(
+    `/api/v1/proposals/${proposalId}/testnet-approval-view`,
+  ).then((response) => response.json()) as {
+    authorization_status?: string;
+    execution_id?: string;
+  };
+  expect(approvalView.authorization_status).toBe("CONSUMED");
+  expect(approvalView.execution_id).toMatch(/^[a-f0-9]{64}$/);
+
+  runLiveControl("--testnet-gateway-dispatch-fake");
+  runLiveControl("--testnet-execution-once");
+  runLiveControl("--testnet-execution-once");
+  runLiveControl("--testnet-gateway-user-data-fill-fake");
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    try {
+      runLiveControl("--testnet-execution-once");
+    } catch (error) {
+      if ((error as { status?: number }).status !== 2) throw error;
+    }
+  }
+  const execution = await page.request.get(
+    `/api/v1/testnet-executions/${approvalView.execution_id}`,
+  ).then((response) => response.json()) as Record<string, unknown>;
+  expect(execution).toMatchObject({
+    command_status: "FOUND",
+    external_outcome: "FOUND",
+    order_status: "PARTIALLY_FILLED",
+    reconciliation_status: "HEALTHY",
+  });
+  expect(execution.order_id).toMatch(/^[a-f0-9]{64}$/);
+
+  await page.goto(`/testnet/executions/${approvalView.execution_id}`);
+  const cancelButton = page.getByRole("button", { name: "별도 취소 승인 요청" });
+  await expect(cancelButton).toBeEnabled();
+  await cancelButton.click();
+  const cancelDialog = page.getByRole("dialog", { name: "Spot Testnet 주문 취소 승인" });
+  await cancelDialog.getByLabel("취소 사유").fill("부분 체결 뒤 운영자 취소 승인 E2E");
+  const cancelResponse = page.waitForResponse((response) =>
+    response.url().endsWith("/api/v1/testnet-cancellations")
+      && response.request().method() === "POST"
+  );
+  await cancelDialog.getByRole("button", { name: "취소 승인 제출" }).click();
+  expect((await cancelResponse).ok()).toBe(true);
+
+  const cancelDiagnostics: string[] = [];
+  cancelDiagnostics.push(runLiveControl("--testnet-execution-once").trim());
+  cancelDiagnostics.push(runLiveControl("--testnet-gateway-dispatch-fake").trim());
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    try {
+      cancelDiagnostics.push(runLiveControl("--testnet-execution-once").trim());
+    } catch (error) {
+      if ((error as { status?: number }).status !== 2) throw error;
+      cancelDiagnostics.push("IDLE");
+    }
+  }
+  await expect.poll(async () => {
+    const response = await page.request.get(
+      `/api/v1/testnet-executions/${approvalView.execution_id}`,
+    );
+    return await response.json() as Record<string, unknown>;
+  }, { message: JSON.stringify(cancelDiagnostics) }).toMatchObject({
+    order_status: "CANCELED",
+  });
+  const canceledOrderView = await page.request.get(
+    `/api/v1/testnet-orders/${String(execution.order_id)}/cancel-view`,
+  ).then((response) => response.json()) as { order?: Record<string, unknown> };
+  expect(canceledOrderView.order).toMatchObject({
+    status: "CANCELED",
+    filled_quantity: "0.000100000000000000",
+  });
+
+  const gatewayEvidence = JSON.parse(readFileSync(
+    resolve(root, "artifacts/phase-8/e2e/P8-RUNTIME-001-gateway.json"),
+    "utf8",
+  )) as Record<string, unknown>;
+  expect(gatewayEvidence).toMatchObject({
+    status: "PASS",
+    transport: "pinned-fake-spot-testnet-v1",
+    production_worker_orchestration: true,
+    fake_transport_calls: 9,
+    external_exchange_network_calls: 0,
+    caller_supplied_endpoint_allowed: false,
+  });
+
+  runLiveControl("--testnet-gateway-user-data-gap-fake");
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    try {
+      runLiveControl("--testnet-execution-once");
+    } catch (error) {
+      if ((error as { status?: number }).status !== 2) throw error;
+    }
+  }
+  await expect.poll(async () => {
+    const response = await page.request.get("/api/v1/testnet/operator-state");
+    return await response.json() as Record<string, unknown>;
+  }).toMatchObject({
+    testnet_barrier_status: "ACTIVE",
+    new_commands_allowed: false,
+  });
 });

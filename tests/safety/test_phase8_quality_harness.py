@@ -18,10 +18,7 @@ def _p7_bound_hashes() -> dict[str, str]:
     assert acceptance["artifact_count"] == 65
     assert len(paths) == 65
     assert len(set(paths)) == 65
-    return {
-        path: hashlib.sha256((ROOT / path).read_bytes()).hexdigest()
-        for path in paths
-    }
+    return {path: hashlib.sha256((ROOT / path).read_bytes()).hexdigest() for path in paths}
 
 
 def test_phase_quality_policy_rejects_malformed_phase_values_without_writes() -> None:
@@ -34,8 +31,12 @@ for (const value of [null, '8', 7.5, -1, 10]) {
   if (!rejected) throw new Error(`accepted malformed phase: ${value}`);
 }
 for (const value of [0, 7, 8, 9]) validateActivePhase(value);
-assertEvidenceTargetAllowed(8, 'test:safety');
-for (const [phase, target] of [[8, 'test:unit'], [8, 'ci'], [9, 'test:safety']]) {
+for (const target of [
+  'test:unit', 'test:contracts', 'test:safety', 'test:integration',
+  'test:property', 'test:replay', 'test:failure', 'test:e2e',
+  'test:acceptance', 'ci'
+]) assertEvidenceTargetAllowed(8, target);
+for (const [phase, target] of [[8, 'test:unknown'], [9, 'test:safety']]) {
   let rejected = false;
   try { assertEvidenceTargetAllowed(phase, target); } catch { rejected = true; }
   if (!rejected) throw new Error(`accepted unopened target: ${phase}/${target}`);
@@ -52,10 +53,10 @@ for (const [phase, target] of [[8, 'test:unit'], [8, 'ci'], [9, 'test:safety']])
     assert _p7_bound_hashes() == before
 
 
-def test_phase8_unsupported_evidence_target_fails_before_p7_artifact_writes() -> None:
+def test_phase8_unknown_evidence_target_fails_before_p7_artifact_writes() -> None:
     before = _p7_bound_hashes()
     result = subprocess.run(
-        ["node", "scripts/quality.mjs", "test:unit"],
+        ["node", "scripts/quality.mjs", "test:unknown"],
         cwd=ROOT,
         capture_output=True,
         text=True,

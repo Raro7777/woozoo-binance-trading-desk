@@ -2,6 +2,8 @@ _workspace/
 _workspace_*/
 .staging_backup/
 .env.local
+.env.phase8.local
+.tmp/
 .secrets/
 .venv/
 .next/

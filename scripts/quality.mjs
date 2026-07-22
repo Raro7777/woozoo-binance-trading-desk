@@ -83,7 +83,12 @@ async function runPlaywrightWithResultGate(expectedTestCount) {
   const resultPath = resolve(generatedArtifactsRoot, ".playwright-results", "e2e.xml");
   await mkdir(resolve(resultPath, ".."), { recursive: true });
   const command = [process.execPath, [resolve(root, "node_modules", "@playwright", "test", "cli.js"), "test", "--reporter=junit"]];
-  run(command[0], command[1], { PLAYWRIGHT_JUNIT_OUTPUT_NAME: resultPath });
+  run(command[0], command[1], {
+    PLAYWRIGHT_JUNIT_OUTPUT_NAME: resultPath,
+    ...(activePhase >= 8
+      ? { WOOZOO_E2E_ARTIFACT_DIR: `artifacts/phase-${activePhase}/e2e` }
+      : {}),
+  });
   const resultBytes = await readFile(resultPath);
   const xml = resultBytes.toString("utf8");
   const suites = xml.match(/<testsuites\b([^>]*)>/);
@@ -115,10 +120,18 @@ async function runPlaywrightWithResultGate(expectedTestCount) {
   for (const id of ["UI-001", "UI-002", "UI-003", "UI-004", "UI-005", "UI-006"]) {
     if (!xml.includes(`[ui-only] ${id}`)) throw new Error(`${id} must remain explicitly isolated UI-only coverage`);
   }
+  if (activePhase >= 8) {
+    for (const id of ["P8-UI-001", "P8-UI-002"]) {
+      const actualCount = xml.split(`[ui-only] ${id}`).length - 1;
+      if (actualCount !== 2) {
+        throw new Error(`${id} must execute in desktop and mobile Chromium`);
+      }
+    }
+  }
   return {
     command,
     testCount: counts.tests,
-    gate: bindExecutionRun("phase7-playwright", command, resultBytes, {
+    gate: bindExecutionRun(`phase${activePhase}-playwright`, command, resultBytes, {
       framework: "playwright-junit",
       tests: counts.tests,
       errors: counts.errors,
@@ -582,7 +595,9 @@ async function phase7DataScenario(area, id, nodeIds, metadata = {}) {
 }
 
 async function e2eInfrastructurePreflightEvidence() {
-  const relativePath = "artifacts/e2e/E2E-INFRA-001.json";
+  const relativePath = activePhase >= 8
+    ? `artifacts/phase-${activePhase}/e2e/E2E-INFRA-001.json`
+    : "artifacts/e2e/E2E-INFRA-001.json";
   const bytes = await readFile(resolve(root, relativePath));
   const artifact = JSON.parse(bytes.toString("utf8"));
   const { output_digest: outputDigest, ...digestInput } = artifact;
@@ -607,6 +622,15 @@ async function e2eInfrastructurePreflightEvidence() {
     || JSON.stringify(artifact.startup?.services) !== JSON.stringify(["postgres", "redis"])
     || artifact.migration?.status !== "PASS"
     || artifact.migration?.target !== "head"
+    || artifact.postgres_authentication?.status !== "PASS"
+    || artifact.postgres_authentication?.host_method !== "scram-sha-256"
+    || JSON.stringify(artifact.postgres_authentication?.distinct_application_roles)
+      !== JSON.stringify([
+        "woozoo_control_api",
+        "woozoo_testnet_execution",
+        "woozoo_spot_testnet_gateway",
+      ])
+    || artifact.postgres_authentication?.committed_secret_values !== false
     || artifact.public_data_bootstrap?.status !== "PASS"
     || artifact.public_data_bootstrap?.source !== "recorded"
     || outputDigest !== createHash("sha256").update(JSON.stringify(digestInput)).digest("hex")
@@ -617,6 +641,28 @@ async function e2eInfrastructurePreflightEvidence() {
     path: relativePath,
     sha256: createHash("sha256").update(bytes).digest("hex"),
     output_digest: outputDigest,
+  };
+}
+
+async function phase8GatewayRuntimeEvidence() {
+  const relativePath = "artifacts/phase-8/e2e/P8-RUNTIME-001-gateway.json";
+  const bytes = await readFile(resolve(root, relativePath));
+  const artifact = JSON.parse(bytes.toString("utf8"));
+  if (
+    artifact.schema_version !== "woozoo.phase8-gateway-process-e2e/v1"
+    || artifact.status !== "PASS"
+    || artifact.transport !== "pinned-fake-spot-testnet-v1"
+    || artifact.last_mode !== "user-data-gap"
+    || artifact.fake_transport_calls !== 10
+    || artifact.external_exchange_network_calls !== 0
+    || artifact.caller_supplied_endpoint_allowed !== false
+  ) {
+    throw new Error("Phase 8 process Gateway E2E evidence is stale or incomplete");
+  }
+  return {
+    path: relativePath,
+    sha256: createHash("sha256").update(bytes).digest("hex"),
+    external_exchange_network_calls: 0,
   };
 }
 
@@ -639,7 +685,7 @@ async function revisionEvidence() {
   if (commit.status !== 0 || tree.status !== 0 || files.status !== 0) {
     throw new Error("cannot capture revision evidence");
   }
-  const excludedPrefixes = [".codex-remote-attachments/", "artifacts/", "_workspace/"];
+  const excludedPrefixes = [".codex-remote-attachments/", ".tmp/", "artifacts/", "_workspace/"];
   const paths = files.stdout
     .split("\0")
     .filter(Boolean)
@@ -712,6 +758,71 @@ async function dataScenario(area, id, nodeIds, metadata = {}) {
   });
 }
 
+async function phase8ScenarioManifest() {
+  const manifestPath = resolve(
+    root,
+    "docs",
+    "woozoo-trading-desk",
+    "phase-8",
+    "p8-scenario-manifest.json",
+  );
+  const bytes = await readFile(manifestPath);
+  const manifest = JSON.parse(bytes.toString("utf8"));
+  const requiredIds = manifest.required_ids ?? [];
+  const phase8Scenarios = manifest.scenarios ?? [];
+  if (
+    manifest.schema_version !== "woozoo.phase-8-scenario-manifest/v1"
+    || manifest.phase !== 8
+    || manifest.trading_mode !== "paper"
+    || manifest.runtime_namespace !== "testnet-isolated"
+    || manifest.external_testnet_network_in_acceptance !== false
+    || manifest.artifact_root !== "artifacts/phase-8"
+    || requiredIds.length !== 8
+    || new Set(requiredIds).size !== 8
+    || JSON.stringify(requiredIds)
+      !== JSON.stringify(phase8Scenarios.map((scenario) => scenario.id))
+  ) {
+    throw new Error("Phase 8 scenario manifest envelope or denominator is invalid");
+  }
+  return {
+    bytes,
+    manifest,
+    digest: createHash("sha256").update(bytes).digest("hex"),
+  };
+}
+
+async function recordPhase8Scenario(area, id, commands, gate, metadata = {}) {
+  const { manifest, digest } = await phase8ScenarioManifest();
+  const scenario = manifest.scenarios.find((candidate) => candidate.id === id);
+  if (
+    scenario === undefined
+    || scenario.area !== area
+    || scenario.command !== `corepack pnpm test:${area === "contracts" ? "contracts" : area}`
+    || scenario.artifact !== `artifacts/phase-8/${area}/${id}.json`
+    || typeof scenario.oracle !== "string"
+    || scenario.oracle.length === 0
+  ) {
+    throw new Error(`${id} does not match the Phase 8 scenario manifest`);
+  }
+  const implementationContract = await readFile(resolve(root, manifest.implementation_contract));
+  const sourceLock = await readFile(resolve(root, manifest.source_lock));
+  await scenarios(area, [id], commands, gate.tests, true, {
+    schema_version: "woozoo.phase-8-scenario-evidence/v1",
+    phase: 8,
+    runtime_namespace: "testnet-isolated",
+    external_testnet_network_enabled: false,
+    phase8_scenario_manifest_sha256: digest,
+    source_revision: "binance-spot-api-docs@a5e0bc3ddc0fd7e6bb696849323b74423fa3a54d",
+    implementation_contract_sha256: createHash("sha256")
+      .update(implementationContract)
+      .digest("hex"),
+    source_lock_sha256: createHash("sha256").update(sourceLock).digest("hex"),
+    oracle: scenario.oracle,
+    execution_gate: gate,
+    ...metadata,
+  });
+}
+
 function assertExecutionGate(gate, label) {
   if (
     gate === null
@@ -737,6 +848,67 @@ function assertExecutionGate(gate, label) {
   } else {
     assertResultBoundExecution(gate, `${label} leaf result gate`);
   }
+}
+
+async function validatePhase8AcceptanceArtifacts() {
+  const { bytes: manifestBytes, manifest, digest: manifestDigest } =
+    await phase8ScenarioManifest();
+  const revision = await revisionEvidence();
+  const verifiedArtifacts = [];
+  const verifiedExecutionGates = [];
+  for (const scenario of manifest.scenarios) {
+    const bytes = await readFile(resolve(root, scenario.artifact));
+    const artifact = JSON.parse(bytes.toString("utf8"));
+    const { output_digest: outputDigest, recorded_at: recordedAt, ...digestInput } = artifact;
+    assertExecutionGate(artifact.execution_gate, scenario.id);
+    if (
+      artifact.schema_version !== "woozoo.phase-8-scenario-evidence/v1"
+      || artifact.phase !== 8
+      || artifact.id !== scenario.id
+      || artifact.status !== "PASS"
+      || artifact.runtime_namespace !== "testnet-isolated"
+      || artifact.external_testnet_network_enabled !== false
+      || artifact.phase8_scenario_manifest_sha256 !== manifestDigest
+      || artifact.test_count !== artifact.execution_gate.tests
+      || artifact.git_commit !== revision.git_commit
+      || artifact.git_tree !== revision.git_tree
+      || artifact.working_tree_digest !== revision.working_tree_digest
+      || artifact.frozen_file_count !== revision.frozen_file_count
+      || outputDigest !== createHash("sha256").update(JSON.stringify(digestInput)).digest("hex")
+      || typeof recordedAt !== "string"
+      || Number.isNaN(Date.parse(recordedAt))
+    ) {
+      throw new Error(`${scenario.id} Phase 8 artifact is stale or incomplete`);
+    }
+    verifiedArtifacts.push({
+      id: scenario.id,
+      path: scenario.artifact,
+      sha256: createHash("sha256").update(bytes).digest("hex"),
+      test_count: artifact.test_count,
+    });
+    verifiedExecutionGates.push(artifact.execution_gate);
+  }
+  const executionSummary = summarizeExecutionGates(verifiedExecutionGates);
+  const result = {
+    schema_version: "woozoo.phase-8-acceptance-denominator/v1",
+    phase: 8,
+    status: "PASS",
+    required_count: manifest.required_ids.length,
+    passed_count: verifiedArtifacts.length,
+    scenario_manifest_sha256: createHash("sha256").update(manifestBytes).digest("hex"),
+    external_testnet_network_enabled: false,
+    ...executionSummary,
+    artifacts: verifiedArtifacts,
+    ...revision,
+  };
+  const outputDigest = createHash("sha256").update(JSON.stringify(result)).digest("hex");
+  const outputPath = resolve(generatedArtifactsRoot, "acceptance", "P8-8.json");
+  await mkdir(resolve(outputPath, ".."), { recursive: true });
+  await writeFile(
+    outputPath,
+    `${JSON.stringify({ ...result, output_digest: outputDigest, recorded_at: new Date().toISOString() }, null, 2)}\n`,
+    "utf8",
+  );
 }
 
 async function validatePhase7AcceptanceArtifacts() {
@@ -875,6 +1047,21 @@ const actions = {
     runPnpm(["-r", "--if-present", "run", "typecheck"]);
   },
   "test:unit": async () => {
+    if (activePhase === 8) {
+      const unitPytest = await runPytestSuiteWithResultGate("phase8-unit-pytest", ["tests/unit"]);
+      const unitNode = await runNodeTestsWithResultGate("phase8-unit-node", [
+        "tests/unit/e2e-infrastructure-lifecycle.test.ts",
+        "tests/unit/quality-evidence.test.mjs",
+      ]);
+      const gate = combineExecutionGates([unitPytest.gate, unitNode.gate]);
+      await recordPhase8Scenario(
+        "unit",
+        "P8-UNIT-001",
+        [unitPytest.command, unitNode.command],
+        gate,
+      );
+      return;
+    }
     const unitPytest = await runPytestSuiteWithResultGate("bulk-unit", ["tests/unit"]);
     const unitNode = await runNodeTestsWithResultGate("bulk-unit-node", [
       "tests/unit/e2e-infrastructure-lifecycle.test.ts",
@@ -935,6 +1122,32 @@ const actions = {
     ]);
   },
   "test:contracts": async () => {
+    if (activePhase === 8) {
+      const staticCommands = [
+        ["node", ["scripts/generate-contracts.mjs", "--check"]],
+        ["corepack", [pnpm, "exec", "tsc", "-p", "tests/contract/tsconfig.json"]],
+      ];
+      for (const [command, args] of staticCommands) run(command, args);
+      const contractNode = await runNodeTestsWithResultGate("phase8-contract-node", [
+        "tests/contract/contracts.test.ts",
+        "tests/contract/market-data-contracts.test.ts",
+        "tests/contract/evidence-contracts.test.ts",
+        "tests/contract/paper-contracts.test.ts",
+        "tests/contract/risk-contracts.test.ts",
+      ]);
+      const contractPytest = await runPytestSuiteWithResultGate(
+        "phase8-contract-pytest",
+        ["tests/contract"],
+      );
+      const gate = combineExecutionGates([contractNode.gate, contractPytest.gate]);
+      await recordPhase8Scenario(
+        "contracts",
+        "P8-CONTRACT-001",
+        [...staticCommands, contractNode.command, contractPytest.command],
+        gate,
+      );
+      return;
+    }
     const contractStaticCommands = [
       ["node", ["scripts/generate-contracts.mjs", "--check"]],
       ["corepack", [pnpm, "exec", "tsc", "-p", "tests/contract/tsconfig.json"]],
@@ -977,6 +1190,25 @@ const actions = {
     ]);
   },
   "test:safety": async () => {
+    if (activePhase === 8) {
+      const safetyPytest = await runPytestSuiteWithResultGate(
+        "phase8-safety-pytest",
+        ["tests/safety"],
+      );
+      const capabilityCommand = ["node", ["scripts/capability-zero.mjs"]];
+      run(capabilityCommand[0], capabilityCommand[1]);
+      const safetyNode = await runNodeTestsWithResultGate("phase8-safety-node", [
+        "tests/safety/capability-zero.test.ts",
+      ]);
+      const gate = combineExecutionGates([safetyPytest.gate, safetyNode.gate]);
+      await recordPhase8Scenario(
+        "safety",
+        "P8-SAFETY-001",
+        [safetyPytest.command, capabilityCommand, safetyNode.command],
+        gate,
+      );
+      return;
+    }
     const safetyPytest = await runPytestSuiteWithResultGate("bulk-safety-pytest", ["tests/safety"]);
     const capabilityCommand = ["node", ["scripts/capability-zero.mjs"]];
     run(capabilityCommand[0], capabilityCommand[1]);
@@ -1039,6 +1271,28 @@ const actions = {
     ]);
   },
   "test:integration": async () => {
+    if (activePhase === 8) {
+      const platformBuildCommand = [
+        "corepack",
+        [pnpm, "--filter", "@woozoo/trading-room-web", "run", "build"],
+      ];
+      run(platformBuildCommand[0], platformBuildCommand[1]);
+      const integrationPytest = await runPytestSuiteWithResultGate(
+        "phase8-integration-pytest",
+        ["tests/integration"],
+      );
+      const integrationNode = await runNodeTestsWithResultGate("phase8-integration-node", [
+        "tests/integration/trading-room-web.test.ts",
+      ]);
+      const gate = combineExecutionGates([integrationPytest.gate, integrationNode.gate]);
+      await recordPhase8Scenario(
+        "integration",
+        "P8-INTEGRATION-001",
+        [platformBuildCommand, integrationPytest.command, integrationNode.command],
+        gate,
+      );
+      return;
+    }
     const platformBuildCommand = ["corepack", [pnpm, "--filter", "@woozoo/trading-room-web", "run", "build"]];
     run(platformBuildCommand[0], platformBuildCommand[1]);
     const integrationPytest = await runPytestSuiteWithResultGate(
@@ -1101,6 +1355,27 @@ const actions = {
     ]);
   },
   "test:e2e": async () => {
+    if (activePhase === 8) {
+      const api = await runPytestSuiteWithResultGate("phase8-e2e-api", [
+        "tests/integration/test_trading_room_api.py",
+        "tests/integration/test_testnet_operator_api.py",
+      ]);
+      const playwright = await runPlaywrightWithResultGate(24);
+      const infrastructurePreflight = await e2eInfrastructurePreflightEvidence();
+      const gatewayRuntime = await phase8GatewayRuntimeEvidence();
+      const gate = combineExecutionGates([api.gate, playwright.gate]);
+      await recordPhase8Scenario(
+        "e2e",
+        "P8-E2E-001",
+        [api.command, playwright.command],
+        gate,
+        {
+          infrastructure_preflight: infrastructurePreflight,
+          gateway_runtime: gatewayRuntime,
+        },
+      );
+      return;
+    }
     const api = await runPytestWithResultGate("tests/integration/test_trading_room_api.py", 7);
     const playwright = await runPlaywrightWithResultGate(19);
     const infrastructurePreflight = await e2eInfrastructurePreflightEvidence();
@@ -1177,6 +1452,16 @@ const actions = {
     }
   },
   "test:replay": async () => {
+    if (activePhase === 8) {
+      const replay = await runPytestSuiteWithResultGate("phase8-replay", ["tests/replay"]);
+      await recordPhase8Scenario(
+        "replay",
+        "P8-REPLAY-001",
+        [replay.command],
+        replay.gate,
+      );
+      return;
+    }
     await phase7DataScenario("replay", "PTI-001", [
       "tests/property/test_evidence_boundaries.py::test_dual_cutoff_is_independently_inclusive[event_delta0-received_delta0-True]",
       "tests/property/test_evidence_boundaries.py::test_dual_cutoff_is_independently_inclusive[event_delta1-received_delta1-True]",
@@ -1236,6 +1521,16 @@ const actions = {
     ]);
   },
   "test:failure": async () => {
+    if (activePhase === 8) {
+      const failure = await runPytestSuiteWithResultGate("phase8-failure", ["tests/failure"]);
+      await recordPhase8Scenario(
+        "failure",
+        "P8-FAILURE-001",
+        [failure.command],
+        failure.gate,
+      );
+      return;
+    }
     await phase7DataScenario("failure", "AUTH-002", [
       "tests/failure/test_trading_room_authorization_failures.py::test_auth_002_stale_state_before_human_decision_has_zero_order_effect",
       "tests/integration/test_phase7_paper_first_attempt_authority.py::test_denied_and_error_risk_reject_commands_have_no_db_or_api_effects",
@@ -1327,6 +1622,16 @@ const actions = {
     ]);
   },
   "test:property": async () => {
+    if (activePhase === 8) {
+      const property = await runPytestSuiteWithResultGate("phase8-property", ["tests/property"]);
+      await recordPhase8Scenario(
+        "property",
+        "P8-PROPERTY-001",
+        [property.command],
+        property.gate,
+      );
+      return;
+    }
     await dataScenario("property", "DATA-007", [
       "tests/property/test_market_data_backpressure.py::test_data_007_capacity_overflow_is_explicit_and_fail_closed",
       "tests/failure/test_market_data_supervisor.py::test_live_supervisor_uses_bounded_queue_and_persists_overflow_failure",
@@ -1360,6 +1665,13 @@ const actions = {
     runPnpm(["--filter", "@woozoo/trading-room-web", "run", "build"]);
     run("python", ["-m", "compileall", "-q", "packages", "services"]);
   },
+  "test:acceptance": async () => {
+    if (activePhase === 8) {
+      await validatePhase8AcceptanceArtifacts();
+    } else {
+      await validatePhase7AcceptanceArtifacts();
+    }
+  },
   ci: async () => {
     // The repository intentionally pins pnpm 7 so `pnpm ci` resolves this
     // package script instead of pnpm's later clean-install alias. Bootstrap is
@@ -1369,7 +1681,6 @@ const actions = {
     for (const action of ["lint", "typecheck", "test:unit", "test:contracts", "test:safety", "test:integration", "test:property", "test:replay", "test:failure", "test:e2e", "build"]) {
       await actions[action]();
     }
-    await validatePhase7AcceptanceArtifacts();
   },
 };
 
