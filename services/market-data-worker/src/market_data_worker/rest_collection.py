@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Callable
 
-from .capabilities import PublicRestRequest, RestCapability
+from .capabilities import PublicRestRequest, RestCapability, Symbol
 from .failures import RateLimitGuard
 from .normalization import make_raw_event, normalize
 from .pipeline import MarketStore
@@ -143,9 +143,18 @@ class PublicRestCollector:
         received_at: datetime,
     ) -> tuple[str, dict[str, object]] | None:
         if request.symbol is None:
-            return None
-        symbol = request.symbol.value
-        stream_symbol = request.symbol.stream_value
+            if request.capability is not RestCapability.BOOK_TICKER or not isinstance(item, dict):
+                return None
+            try:
+                symbol_enum = Symbol(str(item.get("symbol")))
+            except ValueError:
+                return None
+            if request.symbols is None or symbol_enum not in request.symbols:
+                return None
+        else:
+            symbol_enum = request.symbol
+        symbol = symbol_enum.value
+        stream_symbol = symbol_enum.stream_value
         if request.capability is RestCapability.TRADES and isinstance(item, dict):
             return f"{stream_symbol}@trade", {
                 "e": "trade",

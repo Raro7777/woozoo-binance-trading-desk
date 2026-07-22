@@ -575,36 +575,28 @@ def refresh_recorded_market(symbol: str | None = None) -> int:
     symbols = (symbol,) if symbol is not None else ("BTCUSDT", "ETHUSDT")
 
     def refresh_live_public_books() -> None:
-        from concurrent.futures import ThreadPoolExecutor
-
         from market_data_worker.capabilities import PublicRestRequest, RestCapability, Symbol
         from market_data_worker.rest_collection import PublicRestCollector
         from market_data_worker.transport import PublicRestTransport
 
-        def collect_one(refresh_symbol: str) -> tuple[str, object]:
-            collector = PublicRestCollector(
-                PublicRestTransport(timeout_seconds=5),
-                market_store,
-                observed_clock=lambda: datetime.now(UTC),
+        collector = PublicRestCollector(
+            PublicRestTransport(timeout_seconds=5),
+            market_store,
+            observed_clock=lambda: datetime.now(UTC),
+        )
+        result = collector.collect(
+            PublicRestRequest(
+                RestCapability.BOOK_TICKER,
+                symbols=tuple(Symbol(refresh_symbol) for refresh_symbol in symbols),
+            ),
+            snapshot.session_id,
+            datetime.now(UTC),
+        )
+        if result.status_code != 200 or result.normalized_count != len(symbols):
+            raise RuntimeError(
+                "E2E_PUBLIC_BOOK_REFRESH_FAILED:"
+                f"{','.join(symbols)}:{result.status_code}:{result.normalized_count}"
             )
-            result = collector.collect(
-                PublicRestRequest(RestCapability.BOOK_TICKER, Symbol(refresh_symbol)),
-                snapshot.session_id,
-                datetime.now(UTC),
-            )
-            return refresh_symbol, result
-
-        # BTC and ETH must be observed in the same freshness window. A slow
-        # response for one symbol must not make the other stale before Risk
-        # assesses the pair.
-        with ThreadPoolExecutor(max_workers=len(symbols)) as executor:
-            results = tuple(executor.map(collect_one, symbols))
-        for refresh_symbol, result in results:
-            if result.status_code != 200 or result.normalized_count != 1:
-                raise RuntimeError(
-                    "E2E_PUBLIC_BOOK_REFRESH_FAILED:"
-                    f"{refresh_symbol}:{result.status_code}:{result.normalized_count}"
-                )
 
     if os.environ.get("WOOZOO_LOCAL_PUBLIC_BOOKS") == "enabled":
         # Preserve the exact response, response item, derived book payload,

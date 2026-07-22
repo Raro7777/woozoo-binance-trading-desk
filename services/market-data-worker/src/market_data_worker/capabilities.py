@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+import json
 from urllib.parse import urlencode
 
 
@@ -53,6 +54,7 @@ class StreamKind(str, Enum):
 class PublicRestRequest:
     capability: RestCapability
     symbol: Symbol | None = None
+    symbols: tuple[Symbol, ...] | None = None
     interval: KlineInterval | None = None
     limit: int | None = None
 
@@ -61,6 +63,14 @@ class PublicRestRequest:
             raise TypeError("capability must be a RestCapability")
         if self.symbol is not None and not isinstance(self.symbol, Symbol):
             raise TypeError("symbol must be a Symbol")
+        if self.symbols is not None and (
+            not self.symbols
+            or any(not isinstance(value, Symbol) for value in self.symbols)
+            or len(set(self.symbols)) != len(self.symbols)
+        ):
+            raise ValueError("symbols must be a non-empty unique Symbol tuple")
+        if self.symbol is not None and self.symbols is not None:
+            raise ValueError("symbol and symbols are mutually exclusive")
         if self.interval is not None and not isinstance(self.interval, KlineInterval):
             raise TypeError("interval must be a KlineInterval")
 
@@ -73,8 +83,10 @@ class PublicRestRequest:
         }
         if self.capability in no_symbol and self.symbol is not None:
             raise ValueError("this capability does not accept a symbol")
-        if self.capability in symbol_required and self.symbol is None:
+        if self.capability in symbol_required and self.symbol is None and self.symbols is None:
             raise ValueError("this capability requires one allowlisted symbol")
+        if self.symbols is not None and self.capability is not RestCapability.BOOK_TICKER:
+            raise ValueError("only book ticker accepts multiple symbols")
         if self.capability is RestCapability.KLINES and self.interval is None:
             raise ValueError("kline requests require an allowlisted interval")
         if self.capability is not RestCapability.KLINES and self.interval is not None:
@@ -92,6 +104,10 @@ class PublicRestRequest:
         query: list[tuple[str, str]] = []
         if self.symbol is not None:
             query.append(("symbol", self.symbol.value))
+        if self.symbols is not None:
+            query.append(
+                ("symbols", json.dumps([symbol.value for symbol in self.symbols], separators=(",", ":")))
+            )
         if self.interval is not None:
             query.append(("interval", self.interval.value))
         if self.limit is not None:

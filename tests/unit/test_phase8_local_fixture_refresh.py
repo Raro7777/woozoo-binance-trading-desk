@@ -56,10 +56,9 @@ def test_fixture_refresh_recovers_the_recorded_collector_session() -> None:
     assert 'os.environ.get("WOOZOO_LOCAL_PUBLIC_BOOKS") == "enabled"' in book_refresh
     assert "def refresh_live_public_books()" in book_refresh
     assert "PublicRestCollector" in book_refresh
-    assert "PublicRestRequest(RestCapability.BOOK_TICKER" in book_refresh
+    assert "RestCapability.BOOK_TICKER," in book_refresh
     assert "PublicRestTransport" in book_refresh
-    assert "ThreadPoolExecutor" in book_refresh
-    assert "executor.map(collect_one, symbols)" in book_refresh
+    assert "symbols=tuple(Symbol(refresh_symbol) for refresh_symbol in symbols)" in book_refresh
     assert "observed_clock=lambda: datetime.now(UTC)" in book_refresh
     assert (
         'fixture_prices = {"BTCUSDT": ("60000.00", "60000.01"), "ETHUSDT": ("3000.00", "3000.01")}'
