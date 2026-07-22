@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "woozoo.analysis-run-view/v1",
+  "title": "Phase 7 browser-safe analysis run projection",
+  "type": "object",
+  "additionalProperties": false,
+  "x-creation-phase": 7,
+  "x-activation-phase": 7,
+  "required": ["schema_version", "namespace", "symbol", "evidence_id", "provider", "tool_count", "run_id", "status", "report", "proposal_id", "risk_decision_id"],
+  "properties": {
+    "schema_version": {"const": "woozoo.analysis-run-view/v1"},
+    "namespace": {"const": "paper"},
+    "symbol": {"enum": ["BTCUSDT", "ETHUSDT"]},
+    "evidence_id": {"$ref": "#/$defs/hash"},
+    "provider": {"const": "mock"},
+    "tool_count": {"const": 0},
+    "run_id": {"$ref": "#/$defs/hash"},
+    "status": {"const": "COMPLETED"},
+    "report": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["summary", "confidence", "hold_reasons"],
+      "properties": {
+        "summary": {"type": "string", "minLength": 1, "maxLength": 2048},
+        "confidence": {"type": "string", "pattern": "^(0(?:\\.[0-9]+)?|1(?:\\.0+)?)$"},
+        "hold_reasons": {"type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 64}, "uniqueItems": true}
+      }
+    },
+    "proposal_id": {"$ref": "#/$defs/hash"},
+    "risk_decision_id": {"$ref": "#/$defs/hash"}
+  },
+  "$defs": {"hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}
+}

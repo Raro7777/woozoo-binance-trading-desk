@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "woozoo.paper-order/v2",
+  "title": "Phase 7 authorized Paper LIMIT order",
+  "type": "object",
+  "additionalProperties": false,
+  "x-creation-phase": 7,
+  "x-activation-phase": 7,
+  "required": ["order_id", "client_order_id", "authorization_id", "authorization_namespace", "authorization_nonce", "approval_id", "proposal_hash", "risk_decision_hash", "paper_order_preview_hash", "symbol", "side", "order_type", "time_in_force", "quantity", "limit_price", "filled_quantity", "status", "version"],
+  "properties": {
+    "order_id": {"$ref": "#/$defs/hash"},
+    "client_order_id": {"$ref": "#/$defs/opaque128"},
+    "authorization_id": {"$ref": "#/$defs/hash"},
+    "authorization_namespace": {"const": "paper"},
+    "authorization_nonce": {"$ref": "#/$defs/opaque128"},
+    "approval_id": {"$ref": "#/$defs/hash"},
+    "proposal_hash": {"$ref": "#/$defs/hash"},
+    "risk_decision_hash": {"$ref": "#/$defs/hash"},
+    "paper_order_preview_hash": {"$ref": "#/$defs/hash"},
+    "symbol": {"enum": ["BTCUSDT", "ETHUSDT"]},
+    "side": {"enum": ["BUY", "SELL"]},
+    "order_type": {"const": "LIMIT"},
+    "time_in_force": {"const": "GTC"},
+    "quantity": {"$ref": "#/$defs/positiveDecimal"},
+    "limit_price": {"$ref": "#/$defs/positiveDecimal"},
+    "filled_quantity": {"$ref": "#/$defs/nonNegativeDecimal"},
+    "status": {"enum": ["OPEN", "PARTIALLY_FILLED", "FILLED", "CANCELLED"]},
+    "version": {"type": "integer", "minimum": 1}
+  },
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "opaque128": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"},
+    "nonNegativeDecimal": {"type": "string", "pattern": "^(0|[1-9][0-9]{0,19})(\\.[0-9]{1,18})?$"},
+    "positiveDecimal": {"type": "string", "pattern": "^(?!0(?:\\.0{1,18})?$)(0|[1-9][0-9]{0,19})(\\.[0-9]{1,18})?$"}
+  }
+}

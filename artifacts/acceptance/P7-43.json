@@ -1,0 +1,1650 @@
+{
+  "schema_version": "woozoo.phase-7-acceptance-denominator/v1",
+  "phase": 7,
+  "status": "PASS",
+  "required_count": 43,
+  "passed_count": 43,
+  "scenario_manifest_sha256": "bf4079bcb6a003e7d32176f8bf153414ba927ab42ba927776281835f1b47e668",
+  "artifact_test_coverage_count": 1209,
+  "unique_test_execution_count": 700,
+  "unique_execution_run_count": 44,
+  "unique_execution_runs": [
+    {
+      "run_id": "089c629beef020275b09cccbb4b82158f9444271a23bc987669fbf49c564275c",
+      "invocation_id": "a7ae949b-ea58-475d-ad22-30c59a27c2a7",
+      "result_digest": "44cf0ca1879107381ad306bb835c22fbb997783cbf93ccc1aabb9b022964ea6c",
+      "result_label": "AI-001",
+      "command": [
+        "python",
+        [
+          "-m",
+          "uv",
+          "run",
+          "--locked",
+          "pytest",
+          "tests/contract/test_agent_contract.py::test_ai_001_failure_matrix",
+          "-q",
+          "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\AI-001.xml"
+        ]
+      ],
+      "framework": "pytest-junit",
+      "tests": 1,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "todo": 0
+    },
+    {
+      "run_id": "0a023364b89276cbe215c478a2b1e7913235c28ad4ca139d95f8ce2c3c0f33f6",
+      "invocation_id": "93c53712-8c01-40d5-b84c-d32c548fecc3",
+      "result_digest": "faa1e3b09552ea4f350dfe795a087e130c27a8ce436e004e2f183f048cd50b66",
+      "result_label": "PTI-001",
+      "command": [
+        "python",
+        [
+          "-m",
+          "uv",
+          "run",
+          "--locked",
+          "pytest",
+          "tests/property/test_evidence_boundaries.py::test_dual_cutoff_is_independently_inclusive[event_delta0-received_delta0-True]",
+          "tests/property/test_evidence_boundaries.py::test_dual_cutoff_is_independently_inclusive[event_delta1-received_delta1-True]",
+          "tests/property/test_evidence_boundaries.py::test_dual_cutoff_is_independently_inclusive[event_delta2-received_delta2-False]",
+          "tests/property/test_evidence_boundaries.py::test_dual_cutoff_is_independently_inclusive[event_delta3-received_delta3-False]",
+          "-q",
+          "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\PTI-001.xml"
+        ]
+      ],
+      "framework": "pytest-junit",
+      "tests": 4,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "todo": 0
+    },
+    {
+      "run_id": "117da8e25abba547f4074e492759508f59d89abcc46d69e16de29fbddffaeec6",
+      "invocation_id": "03a656cb-f375-4f93-9904-33c19605b9c1",
+      "result_digest": "8c5dc82f54ba6c7b99b66853598df3b049bdcded08d02900d6d426b8328e926b",
+      "result_label": "bulk-integration-node",
+      "command": [
+        "corepack",
+        [
+          "pnpm",
+          "exec",
+          "tsx",
+          "--test",
+          "--test-reporter=junit",
+          "--test-reporter-destination=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.node-results\\bulk-integration-node.xml",
+          "tests/integration/trading-room-web.test.ts"
+        ]
+      ],
+      "framework": "node-junit",
+      "tests": 5,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "todo": 0
+    },
+    {
+      "run_id": "1583fbb1a27bd6d4fc45956378bb282b675000ab21316c30220bab13be642fc1",
+      "invocation_id": "d3de7c46-47ea-4c57-bcf4-bc27fa1fb0d7",
+      "result_digest": "baf0e598d366585712a1ac67236b93a1b7c033bb987b37104afdb771a9b24b29",
+      "result_label": "RISK-002",
+      "command": [
+        "python",
+        [
+          "-m",
+          "uv",
+          "run",
+          "--locked",
+          "pytest",
+          "tests/unit/test_risk_engine.py::test_risk_002_closed_reason_precedence_collects_all_applicable_reasons",
+          "tests/unit/test_risk_engine.py::test_invalid_or_non_fixture_input_fails_closed_without_approval_dependency",
+          "tests/unit/test_risk_engine.py::test_nested_unknowns_policy_rebinding_and_cross_snapshot_mismatch_fail_closed",
+          "tests/unit/test_risk_engine.py::test_complete_input_schema_rejects_nested_type_and_range_counterexamples[numeric_proposal_id]",
+          "tests/unit/test_risk_engine.py::test_complete_input_schema_rejects_nested_type_and_range_counterexamples[negative_kill_version]",
+          "tests/unit/test_risk_engine.py::test_decimal_thresholds_use_unrounded_values_and_documented_comparators",
+          "tests/unit/test_risk_engine.py::test_unbounded_commitment_sum_is_exact_beyond_fixed_decimal_precision",
+          "tests/property/test_risk_properties.py::test_spread_and_directional_slippage_boundaries",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[order_notional_below]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[order_notional_equal]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[order_notional_above]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[sell_order_notional_below]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[sell_order_notional_equal]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[sell_order_notional_above]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[realized_loss_below]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[realized_loss_equal]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[realized_loss_above]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[drawdown_below]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[drawdown_equal]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[drawdown_above]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[spread_below]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[spread_equal]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[spread_above]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[slippage_below]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[slippage_equal]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[slippage_above]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[btc_exposure_below]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[btc_exposure_equal]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[btc_exposure_above]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[eth_exposure_below]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[eth_exposure_equal]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[eth_exposure_above]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[portfolio_exposure_below]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[portfolio_exposure_equal]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[portfolio_exposure_above]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[sell_btc_exposure_below]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[sell_btc_exposure_equal]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[sell_btc_exposure_above]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[sell_eth_exposure_below]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[sell_eth_exposure_equal]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[sell_eth_exposure_above]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[sell_portfolio_exposure_below]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[sell_portfolio_exposure_equal]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[sell_portfolio_exposure_above]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[sell_reduces_long]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[evidence_missing]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[data_stale]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[future_contamination]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[watermark_incomplete]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[data_invalid]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[expired]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[duplicate_proposal]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[duplicate_order_intent]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[equity_invalid]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[bid_missing]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[ask_missing]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[bid_zero]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[ask_zero]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[ledger_mismatch]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[order_type_not_limit]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[side_not_long_cash]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[tif_not_allowed]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[invalid_price_or_qty]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[insufficient_available_balance]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[fee_reserve_insufficient]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[sell_exceeds_position]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[sell_held_only]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[max_precision_exposure_above]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[kill_snapshot_inconsistent]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[invalid_open_order_state]",
+          "tests/unit/test_risk_engine.py::test_risk_002_complete_boundary_matrix[loss_scale_edge_below]",
+          "-q",
+          "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\RISK-002.xml"
+        ]
+      ],
+      "framework": "pytest-junit",
+      "tests": 71,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "todo": 0
+    },
+    {
+      "run_id": "2428a9b311d54bdd7104507bfbdc4fb10bfe3262798685d3051c8af01434ef4a",
+      "invocation_id": "8b2cea76-12d5-4a0a-82da-945ad4bc8acf",
+      "result_digest": "1a911b0af8b7615e3ead8b6d29ab3cd72e3426a4d155a25c70d22db03b83cff4",
+      "result_label": "SEC-002",
+      "command": [
+        "python",
+        [
+          "-m",
+          "uv",
+          "run",
+          "--locked",
+          "pytest",
+          "tests/safety/test_phase6_agent_boundaries.py::test_sec_002_agent_has_no_execution_or_exchange_capability",
+          "tests/safety/test_phase6_agent_boundaries.py::test_sec_002_phase7_api_exposes_analysis_command_without_ai_execution_capability",
+          "-q",
+          "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\SEC-002.xml"
+        ]
+      ],
+      "framework": "pytest-junit",
+      "tests": 2,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "todo": 0
+    },
+    {
+      "run_id": "302da1f2d1144c76d335097c554976fc6fcc3625774cd1727b81d4d6cf1a62ae",
+      "invocation_id": "9d8eaf83-8cbd-4726-a750-44feee731f34",
+      "result_digest": "8515c5ddf330c21335502a1268fa202aa5a42ba64b43835ebdef4886fd54e799",
+      "result_label": "DATA-001",
+      "command": [
+        "python",
+        [
+          "-m",
+          "uv",
+          "run",
+          "--locked",
+          "pytest",
+          "tests/replay/test_market_data_replay.py::test_data_001_recorded_replay_is_deterministic_and_deduplicated",
+          "tests/unit/test_restart_recovery.py::test_restart_bootstraps_durable_state_and_recovers_pending_raw_once",
+          "tests/integration/test_platform_infrastructure.py::test_postgres_restart_recovers_pending_raw_and_preserves_trade_continuity",
+          "tests/integration/test_platform_infrastructure.py::test_postgres_restart_replay_preserves_semantic_digest_and_single_effect",
+          "-q",
+          "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\DATA-001.xml"
+        ]
+      ],
+      "framework": "pytest-junit",
+      "tests": 4,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "todo": 0
+    },
+    {
+      "run_id": "3346f1ea3675cec9f7c28dbf58ae80347ee6095c3b8d58553671c5ac19a99e24",
+      "invocation_id": "95195721-709a-4c4a-a0cb-39a464bf5a29",
+      "result_digest": "6636d7225d2063f057debd8a3ee386aca4f05e92c457d7181d67fa654ba980fd",
+      "result_label": "RISK-001",
+      "command": [
+        "python",
+        [
+          "-m",
+          "uv",
+          "run",
+          "--locked",
+          "pytest",
+          "tests/unit/test_risk_engine.py::test_risk_001_same_complete_input_has_same_allowed_decision",
+          "tests/unit/test_risk_engine.py::test_risk_001_every_bound_section_mutation_changes_digest",
+          "tests/replay/test_risk_replay.py::test_risk_replay_is_independent_of_json_key_order_and_process_identity",
+          "tests/replay/test_risk_replay.py::test_reason_message_or_recording_metadata_cannot_enter_decision_hash",
+          "-q",
+          "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\RISK-001.xml"
+        ]
+      ],
+      "framework": "pytest-junit",
+      "tests": 4,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "todo": 0
+    },
+    {
+      "run_id": "35c2349727c74133db8201cec5bedd1aa8967a64ca218e6e0f851dd3e607e1bd",
+      "invocation_id": "50bb7401-5910-406f-ad8f-c300491d6995",
+      "result_digest": "04fd88fbdf532e541735df3e482c28445e26d9c50749bf12c00215488b9408ee",
+      "result_label": "AUTH-002",
+      "command": [
+        "python",
+        [
+          "-m",
+          "uv",
+          "run",
+          "--locked",
+          "pytest",
+          "tests/failure/test_trading_room_authorization_failures.py::test_auth_002_stale_state_before_human_decision_has_zero_order_effect",
+          "tests/integration/test_phase7_paper_first_attempt_authority.py::test_denied_and_error_risk_reject_commands_have_no_db_or_api_effects",
+          "tests/integration/test_phase7_paper_first_attempt_authority.py::test_sql_worker_authority_blocks_failed_worker_without_effects",
+          "tests/integration/test_phase7_paper_first_attempt_authority.py::test_newer_denied_risk_serializes_before_waiting_approval_without_stale_effects",
+          "tests/integration/test_phase7_paper_first_attempt_authority.py::test_approval_lock_wait_crossing_risk_ttl_uses_post_lock_wall_clock",
+          "tests/integration/test_phase7_paper_first_attempt_authority.py::test_first_attempt_rejects_authorization_superseded_by_newer_denied_risk",
+          "tests/integration/test_agent_postgres_persistence.py::test_authoritative_risk_context_requires_latest_raw_bound_books",
+          "tests/integration/test_phase7_paper_first_attempt_authority.py::test_first_attempt_blocks_normalized_only_newest_books_without_financial_effects",
+          "tests/integration/test_phase7_paper_first_attempt_authority.py::test_first_attempt_does_not_fall_back_from_newest_unverified_book",
+          "tests/integration/test_phase7_paper_first_attempt_authority.py::test_paper_lock_wait_crossing_expiry_uses_post_lock_wall_clock",
+          "tests/integration/test_phase7_paper_first_attempt_authority.py::test_market_authority_lock_wait_crossing_expiry_uses_post_lock_wall_clock",
+          "tests/integration/test_phase7_paper_first_attempt_authority.py::test_newer_book_commit_while_verifier_waits_blocks_stale_first_attempt",
+          "tests/integration/test_phase7_paper_first_attempt_authority.py::test_quality_writer_and_book_verifier_share_one_lock_order_without_healthy_gap",
+          "tests/integration/test_phase7_paper_first_attempt_authority.py::test_expired_and_revoked_authorization_uses_expiry_precedence",
+          "tests/integration/test_phase7_paper_first_attempt_authority.py::test_revoked_and_newer_denied_risk_uses_risk_precedence",
+          "tests/integration/test_phase7_paper_first_attempt_authority.py::test_kill_and_expired_authorization_uses_kill_precedence_and_drains",
+          "tests/integration/test_trading_room_migration_contract.py::test_approval_sql_authority_requires_allowed_risk_and_rechecks_worker_atomically",
+          "tests/integration/test_trading_room_migration_contract.py::test_market_quality_writer_matches_the_phase7_authority_lock_and_failure_contract",
+          "tests/integration/test_phase7_paper_first_attempt_authority.py::test_approval_rejects_checkpoint_that_predates_a_paper_effect",
+          "tests/integration/test_phase7_paper_first_attempt_authority.py::test_kill_first_attempt_stays_blocked_after_recovery_and_retry",
+          "tests/integration/test_phase7_paper_first_attempt_authority.py::test_missing_reconciliation_consumes_authorization_without_financial_effects",
+          "tests/integration/test_phase7_paper_first_attempt_authority.py::test_kill_recovery_lock_wait_crossing_worker_ttl_uses_post_lock_wall_clock",
+          "tests/integration/test_phase7_paper_first_attempt_authority.py::test_newer_changed_book_blocks_and_audit_projection_removes_nonce[BTCUSDT-10001-10002]",
+          "tests/integration/test_phase7_paper_first_attempt_authority.py::test_newer_changed_book_blocks_and_audit_projection_removes_nonce[ETHUSDT-2999-3001]",
+          "tests/integration/test_phase7_paper_first_attempt_authority.py::test_six_second_old_books_terminally_block_first_attempt",
+          "tests/integration/test_phase7_paper_first_attempt_authority.py::test_non_target_same_midpoint_book_drift_terminally_blocks_first_attempt",
+          "tests/integration/test_phase7_paper_first_attempt_authority.py::test_revocation_and_first_attempt_serialize_without_revoked_order",
+          "tests/integration/test_trading_room_command_ports.py::test_malformed_preconditions_have_zero_effect_and_do_not_consume_csrf",
+          "-q",
+          "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\AUTH-002.xml"
+        ]
+      ],
+      "framework": "pytest-junit",
+      "tests": 28,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "todo": 0
+    },
+    {
+      "run_id": "366e6419ea25512470bdd72f9cd99267cc083900638b5a20dbebd83003fa7f68",
+      "invocation_id": "a7be1678-3ec0-45ff-ac2c-09d856863391",
+      "result_digest": "c32f2e8d26ae17ce9c9d1d56c065eb8b7f4c54ae8921c118431075a2dc035530",
+      "result_label": "FIN-001",
+      "command": [
+        "python",
+        [
+          "-m",
+          "uv",
+          "run",
+          "--locked",
+          "pytest",
+          "tests/property/test_paper_financial_properties.py::test_fin_001_generated_fill_cancel_sequences_conserve_and_balance",
+          "-q",
+          "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\FIN-001.xml"
+        ]
+      ],
+      "framework": "pytest-junit",
+      "tests": 1,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "todo": 0
+    },
+    {
+      "run_id": "47f08944e6e934b2168e07cc85494d0521e01e35b0178866205b5f6d7c3ce156",
+      "invocation_id": "dd27ddfd-d88a-4e9f-9821-a2bc67c84e3e",
+      "result_digest": "4f93549ff8a5546ce60fb02389413fd15d55fbf67ae94028050903bc24a5c3ed",
+      "result_label": "PTI-003",
+      "command": [
+        "python",
+        [
+          "-m",
+          "uv",
+          "run",
+          "--locked",
+          "pytest",
+          "tests/unit/test_evidence_builder.py::test_pti_003_missing_raw_id_cannot_enter_evidence",
+          "tests/unit/test_evidence_builder.py::test_pti_003_stale_collector_fails_closed",
+          "tests/unit/test_evidence_builder.py::test_pti_003_watermark_binds_each_approved_kline_stream[1m]",
+          "tests/unit/test_evidence_builder.py::test_pti_003_watermark_binds_each_approved_kline_stream[5m]",
+          "tests/unit/test_evidence_builder.py::test_pti_003_watermark_binds_each_approved_kline_stream[1h]",
+          "tests/unit/test_evidence_builder.py::test_pti_003_watermark_binds_each_approved_kline_stream[4h]",
+          "tests/unit/test_evidence_builder.py::test_pti_003_raw_stream_mismatch_fails_closed",
+          "tests/unit/test_evidence_builder.py::test_pti_003_incomplete_watermark_fails_closed",
+          "tests/unit/test_phase7_agent_risk_services.py::test_unhealthy_or_future_evidence_persists_audited_hold_without_proposal",
+          "tests/unit/test_evidence_builder.py::test_builder_fails_closed_when_an_interval_has_no_complete_window",
+          "tests/unit/test_evidence_builder.py::test_builder_rejects_a_terminal_window_that_is_stale_at_the_cutoffs",
+          "tests/unit/test_evidence_builder.py::test_builder_rejects_every_non_healthy_quality[degraded]",
+          "tests/unit/test_evidence_builder.py::test_builder_rejects_every_non_healthy_quality[stale]",
+          "tests/unit/test_evidence_builder.py::test_builder_rejects_every_non_healthy_quality[invalid]",
+          "tests/unit/test_evidence_builder.py::test_builder_rejects_every_non_healthy_quality[reconnecting]",
+          "-q",
+          "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\PTI-003.xml"
+        ]
+      ],
+      "framework": "pytest-junit",
+      "tests": 15,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "todo": 0
+    },
+    {
+      "run_id": "4bdf6101804ede6e77411f98c1357a73c8eca866588e3508a49970662949d9ee",
+      "invocation_id": "f3c47ee6-5d4a-4f70-be14-1adb39cbb239",
+      "result_digest": "0d65df27fb6da2467f1caf7716701275363d2e80dd587989decf5bcda78a8d0a",
+      "result_label": "ATOM-001",
+      "command": [
+        "python",
+        [
+          "-m",
+          "uv",
+          "run",
+          "--locked",
+          "pytest",
+          "tests/failure/test_paper_atomicity.py::test_atom_001_injected_commit_failure_rolls_back_every_effect",
+          "tests/failure/test_paper_postgres_atomicity.py::test_injected_failure_rolls_back_every_authoritative_row[receipt]",
+          "tests/failure/test_paper_postgres_atomicity.py::test_injected_failure_rolls_back_every_authoritative_row[domain]",
+          "tests/failure/test_paper_postgres_atomicity.py::test_injected_failure_rolls_back_every_authoritative_row[lot]",
+          "tests/failure/test_paper_postgres_atomicity.py::test_injected_failure_rolls_back_every_authoritative_row[ledger-header]",
+          "tests/failure/test_paper_postgres_atomicity.py::test_injected_failure_rolls_back_every_authoritative_row[ledger-entry]",
+          "tests/failure/test_paper_postgres_atomicity.py::test_injected_failure_rolls_back_every_authoritative_row[outbox]",
+          "-q",
+          "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\ATOM-001.xml"
+        ]
+      ],
+      "framework": "pytest-junit",
+      "tests": 7,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "todo": 0
+    },
+    {
+      "run_id": "4ea76539dafd0d1aec78e1a04ce0f6110d1f2e3dccae7babd5f78bffada72564",
+      "invocation_id": "27c1048e-bba3-43da-bd33-c2f24ab2bf93",
+      "result_digest": "e9a482fb9c9abddefbf6f8dc3a30f659f4564d4c405d416a818d75b889fe3f2e",
+      "result_label": "DATA-005",
+      "command": [
+        "python",
+        [
+          "-m",
+          "uv",
+          "run",
+          "--locked",
+          "pytest",
+          "tests/failure/test_market_data_failures.py::test_data_005_malformed_payload_is_quarantined_and_invalid",
+          "tests/unit/test_rest_collection.py::test_malformed_rest_json_is_preserved_exactly_and_fails_closed",
+          "tests/unit/test_rest_collection.py::test_rest_kline_future_close_is_quarantined_and_never_forced_closed",
+          "tests/unit/test_public_market_transports.py::test_rest_transport_rejects_responses_over_the_fixed_limit",
+          "tests/integration/test_platform_infrastructure.py::test_future_kline_quarantine_downgrades_durable_symbol_projection",
+          "-q",
+          "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\DATA-005.xml"
+        ]
+      ],
+      "framework": "pytest-junit",
+      "tests": 5,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "todo": 0
+    },
+    {
+      "run_id": "51c8f9b4017e3d7183101438c7bcdca36e61707058e5e875cb8a70c74ebca569",
+      "invocation_id": "b36f6c2c-55fe-4de8-9279-0100edb504a0",
+      "result_digest": "520a8ba8d2efe3007e653b96a72ca2894669c464c258c7dff40d85b480661bb0",
+      "result_label": "ORD-002",
+      "command": [
+        "python",
+        [
+          "-m",
+          "uv",
+          "run",
+          "--locked",
+          "pytest",
+          "tests/replay/test_paper_restart_replay.py::test_ord_002_restart_replay_has_identical_digest_and_single_effect",
+          "tests/integration/test_paper_postgres_persistence.py::test_restart_continues_existing_order_with_distinct_cancel_command",
+          "tests/integration/test_paper_postgres_persistence.py::test_restart_applies_and_idempotently_replays_observation_fill",
+          "tests/integration/test_paper_postgres_persistence.py::test_restart_restores_floor_stepped_observation_budget_and_hash",
+          "tests/integration/test_paper_postgres_persistence.py::test_restart_completes_shared_observation_for_second_order_once",
+          "tests/integration/test_paper_postgres_persistence.py::test_rejected_command_is_durable_orderless_and_restart_idempotent",
+          "tests/integration/test_paper_postgres_persistence.py::test_observation_no_fill_requires_ineligibility_or_exhausted_budget",
+          "tests/integration/test_paper_postgres_persistence.py::test_terminal_order_cannot_append_a_new_accepted_version",
+          "tests/unit/test_paper_engine.py::test_shared_observation_uses_one_canonical_broker_sequence_and_budget",
+          "tests/integration/test_paper_postgres_persistence.py::test_hydrated_engine_ignores_observation_older_than_order_acceptance",
+          "tests/unit/test_paper_engine.py::test_pre_acceptance_observation_is_ignored_without_recording_an_effect",
+          "-q",
+          "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\ORD-002.xml"
+        ]
+      ],
+      "framework": "pytest-junit",
+      "tests": 11,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "todo": 0
+    },
+    {
+      "run_id": "5d68667411dd62c440b491e95f657e5837a024fbfffb9d23d011df9117e57d81",
+      "invocation_id": "66e831aa-2148-477a-b0f5-26fbbe3016c7",
+      "result_digest": "21fe08874674052f4098cfb4f105cb9c23eb0fa4def02da020dcf72276e25d16",
+      "result_label": "bulk-safety-node",
+      "command": [
+        "corepack",
+        [
+          "pnpm",
+          "exec",
+          "tsx",
+          "--test",
+          "--test-reporter=junit",
+          "--test-reporter-destination=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.node-results\\bulk-safety-node.xml",
+          "tests/safety/capability-zero.test.ts"
+        ]
+      ],
+      "framework": "node-junit",
+      "tests": 1,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "todo": 0
+    },
+    {
+      "run_id": "7042d8d85a949dd92d3db96c1c2f734f5163d00a71e87b7b3ef85666308fbbe4",
+      "invocation_id": "223a480f-6534-4bad-9914-6ec27e39ade7",
+      "result_digest": "ceef0690443bcfc5c71bfa288b244cf01e997d23dad8fdeb883a720759199a68",
+      "result_label": "phase7-playwright",
+      "command": [
+        "C:\\Program Files\\nodejs\\node.exe",
+        [
+          "C:\\Users\\xxx\\woozoo-binance-trading-desk\\node_modules\\@playwright\\test\\cli.js",
+          "test",
+          "--reporter=junit"
+        ]
+      ],
+      "framework": "playwright-junit",
+      "tests": 19,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "todo": 0
+    },
+    {
+      "run_id": "7cc181cefa878557e341d1216a13b2b0ee7174f2c42d6feb2f7401d1c1f22dda",
+      "invocation_id": "35f38b45-ee12-4a1b-9a3c-37e9aa45701e",
+      "result_digest": "0293f4da12e682c6150dad7b5859240733233f4df1d5b3729c3995b2fdb03cf8",
+      "result_label": "KILL-001",
+      "command": [
+        "python",
+        [
+          "-m",
+          "uv",
+          "run",
+          "--locked",
+          "pytest",
+          "tests/failure/test_kill_fault_matrix.py::test_kill_001_fault_matrix[paper_create_lock_before_activation]",
+          "tests/failure/test_kill_fault_matrix.py::test_kill_001_fault_matrix[activation_lock_before_paper_create]",
+          "tests/failure/test_kill_fault_matrix.py::test_kill_001_fault_matrix[paper_fill_lock_before_activation]",
+          "tests/failure/test_kill_fault_matrix.py::test_kill_001_fault_matrix[activation_lock_before_paper_fill]",
+          "tests/failure/test_kill_fault_matrix.py::test_kill_001_fault_matrix[one_hundred_and_one_open_orders]",
+          "tests/failure/test_kill_fault_matrix.py::test_kill_001_fault_matrix[crash_before_batch_commit]",
+          "tests/failure/test_kill_fault_matrix.py::test_kill_001_fault_matrix[crash_after_batch_commit_before_ack]",
+          "tests/failure/test_kill_fault_matrix.py::test_kill_001_fault_matrix[duplicate_activation_delivery]",
+          "tests/failure/test_kill_cancel_identity.py::test_kill_cancel_id_binds_full_activation_and_order_ids",
+          "-q",
+          "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\KILL-001.xml"
+        ]
+      ],
+      "framework": "pytest-junit",
+      "tests": 9,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "todo": 0
+    },
+    {
+      "run_id": "86bd558b1fabb4ae4e899da8f3ee8295704ac060f172952e3eb152116b01faed",
+      "invocation_id": "cbb6283c-754f-4a8e-a89e-3e94560ada65",
+      "result_digest": "1a43faadb47ba7d12c91376e93d2bc6e07939b0411c76d175e3f3161ba833904",
+      "result_label": "DATA-006",
+      "command": [
+        "python",
+        [
+          "-m",
+          "uv",
+          "run",
+          "--locked",
+          "pytest",
+          "tests/failure/test_market_data_failures.py::test_data_006_raw_append_failure_has_no_normalized_effect",
+          "tests/failure/test_market_data_failures.py::test_data_006_quality_append_failure_aborts_instead_of_leaving_a_healthy_gap",
+          "tests/unit/test_market_data_pipeline.py::test_quality_append_failure_is_invalid_and_propagates_to_stop_the_collector",
+          "tests/unit/test_restart_recovery.py::test_restart_bootstraps_durable_state_and_recovers_pending_raw_once",
+          "tests/integration/test_platform_infrastructure.py::test_market_raw_and_outbox_are_one_transaction",
+          "tests/integration/test_platform_infrastructure.py::test_normalized_and_outbox_are_one_transaction",
+          "tests/integration/test_platform_infrastructure.py::test_quality_and_outbox_are_one_transaction",
+          "tests/integration/test_platform_infrastructure.py::test_quality_writer_retries_only_bounded_transaction_conflicts",
+          "tests/integration/test_platform_infrastructure.py::test_postgres_restart_recovers_pending_raw_and_preserves_trade_continuity",
+          "tests/integration/test_platform_infrastructure.py::test_postgres_restart_restores_closed_kline_grid_continuity",
+          "-q",
+          "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\DATA-006.xml"
+        ]
+      ],
+      "framework": "pytest-junit",
+      "tests": 10,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "todo": 0
+    },
+    {
+      "run_id": "8a20951061d6754b625dc7cc3368c0b58293562e0cdf2a8c88a1f9c6013505a9",
+      "invocation_id": "7e76ef78-8ecb-41e2-83e5-703640a762c0",
+      "result_digest": "c7594253051a639e40e134759de371c4bf8d5de63cf0aa203a80461e1c9bb50d",
+      "result_label": "PTI-002",
+      "command": [
+        "python",
+        [
+          "-m",
+          "uv",
+          "run",
+          "--locked",
+          "pytest",
+          "tests/unit/test_evidence_builder.py::test_builder_is_deterministic_and_prior_snapshot_is_immutable_under_late_arrival",
+          "tests/unit/test_evidence_builder.py::test_newer_cutoff_deterministically_replaces_a_same_bucket_late_materialization",
+          "-q",
+          "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\PTI-002.xml"
+        ]
+      ],
+      "framework": "pytest-junit",
+      "tests": 2,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "todo": 0
+    },
+    {
+      "run_id": "8af0d7b930e1dc259a40fbc22552165bdcbbc235ebebcb3b30b011c7b2d33119",
+      "invocation_id": "30486fb2-e7ab-4a8d-aeac-dfaee13fad87",
+      "result_digest": "362574ac3f9ede78660dc6858f6ca2ba7f7c6b73c04b46d6a0e0d67b47b8476f",
+      "result_label": "bulk-integration-pytest",
+      "command": [
+        "python",
+        [
+          "-m",
+          "uv",
+          "run",
+          "--locked",
+          "pytest",
+          "tests/integration",
+          "-q",
+          "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\bulk-integration-pytest.xml"
+        ]
+      ],
+      "framework": "pytest-junit",
+      "tests": 142,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "todo": 0
+    },
+    {
+      "run_id": "8bc33183f18d3d803cf5f717dc895ebd262ed9e86e3d680e5e00cb26dd0c92b7",
+      "invocation_id": "8bf7afc0-a7a5-4fa4-940d-272c2b8abbaa",
+      "result_digest": "5868872f2bcba2a53581cfba6a5f0842d3c184908249e8092c4b7f45c498f7e1",
+      "result_label": "e2e-E2E-001",
+      "command": [
+        "python",
+        [
+          "-m",
+          "uv",
+          "run",
+          "--locked",
+          "pytest",
+          "tests/integration/test_trading_room_api.py::test_e2e_001_authenticated_proposal_approval_creates_exactly_one_paper_order",
+          "tests/integration/test_phase7_paper_first_attempt_authority.py::test_authorized_order_recorded_book_partial_fill_then_cancel_is_atomic_and_idempotent",
+          "tests/integration/test_phase7_paper_first_attempt_authority.py::test_recorded_book_rejects_malformed_or_unbound_raw_provenance_without_effects",
+          "tests/integration/test_phase7_paper_first_attempt_authority.py::test_no_fill_replay_returns_immutable_first_response_after_later_fill",
+          "tests/integration/test_phase7_paper_first_attempt_authority.py::test_same_side_orders_compete_in_accepted_at_order_id_order_for_one_book_budget",
+          "tests/integration/test_phase7_paper_first_attempt_authority.py::test_recorded_book_revalidates_current_stream_health_and_defers_stale_event",
+          "tests/integration/test_phase7_paper_first_attempt_authority.py::test_recorded_book_kill_barrier_holds_without_any_paper_effect",
+          "tests/unit/test_paper_engine.py::test_side_partitioned_book_observations_keep_canonical_order_and_budgets_independent",
+          "tests/unit/test_paper_authorization_worker_runtime.py::test_recorded_book_hold_reconciles_without_reporting_progress_or_failing_worker[PAPER_RECONCILIATION_HOLD]",
+          "tests/unit/test_paper_authorization_worker_runtime.py::test_recorded_book_hold_reconciles_without_reporting_progress_or_failing_worker[PAPER_KILL_SWITCH_ACTIVE]",
+          "tests/unit/test_paper_authorization_worker_runtime.py::test_recorded_book_hold_reconciles_without_reporting_progress_or_failing_worker[ORDER_NOT_FILLABLE]",
+          "tests/unit/test_paper_authorization_worker_runtime.py::test_recorded_book_hold_reconciles_without_reporting_progress_or_failing_worker[INVALID_RECORDED_BOOK_INPUT]",
+          "tests/unit/test_paper_authorization_worker_runtime.py::test_recorded_book_hold_reconciles_without_reporting_progress_or_failing_worker[CURRENT_MARKET_STATE_UNHEALTHY]",
+          "tests/unit/test_paper_authorization_worker_runtime.py::test_unexpected_recorded_book_exception_remains_fatal",
+          "tests/unit/test_paper_authorization_worker_runtime.py::test_unknown_recorded_book_hold_reason_remains_fatal",
+          "tests/integration/test_trading_room_migration_contract.py::test_phase7_migration_upgrades_with_digest_only_storage_and_least_privilege",
+          "-q",
+          "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\e2e-E2E-001.xml"
+        ]
+      ],
+      "framework": "pytest-junit",
+      "tests": 16,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "todo": 0
+    },
+    {
+      "run_id": "95b26c385e81a44704709ce60a99866feb1d030d6161e502f93ae79f16764044",
+      "invocation_id": "f398ae7f-fc6f-46d0-b8a7-2e6c63c2a79d",
+      "result_digest": "565dbab1b1d2ff1e2565c186fbb7dbbde99e22f0ab1901effde8d16280ac799e",
+      "result_label": "DATA-007",
+      "command": [
+        "python",
+        [
+          "-m",
+          "uv",
+          "run",
+          "--locked",
+          "pytest",
+          "tests/property/test_market_data_backpressure.py::test_data_007_capacity_overflow_is_explicit_and_fail_closed",
+          "tests/failure/test_market_data_supervisor.py::test_live_supervisor_uses_bounded_queue_and_persists_overflow_failure",
+          "tests/failure/test_market_data_supervisor.py::test_quality_persistence_failure_is_fatal_before_queue_drain_or_reconnect",
+          "-q",
+          "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\DATA-007.xml"
+        ]
+      ],
+      "framework": "pytest-junit",
+      "tests": 3,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "todo": 0
+    },
+    {
+      "run_id": "969404e1df3fd758e8eb62c950baa2eef04f2ee4115dc188cc4c38a91c9f9075",
+      "invocation_id": "cc6ddf3d-6d5c-4e7c-8899-a1e9372e4195",
+      "result_digest": "390d4fcbbb47f3a55eccacf6523fc5965b7035b029bcdf6d01bb202888f2b86c",
+      "result_label": "bulk-safety-pytest",
+      "command": [
+        "python",
+        [
+          "-m",
+          "uv",
+          "run",
+          "--locked",
+          "pytest",
+          "tests/safety",
+          "-q",
+          "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\bulk-safety-pytest.xml"
+        ]
+      ],
+      "framework": "pytest-junit",
+      "tests": 36,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "todo": 0
+    },
+    {
+      "run_id": "98be2a0018041c0bb1dc5d88b7282450296aa7142d5c2f7ae3c7021a23319d1a",
+      "invocation_id": "750e6765-1fe4-4178-b57e-8fb7a551a046",
+      "result_digest": "b7be3cfb14129d224732e3ebe8f7ed8fd70558ae9063e36e0131233314d700de",
+      "result_label": "DATA-003",
+      "command": [
+        "python",
+        [
+          "-m",
+          "uv",
+          "run",
+          "--locked",
+          "pytest",
+          "tests/failure/test_market_data_failures.py::test_data_003_shutdown_is_control_only_and_reconnect_is_bounded",
+          "tests/failure/test_market_data_supervisor.py::test_live_supervisor_reconnects_immediately_for_shutdown_then_backs_off",
+          "tests/failure/test_market_data_supervisor.py::test_live_supervisor_accepts_the_raw_shutdown_control_form",
+          "-q",
+          "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\DATA-003.xml"
+        ]
+      ],
+      "framework": "pytest-junit",
+      "tests": 3,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "todo": 0
+    },
+    {
+      "run_id": "a3dcb95065b2ab11552a71e8e0fc51b6f46e14a91c2261ec95830e73d0125253",
+      "invocation_id": "fccef075-257b-451d-98ea-80dab01e412e",
+      "result_digest": "7319f22380c89203a4860d02954b706f707bec10be37a17325b4d857ac6ee852",
+      "result_label": "ATOM-002",
+      "command": [
+        "python",
+        [
+          "-m",
+          "uv",
+          "run",
+          "--locked",
+          "pytest",
+          "tests/replay/test_paper_restart_replay.py::test_atom_002_ack_loss_retry_returns_same_order_without_new_effect",
+          "tests/integration/test_trading_room_command_ports.py::test_approval_ack_loss_replays_receipt_after_worker_failure",
+          "tests/integration/test_paper_postgres_persistence.py::test_atomic_write_is_durable_idempotent_and_restart_stable",
+          "tests/integration/test_paper_postgres_persistence.py::test_concurrent_command_and_observation_retries_return_one_stored_effect",
+          "-q",
+          "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\ATOM-002.xml"
+        ]
+      ],
+      "framework": "pytest-junit",
+      "tests": 4,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "todo": 0
+    },
+    {
+      "run_id": "a6e2985361721c227c91b687dda40a32ac082d45c327f20270937ded1272b7d7",
+      "invocation_id": "478a3f3a-44d4-4ec3-9042-282c8be8170e",
+      "result_digest": "e7ae1f82781435eb61532b01c6453a6e5362bbc9c6b62d1938ccf5c0a8556277",
+      "result_label": "e2e-E2E-004",
+      "command": [
+        "python",
+        [
+          "-m",
+          "uv",
+          "run",
+          "--locked",
+          "pytest",
+          "tests/integration/test_trading_room_api.py::test_e2e_004_kill_cancels_open_order_and_manual_recovery_is_audited",
+          "tests/integration/test_phase7_paper_first_attempt_authority.py::test_recovery_races_consumer_but_requires_completion_and_later_checkpoint",
+          "tests/integration/test_phase7_paper_first_attempt_authority.py::test_kill_completion_waits_for_pending_authorization_and_recovery_resumes",
+          "tests/integration/test_phase7_paper_first_attempt_authority.py::test_test_namespace_attempt_cannot_satisfy_pending_paper_authorization",
+          "tests/unit/test_paper_authorization_worker_runtime.py::test_kill_worker_yields_when_completion_waits_for_authorization_drain",
+          "tests/unit/test_paper_authorization_worker_runtime.py::test_runner_drains_pending_authorization_before_kill_completion",
+          "-q",
+          "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\e2e-E2E-004.xml"
+        ]
+      ],
+      "framework": "pytest-junit",
+      "tests": 6,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "todo": 0
+    },
+    {
+      "run_id": "a71ac7adbfcc2e04f17207507df78d0b43f29b92b966aa99f2e6e755a7be867f",
+      "invocation_id": "521096b1-0c53-4273-a843-d0251092d62d",
+      "result_digest": "3949bcbbfeb1bc558b205f3b2453dc73cc3384649e13d8af701d9282c3abaab2",
+      "result_label": "SEC-001",
+      "command": [
+        "python",
+        [
+          "-m",
+          "uv",
+          "run",
+          "--locked",
+          "pytest",
+          "tests/safety/test_phase6_agent_boundaries.py::test_sec_001_has_no_real_provider_or_secret_configuration",
+          "-q",
+          "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\SEC-001.xml"
+        ]
+      ],
+      "framework": "pytest-junit",
+      "tests": 1,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "todo": 0
+    },
+    {
+      "run_id": "b1bea0b2d87fcab5e1e927c2df8ad62a21be32d25a1cca4d4e8bf17b2e38785f",
+      "invocation_id": "a257e1b9-8baa-42bb-9954-546e5603acb6",
+      "result_digest": "4a20c47a5159c50f5146453bf58bed756066eea6168eae97ac0e0b6a349d7e63",
+      "result_label": "phase7-api",
+      "command": [
+        "python",
+        [
+          "-m",
+          "uv",
+          "run",
+          "--locked",
+          "pytest",
+          "-q",
+          "tests/integration/test_trading_room_api.py",
+          "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\phase7-api.xml"
+        ]
+      ],
+      "framework": "pytest-junit",
+      "tests": 7,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "todo": 0
+    },
+    {
+      "run_id": "b67f6984f86522a88ac8797de7fbdc77ebe667225204c3c9419ea567de70880b",
+      "invocation_id": "34dde1a2-42bc-4c39-88ce-688637c18559",
+      "result_digest": "2e751b1e966719d3d6d66ede329a72705c806e9341c95a8d7395bd46f17ce0c9",
+      "result_label": "AUTH-001",
+      "command": [
+        "python",
+        [
+          "-m",
+          "uv",
+          "run",
+          "--locked",
+          "pytest",
+          "tests/unit/test_trading_room_security.py::test_auth_001_session_rotation_csrf_one_time_and_absolute_expiry",
+          "tests/unit/test_trading_room_security.py::test_auth_002_foreign_or_missing_origin_has_effect_zero",
+          "tests/unit/test_trading_room_security.py::test_logout_revokes_session_and_consumes_csrf",
+          "tests/unit/test_trading_room_security.py::test_in_memory_invalid_or_replayed_csrf_does_not_touch_session",
+          "tests/unit/test_trading_room_security.py::test_in_memory_command_guard_and_logout_serialize_in_both_orders",
+          "tests/integration/test_trading_room_postgres_authority.py::test_postgres_command_guard_and_logout_serialize_and_roll_back",
+          "tests/contract/test_phase7_trading_contract.py::test_phase7_approval_chain_is_closed_hash_bound_and_nonce_distinct",
+          "tests/property/test_trading_room_properties.py::test_phase7_preview_hash_is_mutation_sensitive_and_notional_is_policy_capped",
+          "tests/failure/test_trading_room_authorization_failures.py::test_auth_002_stale_state_before_human_decision_has_zero_order_effect",
+          "tests/integration/test_trading_room_command_ports.py::test_concurrent_same_request_issues_once_without_browser_paper_effect",
+          "tests/integration/test_trading_room_command_ports.py::test_revocation_can_win_after_authorization_issue_before_first_paper_attempt",
+          "tests/integration/test_trading_room_command_ports.py::test_malformed_preconditions_have_zero_effect_and_do_not_consume_csrf",
+          "tests/integration/test_trading_room_command_ports.py::test_reject_does_not_consult_unavailable_worker_projection",
+          "tests/integration/test_trading_room_command_ports.py::test_approve_delegates_to_risk_authority_without_mutable_worker_preflight[stale]",
+          "tests/integration/test_trading_room_command_ports.py::test_approve_delegates_to_risk_authority_without_mutable_worker_preflight[failed]",
+          "tests/integration/test_trading_room_command_ports.py::test_approve_delegates_to_risk_authority_without_mutable_worker_preflight[missing]",
+          "tests/integration/test_trading_room_command_ports.py::test_approve_delegates_to_risk_authority_without_mutable_worker_preflight[unavailable]",
+          "tests/integration/test_trading_room_command_ports.py::test_approval_view_projects_worker_failure_as_approve_only_block[stale]",
+          "tests/integration/test_trading_room_command_ports.py::test_approval_view_projects_worker_failure_as_approve_only_block[failed]",
+          "tests/integration/test_trading_room_command_ports.py::test_approval_view_projects_worker_failure_as_approve_only_block[missing]",
+          "tests/integration/test_trading_room_command_ports.py::test_approval_view_projects_worker_failure_as_approve_only_block[unavailable]",
+          "tests/integration/test_trading_room_command_ports.py::test_approval_view_projects_worker_failure_as_approve_only_block[invalid]",
+          "-q",
+          "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\AUTH-001.xml"
+        ]
+      ],
+      "framework": "pytest-junit",
+      "tests": 22,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "todo": 0
+    },
+    {
+      "run_id": "b687a5a3374938b5e6fccd2b58be72711839ad806702fbb0f87f40a02fdb73c7",
+      "invocation_id": "9f79800a-cd75-4834-9b2a-1ad437f3c595",
+      "result_digest": "92871145419f6d8ea685cbec8cae424b346bd5d67dc6594a4f0ebec3dd61029a",
+      "result_label": "bulk-unit-node",
+      "command": [
+        "corepack",
+        [
+          "pnpm",
+          "exec",
+          "tsx",
+          "--test",
+          "--test-reporter=junit",
+          "--test-reporter-destination=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.node-results\\bulk-unit-node.xml",
+          "tests/unit/e2e-infrastructure-lifecycle.test.ts",
+          "tests/unit/quality-evidence.test.mjs"
+        ]
+      ],
+      "framework": "node-junit",
+      "tests": 6,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "todo": 0
+    },
+    {
+      "run_id": "b698ca863ce0c7405e136e73b3cd807552efb017619d5c38393bc635b34ad9cf",
+      "invocation_id": "27a66c1e-d9ce-4afe-99fe-ec39616c832e",
+      "result_digest": "27fc9ae1e930dc694e07b95a7a4badd9eab1b5c0e8394d554cee30fb72494937",
+      "result_label": "e2e-E2E-005",
+      "command": [
+        "python",
+        [
+          "-m",
+          "uv",
+          "run",
+          "--locked",
+          "pytest",
+          "tests/integration/test_trading_room_api.py::test_audit_api_preserves_provenance_and_recursively_redacts_command_secrets",
+          "-q",
+          "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\e2e-E2E-005.xml"
+        ]
+      ],
+      "framework": "pytest-junit",
+      "tests": 1,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "todo": 0
+    },
+    {
+      "run_id": "c0191709276a0a4df86a786a56d8e7fd432623177cde5356621a6f2ca026b432",
+      "invocation_id": "54ae4469-2381-490b-bc25-39f0957b20ec",
+      "result_digest": "832a0ed93bb2ac4da390a3d0b916d108400675c1f07b31dc5471d0c625c977bb",
+      "result_label": "DATA-002",
+      "command": [
+        "python",
+        [
+          "-m",
+          "uv",
+          "run",
+          "--locked",
+          "pytest",
+          "tests/replay/test_market_data_replay.py::test_data_002_gap_is_observable_and_blocks_the_gapped_effect",
+          "tests/unit/test_market_data_completeness.py::test_closed_kline_interval_grid_gap_is_rejected",
+          "tests/unit/test_market_data_completeness.py::test_symbol_is_healthy_only_after_all_six_expected_streams_are_fresh",
+          "tests/integration/test_platform_infrastructure.py::test_postgres_restart_restores_closed_kline_grid_continuity",
+          "-q",
+          "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\DATA-002.xml"
+        ]
+      ],
+      "framework": "pytest-junit",
+      "tests": 4,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "todo": 0
+    },
+    {
+      "run_id": "c313560d932936462d33c3dae130d55a1a66a992c3cf3e314e5595fb62f096ee",
+      "invocation_id": "2f9a66f1-4228-4ef1-abf5-8f5eefb4c8b8",
+      "result_digest": "d1a0087a202f406bf24b15c0bb1dafb5411b0e7ee124f855c31d8be370431654",
+      "result_label": "AI-002",
+      "command": [
+        "python",
+        [
+          "-m",
+          "uv",
+          "run",
+          "--locked",
+          "pytest",
+          "tests/safety/test_phase6_agent_boundaries.py::test_ai_002_orphan_and_future_claims_hold",
+          "-q",
+          "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\AI-002.xml"
+        ]
+      ],
+      "framework": "pytest-junit",
+      "tests": 1,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "todo": 0
+    },
+    {
+      "run_id": "cc3f76d206d1ce93c15e80e98dc1932eb857e863738b6e106ea2c2f1e8b07341",
+      "invocation_id": "4ebf3047-d103-4f02-84ea-e3d44ce81cc7",
+      "result_digest": "f6b792d2cc3641df09e68c4c27bfdba1400018bde6bda0a7bf1b8b449758f14b",
+      "result_label": "KILL-002",
+      "command": [
+        "python",
+        [
+          "-m",
+          "uv",
+          "run",
+          "--locked",
+          "pytest",
+          "tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_has_no_automatic_ai_or_unauthenticated_recovery",
+          "tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_scans_every_executable_config_and_tool_registry_for_recovery_writer",
+          "tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_attempt_keeps_postgres_active[timer]",
+          "tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_attempt_keeps_postgres_active[ai]",
+          "tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_attempt_keeps_postgres_active[process_restart]",
+          "tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_attempt_keeps_postgres_active[redis_expiry]",
+          "tests/safety/test_kill_switch_recovery_boundary.py::test_kill_002_attempt_keeps_postgres_active[unauthenticated_actor]",
+          "-q",
+          "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\KILL-002.xml"
+        ]
+      ],
+      "framework": "pytest-junit",
+      "tests": 7,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "todo": 0
+    },
+    {
+      "run_id": "cca3389a2acf843e3eaf290ce74658c5138f6b940b2ecd7f01c570f976aa820e",
+      "invocation_id": "cf54321d-d63c-4102-8479-2aac00da6107",
+      "result_digest": "b05da7b912a40c8b3e86a8eaf8f65adec781153fa0441de1493f8d4ae1f4669b",
+      "result_label": "e2e-E2E-002",
+      "command": [
+        "python",
+        [
+          "-m",
+          "uv",
+          "run",
+          "--locked",
+          "pytest",
+          "tests/integration/test_trading_room_api.py::test_e2e_002_stale_data_consumes_csrf_and_blocks_without_order",
+          "-q",
+          "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\e2e-E2E-002.xml"
+        ]
+      ],
+      "framework": "pytest-junit",
+      "tests": 1,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "todo": 0
+    },
+    {
+      "run_id": "d0b49643d2cc2553ee69272543e0007f7732c546832b88e778c5a0fa480ac683",
+      "invocation_id": "b2a2d48d-c6c4-44eb-b453-52e6916c270e",
+      "result_digest": "4fde246594596a1fd4473296aef8d1b70146273373b7361272fa10da9c52e2ba",
+      "result_label": "FIN-002",
+      "command": [
+        "python",
+        [
+          "-m",
+          "uv",
+          "run",
+          "--locked",
+          "pytest",
+          "tests/property/test_paper_financial_properties.py::test_fin_002_insufficient_cash_or_long_inventory_has_zero_order_and_ledger_effect",
+          "-q",
+          "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\FIN-002.xml"
+        ]
+      ],
+      "framework": "pytest-junit",
+      "tests": 1,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "todo": 0
+    },
+    {
+      "run_id": "e4937f2b1808f38a18ecc6c9eb4b3d66c3858426f61a0964160ac77ced6e98c9",
+      "invocation_id": "611e8aa0-fadc-42e1-9d4e-35b9a7d8a61c",
+      "result_digest": "d40eb539ff43f9782e448db36a864a12bcac20e4d468f81394c8fdf517df3172",
+      "result_label": "FIN-004",
+      "command": [
+        "python",
+        [
+          "-m",
+          "uv",
+          "run",
+          "--locked",
+          "pytest",
+          "tests/integration/test_paper_ledger_immutability.py::test_fin_004_posted_journal_is_immutable_and_correction_is_reversal_replacement",
+          "tests/integration/test_platform_infrastructure.py::test_phase_four_postgres_enforces_balance_and_immutable_ledger",
+          "tests/integration/test_paper_postgres_persistence.py::test_atomic_write_is_durable_idempotent_and_restart_stable",
+          "tests/integration/test_paper_postgres_persistence.py::test_writer_commit_succeeds_and_unledgered_balance_update_is_rejected",
+          "tests/integration/test_paper_postgres_persistence.py::test_database_rejects_incomplete_financial_state_and_liquidity_overallocation",
+          "tests/integration/test_paper_postgres_persistence.py::test_sell_fill_binds_fifo_basis_and_exact_ledger_amounts",
+          "tests/integration/test_paper_postgres_persistence.py::test_deferred_fifo_rejects_younger_first_even_if_later_sale_exhausts_older",
+          "tests/integration/test_paper_postgres_persistence.py::test_shared_sell_observation_uses_canonical_sale_order_for_fifo_basis",
+          "tests/integration/test_paper_postgres_persistence.py::test_cancel_outbox_binds_exact_receipt_and_rejects_non_ascii_identity",
+          "tests/integration/test_paper_postgres_persistence.py::test_database_rejects_noncanonical_ledger_transaction_id",
+          "tests/unit/test_paper_engine.py::test_ledger_transaction_id_rejects_unicode_and_non_hash_ids",
+          "tests/integration/test_paper_postgres_persistence.py::test_failed_reconciliation_checkpoint_holds_new_lifecycle_command",
+          "-q",
+          "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\FIN-004.xml"
+        ]
+      ],
+      "framework": "pytest-junit",
+      "tests": 12,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "todo": 0
+    },
+    {
+      "run_id": "ee5bfed247c7952682bbf95a9e81e24954312e6b074f259c5c5306b5e3926046",
+      "invocation_id": "ddcfdebe-a61c-410b-aa21-892b10e358be",
+      "result_digest": "6fa2dbcdabff5979bbc4273e5d0c4a11046abde5bba8f543280f66d9dbfd326b",
+      "result_label": "bulk-unit",
+      "command": [
+        "python",
+        [
+          "-m",
+          "uv",
+          "run",
+          "--locked",
+          "pytest",
+          "tests/unit",
+          "-q",
+          "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\bulk-unit.xml"
+        ]
+      ],
+      "framework": "pytest-junit",
+      "tests": 193,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "todo": 0
+    },
+    {
+      "run_id": "f15b8e281ad7264c00d880d7881e331d85400752e2807ef794e9bd6e10795800",
+      "invocation_id": "ee789c9e-75e4-4e57-ba15-96a05921b0e7",
+      "result_digest": "62e54e48b14f35fb34ee93f231967c95b11dcd08ed37f5fa3df125e1568a3eff",
+      "result_label": "bulk-contract-pytest",
+      "command": [
+        "python",
+        [
+          "-m",
+          "uv",
+          "run",
+          "--locked",
+          "pytest",
+          "tests/contract",
+          "-q",
+          "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\bulk-contract-pytest.xml"
+        ]
+      ],
+      "framework": "pytest-junit",
+      "tests": 20,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "todo": 0
+    },
+    {
+      "run_id": "f55b32ec18055fba5ab8533c2e39d7f91f6f1a9ddb62f64d1f5e45936a883e4f",
+      "invocation_id": "ed68941c-da67-455b-b905-9a8f6d6df488",
+      "result_digest": "2f5be3f29da0220c510bf03dfd5719e3e6b8e1e582fe6f617545985abf9ecf0a",
+      "result_label": "DATA-004",
+      "command": [
+        "python",
+        [
+          "-m",
+          "uv",
+          "run",
+          "--locked",
+          "pytest",
+          "tests/failure/test_market_data_failures.py::test_data_004_429_honors_retry_after_and_prevents_followup_call",
+          "tests/unit/test_rest_collection.py::test_retry_after_blocks_the_collector_before_a_followup_network_call",
+          "-q",
+          "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\DATA-004.xml"
+        ]
+      ],
+      "framework": "pytest-junit",
+      "tests": 2,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "todo": 0
+    },
+    {
+      "run_id": "fc22af406e6f7130cca7cc738a1ba14fc5aeeb21c664e449bc053f03a2ba5fe7",
+      "invocation_id": "9a32b578-53c9-4e73-bd42-98f3d068ef9c",
+      "result_digest": "754c309e5aa48bdab687c851d9f30291b273709968221639f29fcdb30a4b2718",
+      "result_label": "e2e-E2E-003",
+      "command": [
+        "python",
+        [
+          "-m",
+          "uv",
+          "run",
+          "--locked",
+          "pytest",
+          "tests/property/test_trading_room_properties.py::test_phase7_preview_hash_is_mutation_sensitive_and_notional_is_policy_capped",
+          "tests/property/test_trading_room_properties.py::test_phase7_idempotency_same_hash_replays_and_changed_hash_conflicts",
+          "tests/integration/test_trading_room_command_ports.py::test_approval_ack_loss_replays_receipt_after_worker_failure",
+          "tests/integration/test_trading_room_command_ports.py::test_concurrent_same_request_issues_once_without_browser_paper_effect",
+          "-q",
+          "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\e2e-E2E-003.xml"
+        ]
+      ],
+      "framework": "pytest-junit",
+      "tests": 4,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "todo": 0
+    },
+    {
+      "run_id": "fcaa4ef08b64775b3b6120d5bd0d86b125f42c28191c75cf208d6d429cbd3add",
+      "invocation_id": "0a7b228d-e2ae-4b6b-bcb5-6c4d73570bb8",
+      "result_digest": "e2ace8991ed5a767a7536d08cb3489b2f9bd90bae39b5b769cba23fbfd103f6a",
+      "result_label": "FIN-003",
+      "command": [
+        "python",
+        [
+          "-m",
+          "uv",
+          "run",
+          "--locked",
+          "pytest",
+          "tests/property/test_paper_financial_properties.py::test_fin_003_exact_partial_fill_fifo_and_pnl_oracle",
+          "-q",
+          "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\FIN-003.xml"
+        ]
+      ],
+      "framework": "pytest-junit",
+      "tests": 1,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "todo": 0
+    },
+    {
+      "run_id": "fccbc80d7b11c7609e99dc89a78c19b8da2a050d2f31b811308bf328e6b79619",
+      "invocation_id": "e1ef2866-1584-491d-8ac0-d00edd75f648",
+      "result_digest": "40bed4e3dcffcfdf0c9e748bcfe7adb0ada3c4826e9d18a8a6bcc51bdb917e3b",
+      "result_label": "bulk-contract-node",
+      "command": [
+        "corepack",
+        [
+          "pnpm",
+          "exec",
+          "tsx",
+          "--test",
+          "--test-reporter=junit",
+          "--test-reporter-destination=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.node-results\\bulk-contract-node.xml",
+          "tests/contract/contracts.test.ts",
+          "tests/contract/market-data-contracts.test.ts",
+          "tests/contract/evidence-contracts.test.ts",
+          "tests/contract/paper-contracts.test.ts",
+          "tests/contract/risk-contracts.test.ts"
+        ]
+      ],
+      "framework": "node-junit",
+      "tests": 6,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "todo": 0
+    },
+    {
+      "run_id": "fcea7e6442f4cbd35ea42638bd13f04f85bddd216a524fbc9e124fae11a4bd2c",
+      "invocation_id": "0208a117-95fe-4e91-8165-91feffbf7c7c",
+      "result_digest": "528414050c51711e5750f4d3b582266f21ae987bd33dc877d50d04c1415c8045",
+      "result_label": "PTI-004",
+      "command": [
+        "python",
+        [
+          "-m",
+          "uv",
+          "run",
+          "--locked",
+          "pytest",
+          "tests/unit/test_evidence_builder.py::test_pti_004_uses_only_explicit_clocks_and_never_reads_wall_clock",
+          "-q",
+          "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\PTI-004.xml"
+        ]
+      ],
+      "framework": "pytest-junit",
+      "tests": 1,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "todo": 0
+    },
+    {
+      "run_id": "fe044c8ff246f9486efadef7f4996171f64e655f8b0522c7d7d6913fccee1bad",
+      "invocation_id": "8dca0971-9bf9-43c6-a64e-ff2e31f12173",
+      "result_digest": "9b13f7df33452a0f2e69d2d0f6b56697a5e275c8df5ae6c30ccd1d832bb58a85",
+      "result_label": "ORD-001",
+      "command": [
+        "python",
+        [
+          "-m",
+          "uv",
+          "run",
+          "--locked",
+          "pytest",
+          "tests/unit/test_paper_engine.py::test_ord_001_partial_fill_duplicate_cancel_and_terminal_monotonicity",
+          "-q",
+          "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\ORD-001.xml"
+        ]
+      ],
+      "framework": "pytest-junit",
+      "tests": 1,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "todo": 0
+    }
+  ],
+  "artifacts": [
+    {
+      "id": "CORE-001",
+      "path": "artifacts/unit/CORE-001.json",
+      "sha256": "ca806b0b57f98ea03438b077a03fcf0109a0904caa8f7ae418fc154bcaae4873",
+      "test_count": 199
+    },
+    {
+      "id": "PLAT-001",
+      "path": "artifacts/integration/PLAT-001.json",
+      "sha256": "36d721f7a8e81bc8ded42054875d23eb3b12e2b22c3492423e9f088bf26570d2",
+      "test_count": 147
+    },
+    {
+      "id": "PLAT-002",
+      "path": "artifacts/integration/PLAT-002.json",
+      "sha256": "b6102cbf4a57048fc292296afc57489bfda0f821f27e93e4a29ed16f3c3c688a",
+      "test_count": 147
+    },
+    {
+      "id": "PLAT-003",
+      "path": "artifacts/integration/PLAT-003.json",
+      "sha256": "61edbe49b5f0c133761e9da1e418550cf4f1498e0174c01c547cb1815595b671",
+      "test_count": 147
+    },
+    {
+      "id": "CONTRACT-001",
+      "path": "artifacts/contracts/CONTRACT-001.json",
+      "sha256": "4d9128238114fd344d0bfb2e9bf38d276e82dd18efcca8a7d9585af3464808cb",
+      "test_count": 26
+    },
+    {
+      "id": "SAFE-001",
+      "path": "artifacts/safety/SAFE-001.json",
+      "sha256": "7b2c923ea5b2b18c2b6a097b6f877dff1802d854313425684ff81326f747574f",
+      "test_count": 37
+    },
+    {
+      "id": "SAFE-002",
+      "path": "artifacts/safety/SAFE-002.json",
+      "sha256": "f5d7dd107be8bff5045f89deed97c42f7a5d9dfe6f44d1f7616ed3b11dd19afc",
+      "test_count": 37
+    },
+    {
+      "id": "SAFE-003",
+      "path": "artifacts/safety/SAFE-003.json",
+      "sha256": "e6cb79c510eb5cf93ce23a291cb21b52b21f9fe7c488c5a2b0e59c4fe9733a1d",
+      "test_count": 37
+    },
+    {
+      "id": "SAFE-004",
+      "path": "artifacts/safety/SAFE-004.json",
+      "sha256": "9b4b6dffda8e3f50a3933eea813bd3623245fc62513e267724b98e6be66459dc",
+      "test_count": 37
+    },
+    {
+      "id": "DATA-001",
+      "path": "artifacts/replay/DATA-001.json",
+      "sha256": "07c39808da0585e815e488afd86d304bdf3b6fbee459afe4ea26009bb3c1a4c0",
+      "test_count": 4
+    },
+    {
+      "id": "DATA-002",
+      "path": "artifacts/replay/DATA-002.json",
+      "sha256": "3e98c60579c27f93bfc5b991b35b5a02278f4eaf4656bd2d4c603a8fe62d2aba",
+      "test_count": 4
+    },
+    {
+      "id": "DATA-003",
+      "path": "artifacts/failure/DATA-003.json",
+      "sha256": "37daf227d4a546c105d8974acb72d193c4fc2ec573e1ededc640f0c56dcf0b3c",
+      "test_count": 3
+    },
+    {
+      "id": "DATA-004",
+      "path": "artifacts/failure/DATA-004.json",
+      "sha256": "44dcf8570624b1533b12cf0eca200302badb4c4856cbe153a5c8b4e2128ab990",
+      "test_count": 2
+    },
+    {
+      "id": "DATA-005",
+      "path": "artifacts/failure/DATA-005.json",
+      "sha256": "741844045ed4b6ea42cbec17e1509a59b6439f5f6227e4d842c61843b5f1a47f",
+      "test_count": 5
+    },
+    {
+      "id": "DATA-006",
+      "path": "artifacts/failure/DATA-006.json",
+      "sha256": "31f3d96b0a5202669dbcb42e843b6d0bb8b327d25bb0363627406e771852dfb7",
+      "test_count": 10
+    },
+    {
+      "id": "DATA-007",
+      "path": "artifacts/property/DATA-007.json",
+      "sha256": "e0f94b5142e043fad432db817d17a6145f17cdf69e1f3e352f1f5df27de0cc17",
+      "test_count": 3
+    },
+    {
+      "id": "PTI-001",
+      "path": "artifacts/replay/PTI-001.json",
+      "sha256": "758a4fcad0766758af3ed9ce420996a5ad910176364291f579829e9e1da1dafd",
+      "test_count": 4
+    },
+    {
+      "id": "PTI-002",
+      "path": "artifacts/replay/PTI-002.json",
+      "sha256": "8513bc79e42aac70a1a42d03e037e3cae103c7fffcdab5525706156a0ff4c9e5",
+      "test_count": 2
+    },
+    {
+      "id": "PTI-003",
+      "path": "artifacts/safety/PTI-003.json",
+      "sha256": "14283792b9b6f86e0e2c41f541a055c93765e6c95361d9546fded4f502000d75",
+      "test_count": 15
+    },
+    {
+      "id": "PTI-004",
+      "path": "artifacts/replay/PTI-004.json",
+      "sha256": "fbd29018bd6cd452fc91a8661ee2c2b5ef71c57fc64e75ddbe9a6d8e903f4e9d",
+      "test_count": 1
+    },
+    {
+      "id": "FIN-001",
+      "path": "artifacts/property/FIN-001.json",
+      "sha256": "112936cac64f9d275ab83eac92fc1eacc33f2ce201b1ec5195b5295bb3a4e051",
+      "test_count": 1
+    },
+    {
+      "id": "FIN-002",
+      "path": "artifacts/property/FIN-002.json",
+      "sha256": "3b87ebba361dd2eef0130bc4978c697db33ea5bf5036fd987ab81988c535971c",
+      "test_count": 1
+    },
+    {
+      "id": "FIN-003",
+      "path": "artifacts/unit/FIN-003.json",
+      "sha256": "2fcf359230fc507f6232b4458565f4411706a1c2adeaddcc1a9e3d459b5e49e7",
+      "test_count": 1
+    },
+    {
+      "id": "FIN-004",
+      "path": "artifacts/integration/FIN-004.json",
+      "sha256": "e79cbffeb74a8436c275b0a6d0808f88e7d9d8c0fa3c8adb6aada8de5032900a",
+      "test_count": 12
+    },
+    {
+      "id": "ORD-001",
+      "path": "artifacts/property/ORD-001.json",
+      "sha256": "ee64f74597564948e6a0444b1f35c08ec82ea9655759a232af5b756844907c0c",
+      "test_count": 1
+    },
+    {
+      "id": "ORD-002",
+      "path": "artifacts/replay/ORD-002.json",
+      "sha256": "1975af7849a5c1330c09855560d2cd83abcbac4156a92042e55c89e608391a92",
+      "test_count": 11
+    },
+    {
+      "id": "ATOM-001",
+      "path": "artifacts/failure/ATOM-001.json",
+      "sha256": "3308247f6673980b20c05048ced5e034b41fd91045c9934cb04fcc8150a0aeab",
+      "test_count": 7
+    },
+    {
+      "id": "ATOM-002",
+      "path": "artifacts/failure/ATOM-002.json",
+      "sha256": "061d95554e32eb770654f44299d595495bd3bbf7b568a37bcc3810f4fb80ff94",
+      "test_count": 4
+    },
+    {
+      "id": "RISK-001",
+      "path": "artifacts/replay/RISK-001.json",
+      "sha256": "bf941f1430b80a3ad1bf0111660f3f1dd428fb3c4cc92079978706e46b5cb21c",
+      "test_count": 4
+    },
+    {
+      "id": "RISK-002",
+      "path": "artifacts/unit/RISK-002.json",
+      "sha256": "12b915c275952212e4a6a9d89e35bc7ed57be95b4e898180f8e737abacc6ae88",
+      "test_count": 71
+    },
+    {
+      "id": "KILL-001",
+      "path": "artifacts/failure/KILL-001.json",
+      "sha256": "fff2d39018d302c71fbd9d39ca455e2d913da48dc5bde962e55385da8ca176bc",
+      "test_count": 9
+    },
+    {
+      "id": "KILL-002",
+      "path": "artifacts/safety/KILL-002.json",
+      "sha256": "4552d081b31d79da77127288710847d1d903afcc24192ffdab0ee84db7e79dfb",
+      "test_count": 7
+    },
+    {
+      "id": "AUTH-001",
+      "path": "artifacts/unit/AUTH-001.json",
+      "sha256": "3d54cdf1dd09f712db0a84b909db00e346c8bfad66b484985ed77e6831cc1619",
+      "test_count": 22
+    },
+    {
+      "id": "AUTH-002",
+      "path": "artifacts/failure/AUTH-002.json",
+      "sha256": "92031b376dc18e3faa03aeabb330cb4c08a06a0d77a529c4bdcda3f3b909dfff",
+      "test_count": 28
+    },
+    {
+      "id": "AI-001",
+      "path": "artifacts/contracts/AI-001.json",
+      "sha256": "73c5c0940182043c8ad3c27d9107095540b3401489fb34bb417e89d7b2117f1e",
+      "test_count": 1
+    },
+    {
+      "id": "AI-002",
+      "path": "artifacts/safety/AI-002.json",
+      "sha256": "b08080e9d6d9a7021d27d1a43429fc1e9a2e7107cceec5dbb13c8e62fd254b04",
+      "test_count": 1
+    },
+    {
+      "id": "SEC-001",
+      "path": "artifacts/safety/SEC-001.json",
+      "sha256": "cf729d596d89291e81e675aa3c9aa71b3c92997fd2218dd64e7aa21d69ead4f0",
+      "test_count": 1
+    },
+    {
+      "id": "SEC-002",
+      "path": "artifacts/safety/SEC-002.json",
+      "sha256": "2b6a5288870040e271b2344a7390cc00c4eb964409c9a75da40649b37900bfa8",
+      "test_count": 2
+    },
+    {
+      "id": "E2E-001",
+      "path": "artifacts/e2e/E2E-001/result.json",
+      "sha256": "2874c5f9a2d4f52b0abd1107cf1713cd12411ceff4f15a8c60eb4a1625b30780",
+      "test_count": 42
+    },
+    {
+      "id": "E2E-002",
+      "path": "artifacts/e2e/E2E-002/result.json",
+      "sha256": "469ec50a1cde649cbcb6775dc360c6fbbd1c8a5a11f4610db85db3cc7e4e372f",
+      "test_count": 27
+    },
+    {
+      "id": "E2E-003",
+      "path": "artifacts/e2e/E2E-003/result.json",
+      "sha256": "b4385a84364402ffe3646c64a852c9def63c600bd44a9d3b4f78dcde252db1e2",
+      "test_count": 30
+    },
+    {
+      "id": "E2E-004",
+      "path": "artifacts/e2e/E2E-004/result.json",
+      "sha256": "b9dfa70a1b2cf77ae59a67307f06fd8aa6dc92019b5d1303329e287174f61715",
+      "test_count": 32
+    },
+    {
+      "id": "E2E-005",
+      "path": "artifacts/e2e/E2E-005/result.json",
+      "sha256": "a03f6422c716fb1fa28925c4497ae088258696fa77b4196d87697e9f207bfb5a",
+      "test_count": 27
+    }
+  ],
+  "git_commit": "c0baf4cedd56818da0cc9d5718950b15eaf48b2b",
+  "git_tree": "6f66d2f761a689ab4ed98924b1485f78f7c25478",
+  "working_tree_digest": "fb55680be162ccb23ef0632e97c8880d0cb449b2bad59f1f6dc582d56d969bd4",
+  "frozen_file_count": 405,
+  "output_digest": "193076ba203113b98987e1d2758859c91242d43fddea51ac291ff4e9bfe4dc04",
+  "recorded_at": "2026-07-21T13:48:10.372Z"
+}

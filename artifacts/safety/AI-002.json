@@ -1,0 +1,64 @@
+{
+  "schema_version": "woozoo.agent.replay-manifest/v1",
+  "id": "AI-002",
+  "status": "PASS",
+  "commands": [
+    [
+      "python",
+      [
+        "-m",
+        "uv",
+        "run",
+        "--locked",
+        "pytest",
+        "tests/safety/test_phase6_agent_boundaries.py::test_ai_002_orphan_and_future_claims_hold",
+        "-q",
+        "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\AI-002.xml"
+      ]
+    ]
+  ],
+  "source_revision": "binance-spot-api-docs@29c227d84058dd2be3fe3b42ab368d1d1ce910e5",
+  "policy_version": "woozoo.market.collector-policy/v1",
+  "fixture_manifest_sha256": "7ad31ec79946ab383176360ae3ee069135ea9d8758ad2e16c13d3811cc05ce40",
+  "fixed_seed": 0,
+  "timezone": "UTC",
+  "test_count": 1,
+  "workflow_version": "woozoo.agent-workflow/v1",
+  "provider": "mock",
+  "model": "woozoo-deterministic-mock/v1",
+  "scenario_manifest_sha256": "333e8d522876e8055e8d33ae7cd5ec2b9e6933b73d7922725d88ee891b9877cc",
+  "network_enabled": false,
+  "tool_allowlist": [],
+  "runtime_namespace": "paper",
+  "scenario_input_digest": "8dd1f55e0c0d5bb2eae2c1f221b1dc8f75ba11dccdc14fc8a7c81352ffd693e0",
+  "execution_gate": {
+    "framework": "pytest-junit",
+    "tests": 1,
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "invocation_id": "2f9a66f1-4228-4ef1-abf5-8f5eefb4c8b8",
+    "result_label": "AI-002",
+    "command": [
+      "python",
+      [
+        "-m",
+        "uv",
+        "run",
+        "--locked",
+        "pytest",
+        "tests/safety/test_phase6_agent_boundaries.py::test_ai_002_orphan_and_future_claims_hold",
+        "-q",
+        "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\AI-002.xml"
+      ]
+    ],
+    "result_digest": "d1a0087a202f406bf24b15c0bb1dafb5411b0e7ee124f855c31d8be370431654",
+    "run_id": "c313560d932936462d33c3dae130d55a1a66a992c3cf3e314e5595fb62f096ee"
+  },
+  "git_commit": "c0baf4cedd56818da0cc9d5718950b15eaf48b2b",
+  "git_tree": "6f66d2f761a689ab4ed98924b1485f78f7c25478",
+  "working_tree_digest": "fb55680be162ccb23ef0632e97c8880d0cb449b2bad59f1f6dc582d56d969bd4",
+  "frozen_file_count": 405,
+  "output_digest": "98bfd9f3c32fedc48e46a64080cbf12d3cad9ba4b200fd83264b0a24e072aeb3",
+  "recorded_at": "2026-07-21T13:29:24.439Z"
+}

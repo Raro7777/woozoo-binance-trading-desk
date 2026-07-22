@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "phase": 4,
+  "status": "PASS",
+  "frozen_code_commit": "19b97256ab4c8e3cb97e8c16e882176d48d497be",
+  "frozen_code_tree": "274feba95e83629d6ee8d09a3022acbfe9b9c5b2",
+  "branch": "codex/phase-4-paper-ledger",
+  "base": "main",
+  "push": {
+    "status": "PASS",
+    "remote": "origin",
+    "remote_head": "19b97256ab4c8e3cb97e8c16e882176d48d497be"
+  },
+  "draft_pr": {
+    "status": "PASS",
+    "compare_url": "https://github.com/Raro7777/woozoo-binance-trading-desk/compare/main...codex/phase-4-paper-ledger?expand=1",
+    "url": "https://github.com/Raro7777/woozoo-binance-trading-desk/pull/5",
+    "number": 5,
+    "state": "open",
+    "draft": true,
+    "mergeable": true,
+    "base": "main",
+    "head": "codex/phase-4-paper-ledger",
+    "head_sha": "19b97256ab4c8e3cb97e8c16e882176d48d497be",
+    "changed_files": 253,
+    "attempts": [
+      {
+        "method": "GitHub connector create pull request",
+        "result": "UNAVAILABLE",
+        "reason": "GitHub returned 403 Resource not accessible by integration."
+      },
+      {
+        "method": "user-created Draft PR from compare page",
+        "result": "PASS",
+        "reason": "GitHub metadata verified open Draft PR #5, main base and exact frozen head."
+      }
+    ]
+  },
+  "gate_effect": "PASS. PR #5 is an open mergeable Draft targeting main from codex/phase-4-paper-ledger and its head is the frozen Phase 4 implementation."
+}

@@ -1,0 +1,79 @@
+{
+  "schema_version": "woozoo.paper.replay-manifest/v1",
+  "id": "ORD-002",
+  "status": "PASS",
+  "commands": [
+    [
+      "python",
+      [
+        "-m",
+        "uv",
+        "run",
+        "--locked",
+        "pytest",
+        "tests/replay/test_paper_restart_replay.py::test_ord_002_restart_replay_has_identical_digest_and_single_effect",
+        "tests/integration/test_paper_postgres_persistence.py::test_restart_continues_existing_order_with_distinct_cancel_command",
+        "tests/integration/test_paper_postgres_persistence.py::test_restart_applies_and_idempotently_replays_observation_fill",
+        "tests/integration/test_paper_postgres_persistence.py::test_restart_restores_floor_stepped_observation_budget_and_hash",
+        "tests/integration/test_paper_postgres_persistence.py::test_restart_completes_shared_observation_for_second_order_once",
+        "tests/integration/test_paper_postgres_persistence.py::test_rejected_command_is_durable_orderless_and_restart_idempotent",
+        "tests/integration/test_paper_postgres_persistence.py::test_observation_no_fill_requires_ineligibility_or_exhausted_budget",
+        "tests/integration/test_paper_postgres_persistence.py::test_terminal_order_cannot_append_a_new_accepted_version",
+        "tests/unit/test_paper_engine.py::test_shared_observation_uses_one_canonical_broker_sequence_and_budget",
+        "tests/integration/test_paper_postgres_persistence.py::test_hydrated_engine_ignores_observation_older_than_order_acceptance",
+        "tests/unit/test_paper_engine.py::test_pre_acceptance_observation_is_ignored_without_recording_an_effect",
+        "-q",
+        "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\ORD-002.xml"
+      ]
+    ]
+  ],
+  "source_revision": "binance-spot-api-docs@29c227d84058dd2be3fe3b42ab368d1d1ce910e5",
+  "policy_version": "woozoo.market.collector-policy/v1",
+  "fixture_manifest_sha256": "7ad31ec79946ab383176360ae3ee069135ea9d8758ad2e16c13d3811cc05ce40",
+  "fixed_seed": 0,
+  "timezone": "UTC",
+  "test_count": 11,
+  "financial_policy_version": "woozoo.paper.financial-policy/v1",
+  "oracle_fixture_sha256": "25a307ac9e64bf39cf77609bbee42890b28453a219c57cf2203817514edd76fa",
+  "network_enabled": false,
+  "execution_gate": {
+    "framework": "pytest-junit",
+    "tests": 11,
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "invocation_id": "b36f6c2c-55fe-4de8-9279-0100edb504a0",
+    "result_label": "ORD-002",
+    "command": [
+      "python",
+      [
+        "-m",
+        "uv",
+        "run",
+        "--locked",
+        "pytest",
+        "tests/replay/test_paper_restart_replay.py::test_ord_002_restart_replay_has_identical_digest_and_single_effect",
+        "tests/integration/test_paper_postgres_persistence.py::test_restart_continues_existing_order_with_distinct_cancel_command",
+        "tests/integration/test_paper_postgres_persistence.py::test_restart_applies_and_idempotently_replays_observation_fill",
+        "tests/integration/test_paper_postgres_persistence.py::test_restart_restores_floor_stepped_observation_budget_and_hash",
+        "tests/integration/test_paper_postgres_persistence.py::test_restart_completes_shared_observation_for_second_order_once",
+        "tests/integration/test_paper_postgres_persistence.py::test_rejected_command_is_durable_orderless_and_restart_idempotent",
+        "tests/integration/test_paper_postgres_persistence.py::test_observation_no_fill_requires_ineligibility_or_exhausted_budget",
+        "tests/integration/test_paper_postgres_persistence.py::test_terminal_order_cannot_append_a_new_accepted_version",
+        "tests/unit/test_paper_engine.py::test_shared_observation_uses_one_canonical_broker_sequence_and_budget",
+        "tests/integration/test_paper_postgres_persistence.py::test_hydrated_engine_ignores_observation_older_than_order_acceptance",
+        "tests/unit/test_paper_engine.py::test_pre_acceptance_observation_is_ignored_without_recording_an_effect",
+        "-q",
+        "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\ORD-002.xml"
+      ]
+    ],
+    "result_digest": "520a8ba8d2efe3007e653b96a72ca2894669c464c258c7dff40d85b480661bb0",
+    "run_id": "51c8f9b4017e3d7183101438c7bcdca36e61707058e5e875cb8a70c74ebca569"
+  },
+  "git_commit": "c0baf4cedd56818da0cc9d5718950b15eaf48b2b",
+  "git_tree": "6f66d2f761a689ab4ed98924b1485f78f7c25478",
+  "working_tree_digest": "fb55680be162ccb23ef0632e97c8880d0cb449b2bad59f1f6dc582d56d969bd4",
+  "frozen_file_count": 405,
+  "output_digest": "aca01956ac9d934bf2d28f78fea9dc39953994f40b090b76647940f9281b83ed",
+  "recorded_at": "2026-07-21T13:38:27.949Z"
+}

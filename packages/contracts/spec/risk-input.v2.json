@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "woozoo.risk-input/v2",
+  "title": "Dormant Phase 6 test-only Risk input with authoritative Proposal",
+  "type": "object",
+  "additionalProperties": false,
+  "x-creation-phase": 6,
+  "x-activation-phase": 7,
+  "required": ["risk_input_schema_version", "namespace", "proposal", "portfolio", "data", "order_preview", "policy", "kill_switch", "reconciliation", "decision_clock", "duplicate", "exposure_snapshot"],
+  "properties": {
+    "risk_input_schema_version": {"const": "woozoo.risk-input/v2"},
+    "namespace": {"const": "test"},
+    "proposal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["producer_contract", "schema_version", "payload", "proposal_hash"],
+      "properties": {
+        "producer_contract": {"const": "woozoo.trade-proposal/v1"},
+        "schema_version": {"const": "woozoo.trade-proposal/v1"},
+        "payload": {"$ref": "https://schemas.woozoo.local/trade-proposal/v1"},
+        "proposal_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      }
+    },
+    "portfolio": {"$ref": "https://schemas.woozoo.local/risk-input/v1#/$defs/portfolio"},
+    "data": {"$ref": "https://schemas.woozoo.local/risk-input/v1#/$defs/data"},
+    "order_preview": {"$ref": "https://schemas.woozoo.local/risk-input/v1#/$defs/preview"},
+    "policy": {"$ref": "https://schemas.woozoo.local/risk-input/v1#/$defs/policy"},
+    "kill_switch": {"$ref": "https://schemas.woozoo.local/risk-input/v1#/$defs/kill"},
+    "reconciliation": {"$ref": "https://schemas.woozoo.local/risk-input/v1#/$defs/reconciliation"},
+    "decision_clock": {"$ref": "https://schemas.woozoo.local/risk-input/v1#/$defs/clock"},
+    "duplicate": {"$ref": "https://schemas.woozoo.local/risk-input/v1#/$defs/duplicate"},
+    "exposure_snapshot": {"$ref": "https://schemas.woozoo.local/risk-input/v1#/$defs/exposure"}
+  }
+}

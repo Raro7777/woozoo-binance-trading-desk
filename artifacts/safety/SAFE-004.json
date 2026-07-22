@@ -1,0 +1,110 @@
+{
+  "schema_version": "woozoo.market.replay-manifest/v1",
+  "id": "SAFE-004",
+  "status": "PASS",
+  "commands": [
+    [
+      "python",
+      [
+        "-m",
+        "uv",
+        "run",
+        "--locked",
+        "pytest",
+        "tests/safety",
+        "-q",
+        "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\bulk-safety-pytest.xml"
+      ]
+    ],
+    [
+      "node",
+      [
+        "scripts/capability-zero.mjs"
+      ]
+    ],
+    [
+      "corepack",
+      [
+        "pnpm",
+        "exec",
+        "tsx",
+        "--test",
+        "--test-reporter=junit",
+        "--test-reporter-destination=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.node-results\\bulk-safety-node.xml",
+        "tests/safety/capability-zero.test.ts"
+      ]
+    ]
+  ],
+  "source_revision": "binance-spot-api-docs@29c227d84058dd2be3fe3b42ab368d1d1ce910e5",
+  "policy_version": "woozoo.market.collector-policy/v1",
+  "fixture_manifest_sha256": "7ad31ec79946ab383176360ae3ee069135ea9d8758ad2e16c13d3811cc05ce40",
+  "fixed_seed": 0,
+  "timezone": "UTC",
+  "test_count": 37,
+  "execution_gate": {
+    "framework": "combined-junit",
+    "tests": 37,
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "cancelled": 0,
+    "todo": 0,
+    "components": [
+      {
+        "framework": "pytest-junit",
+        "tests": 36,
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "invocation_id": "cc6ddf3d-6d5c-4e7c-8899-a1e9372e4195",
+        "result_label": "bulk-safety-pytest",
+        "command": [
+          "python",
+          [
+            "-m",
+            "uv",
+            "run",
+            "--locked",
+            "pytest",
+            "tests/safety",
+            "-q",
+            "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\bulk-safety-pytest.xml"
+          ]
+        ],
+        "result_digest": "390d4fcbbb47f3a55eccacf6523fc5965b7035b029bcdf6d01bb202888f2b86c",
+        "run_id": "969404e1df3fd758e8eb62c950baa2eef04f2ee4115dc188cc4c38a91c9f9075"
+      },
+      {
+        "framework": "node-junit",
+        "tests": 1,
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "cancelled": 0,
+        "todo": 0,
+        "invocation_id": "66e831aa-2148-477a-b0f5-26fbbe3016c7",
+        "result_label": "bulk-safety-node",
+        "command": [
+          "corepack",
+          [
+            "pnpm",
+            "exec",
+            "tsx",
+            "--test",
+            "--test-reporter=junit",
+            "--test-reporter-destination=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.node-results\\bulk-safety-node.xml",
+            "tests/safety/capability-zero.test.ts"
+          ]
+        ],
+        "result_digest": "21fe08874674052f4098cfb4f105cb9c23eb0fa4def02da020dcf72276e25d16",
+        "run_id": "5d68667411dd62c440b491e95f657e5837a024fbfffb9d23d011df9117e57d81"
+      }
+    ]
+  },
+  "git_commit": "c0baf4cedd56818da0cc9d5718950b15eaf48b2b",
+  "git_tree": "6f66d2f761a689ab4ed98924b1485f78f7c25478",
+  "working_tree_digest": "fb55680be162ccb23ef0632e97c8880d0cb449b2bad59f1f6dc582d56d969bd4",
+  "frozen_file_count": 405,
+  "output_digest": "a888f5e8b03931f6d38927ed70756dfdcaca4e1b501529957165b8d69ae2c157",
+  "recorded_at": "2026-07-21T13:29:07.605Z"
+}

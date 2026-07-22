@@ -1,0 +1,107 @@
+{
+  "schema_version": 1,
+  "phase": 7,
+  "status": "PASS",
+  "frozen_code_commit": "c0baf4cedd56818da0cc9d5718950b15eaf48b2b",
+  "frozen_code_tree": "6f66d2f761a689ab4ed98924b1485f78f7c25478",
+  "review_evidence_commit": "4ca4b487b6892421e1fbcf9549d234f38ff221f1",
+  "review_evidence_tree": "b39256c63375dbe525af5dff068081be01b994eb",
+  "acceptance_support_commit": "dcef304d5043a51f54c7f20435206c9fb1fd171a",
+  "acceptance_support_tree": "1655b9b908e19540fa5e0aae03daacf1811b31d7",
+  "branch": "codex/phase-7-trading-room",
+  "base": "main",
+  "base_commit": "03369ceebc84da904bf6cab6818154f96670dc43",
+  "push": {
+    "status": "PASS",
+    "remote": "origin",
+    "remote_head": "dcef304d5043a51f54c7f20435206c9fb1fd171a",
+    "verified_at": "2026-07-21T14:41:24Z"
+  },
+  "draft_pr": {
+    "status": "PASS",
+    "url": "https://github.com/Raro7777/woozoo-binance-trading-desk/pull/8",
+    "number": 8,
+    "state": "open",
+    "draft": true,
+    "mergeable": true,
+    "base": "main",
+    "base_sha": "03369ceebc84da904bf6cab6818154f96670dc43",
+    "head": "codex/phase-7-trading-room",
+    "verified_head_sha": "dcef304d5043a51f54c7f20435206c9fb1fd171a",
+    "created_at": "2026-07-20T12:42:28Z",
+    "verified_at": "2026-07-21T14:41:24Z"
+  },
+  "verification": {
+    "github_connector": "PASS",
+    "public_github_metadata": "PASS",
+    "push_check": "PASS",
+    "pull_request_check": "PASS",
+    "checked_at": "2026-07-21T14:41:24Z",
+    "exact_head_checks": [
+      {
+        "event": "push",
+        "status": "PASS",
+        "workflow": "Phase 1 quality",
+        "check": "phase-1-quality",
+        "run_id": 29838565082,
+        "run_url": "https://github.com/Raro7777/woozoo-binance-trading-desk/actions/runs/29838565082",
+        "job_id": 88661197157,
+        "job_url": "https://github.com/Raro7777/woozoo-binance-trading-desk/actions/runs/29838565082/job/88661197157",
+        "head_sha": "dcef304d5043a51f54c7f20435206c9fb1fd171a",
+        "started_at": "2026-07-21T14:19:41Z",
+        "completed_at": "2026-07-21T14:39:15Z",
+        "conclusion": "success"
+      },
+      {
+        "event": "pull_request",
+        "status": "PASS",
+        "workflow": "Phase 1 quality",
+        "check": "phase-1-quality",
+        "run_id": 29838570859,
+        "run_url": "https://github.com/Raro7777/woozoo-binance-trading-desk/actions/runs/29838570859",
+        "job_id": 88661216341,
+        "job_url": "https://github.com/Raro7777/woozoo-binance-trading-desk/actions/runs/29838570859/job/88661216341",
+        "head_sha": "dcef304d5043a51f54c7f20435206c9fb1fd171a",
+        "started_at": "2026-07-21T14:19:45Z",
+        "completed_at": "2026-07-21T14:41:08Z",
+        "conclusion": "success"
+      }
+    ],
+    "superseded_cancelled_attempts": [
+      {
+        "event": "push",
+        "run_id": 29836860998,
+        "job_id": 88655335877,
+        "head_sha": "4ca4b487b6892421e1fbcf9549d234f38ff221f1",
+        "conclusion": "cancelled",
+        "reason": "job timeout-minutes 20 expired after Playwright 19 PASS and before build plus final validator",
+        "counted_as_pass": false
+      },
+      {
+        "event": "pull_request",
+        "run_id": 29836865818,
+        "job_id": 88655352546,
+        "head_sha": "4ca4b487b6892421e1fbcf9549d234f38ff221f1",
+        "conclusion": "cancelled",
+        "reason": "job timeout-minutes 20 expired after Playwright 19 PASS and before build plus final validator",
+        "counted_as_pass": false
+      }
+    ],
+    "timeout_support_change": {
+      "commit": "dcef304d5043a51f54c7f20435206c9fb1fd171a",
+      "path": ".github/workflows/ci.yml",
+      "before_minutes": 20,
+      "after_minutes": 45,
+      "command_or_permission_changed": false,
+      "internal_safety_review": "PASS",
+      "codex_cross_review": "NO_ACTIONABLE_FINDINGS"
+    }
+  },
+  "post_check_digest_bound_projection": {
+    "status": "PASS",
+    "commit_state": "working-tree-uncommitted-until-digest-approval",
+    "contained_in_acceptance_support_commit": false,
+    "binding": "The exact UTF-8 bytes of this PASS projection are bound by the Phase 7 acceptance manifest path and SHA-256 entry. They remain unchanged until explicit digest-bound user approval."
+  },
+  "gate_effect": "PASS. PR #8 is an open mergeable Draft targeting main from codex/phase-7-trading-room. The remote head is dcef304 and both exact-head push and pull_request Phase 1 quality checks succeeded. The earlier 4ca4b48 timeout cancellations are excluded from PASS."
+}

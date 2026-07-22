@@ -1,0 +1,76 @@
+{
+  "schema_version": "woozoo.risk.replay-manifest/v1",
+  "id": "KILL-001",
+  "status": "PASS",
+  "commands": [
+    [
+      "python",
+      [
+        "-m",
+        "uv",
+        "run",
+        "--locked",
+        "pytest",
+        "tests/failure/test_kill_fault_matrix.py::test_kill_001_fault_matrix[paper_create_lock_before_activation]",
+        "tests/failure/test_kill_fault_matrix.py::test_kill_001_fault_matrix[activation_lock_before_paper_create]",
+        "tests/failure/test_kill_fault_matrix.py::test_kill_001_fault_matrix[paper_fill_lock_before_activation]",
+        "tests/failure/test_kill_fault_matrix.py::test_kill_001_fault_matrix[activation_lock_before_paper_fill]",
+        "tests/failure/test_kill_fault_matrix.py::test_kill_001_fault_matrix[one_hundred_and_one_open_orders]",
+        "tests/failure/test_kill_fault_matrix.py::test_kill_001_fault_matrix[crash_before_batch_commit]",
+        "tests/failure/test_kill_fault_matrix.py::test_kill_001_fault_matrix[crash_after_batch_commit_before_ack]",
+        "tests/failure/test_kill_fault_matrix.py::test_kill_001_fault_matrix[duplicate_activation_delivery]",
+        "tests/failure/test_kill_cancel_identity.py::test_kill_cancel_id_binds_full_activation_and_order_ids",
+        "-q",
+        "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\KILL-001.xml"
+      ]
+    ]
+  ],
+  "source_revision": "binance-spot-api-docs@29c227d84058dd2be3fe3b42ab368d1d1ce910e5",
+  "policy_version": "woozoo.market.collector-policy/v1",
+  "fixture_manifest_sha256": "7ad31ec79946ab383176360ae3ee069135ea9d8758ad2e16c13d3811cc05ce40",
+  "fixed_seed": 0,
+  "timezone": "UTC",
+  "test_count": 9,
+  "risk_policy_version": "woozoo.risk-policy/v1",
+  "scenario_manifest_sha256": "30919ef76721906d0799bed56ffe7b0cd1eed1391f20626fc57b3b072983f23f",
+  "network_enabled": false,
+  "scenario_input_digest": "a0ee3ff26fbb152ad3d1bd57edb6bbf5a89495d6c3203de5ba359538c4d4c8f9",
+  "execution_gate": {
+    "framework": "pytest-junit",
+    "tests": 9,
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "invocation_id": "35f38b45-ee12-4a1b-9a3c-37e9aa45701e",
+    "result_label": "KILL-001",
+    "command": [
+      "python",
+      [
+        "-m",
+        "uv",
+        "run",
+        "--locked",
+        "pytest",
+        "tests/failure/test_kill_fault_matrix.py::test_kill_001_fault_matrix[paper_create_lock_before_activation]",
+        "tests/failure/test_kill_fault_matrix.py::test_kill_001_fault_matrix[activation_lock_before_paper_create]",
+        "tests/failure/test_kill_fault_matrix.py::test_kill_001_fault_matrix[paper_fill_lock_before_activation]",
+        "tests/failure/test_kill_fault_matrix.py::test_kill_001_fault_matrix[activation_lock_before_paper_fill]",
+        "tests/failure/test_kill_fault_matrix.py::test_kill_001_fault_matrix[one_hundred_and_one_open_orders]",
+        "tests/failure/test_kill_fault_matrix.py::test_kill_001_fault_matrix[crash_before_batch_commit]",
+        "tests/failure/test_kill_fault_matrix.py::test_kill_001_fault_matrix[crash_after_batch_commit_before_ack]",
+        "tests/failure/test_kill_fault_matrix.py::test_kill_001_fault_matrix[duplicate_activation_delivery]",
+        "tests/failure/test_kill_cancel_identity.py::test_kill_cancel_id_binds_full_activation_and_order_ids",
+        "-q",
+        "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\KILL-001.xml"
+      ]
+    ],
+    "result_digest": "0293f4da12e682c6150dad7b5859240733233f4df1d5b3729c3995b2fdb03cf8",
+    "run_id": "7cc181cefa878557e341d1216a13b2b0ee7174f2c42d6feb2f7401d1c1f22dda"
+  },
+  "git_commit": "c0baf4cedd56818da0cc9d5718950b15eaf48b2b",
+  "git_tree": "6f66d2f761a689ab4ed98924b1485f78f7c25478",
+  "working_tree_digest": "fb55680be162ccb23ef0632e97c8880d0cb449b2bad59f1f6dc582d56d969bd4",
+  "frozen_file_count": 405,
+  "output_digest": "6c57e6cdbb5f2e15500d7f47493be97ebb70de79a9101ddb3ec8451571b3fe7e",
+  "recorded_at": "2026-07-21T13:44:47.775Z"
+}

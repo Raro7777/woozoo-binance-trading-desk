@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "woozoo.risk-input/v3",
+  "title": "Phase 7 Paper Risk input with authoritative Proposal",
+  "type": "object",
+  "additionalProperties": false,
+  "x-creation-phase": 7,
+  "x-activation-phase": 7,
+  "required": ["risk_input_schema_version", "namespace", "proposal", "portfolio", "market_books", "data", "preview_policy_version", "order_preview", "policy", "kill_switch", "reconciliation", "decision_clock", "duplicate", "exposure_snapshot"],
+  "properties": {
+    "risk_input_schema_version": {"const": "woozoo.risk-input/v3"},
+    "namespace": {"const": "paper"},
+    "proposal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["producer_contract", "schema_version", "payload", "proposal_hash"],
+      "properties": {
+        "producer_contract": {"const": "woozoo.trade-proposal/v1"},
+        "schema_version": {"const": "woozoo.trade-proposal/v1"},
+        "payload": {"$ref": "https://schemas.woozoo.local/trade-proposal/v1"},
+        "proposal_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      }
+    },
+    "portfolio": {"$ref": "https://schemas.woozoo.local/risk-input/v1#/$defs/portfolio"},
+    "market_books": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["BTCUSDT", "ETHUSDT"],
+      "properties": {
+        "BTCUSDT": {"$ref": "#/$defs/market_book"},
+        "ETHUSDT": {"$ref": "#/$defs/market_book"}
+      }
+    },
+    "data": {"$ref": "https://schemas.woozoo.local/risk-input/v1#/$defs/data"},
+    "preview_policy_version": {"const": "woozoo.paper-order-preview-policy/v1"},
+    "order_preview": {"$ref": "https://schemas.woozoo.local/risk-input/v1#/$defs/preview"},
+    "policy": {"$ref": "https://schemas.woozoo.local/risk-input/v1#/$defs/policy"},
+    "kill_switch": {"$ref": "https://schemas.woozoo.local/risk-input/v1#/$defs/kill"},
+    "reconciliation": {"$ref": "https://schemas.woozoo.local/risk-input/v1#/$defs/reconciliation"},
+    "decision_clock": {"$ref": "https://schemas.woozoo.local/risk-input/v1#/$defs/clock"},
+    "duplicate": {"$ref": "https://schemas.woozoo.local/risk-input/v1#/$defs/duplicate"},
+    "exposure_snapshot": {"$ref": "https://schemas.woozoo.local/risk-input/v1#/$defs/exposure"}
+  },
+  "$defs": {
+    "market_book": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["best_bid", "best_ask"],
+      "properties": {
+        "best_bid": {"$ref": "https://schemas.woozoo.local/risk-input/v1#/$defs/decimal"},
+        "best_ask": {"$ref": "https://schemas.woozoo.local/risk-input/v1#/$defs/decimal"}
+      }
+    }
+  }
+}

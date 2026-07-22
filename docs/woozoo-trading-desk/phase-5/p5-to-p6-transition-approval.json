@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "approval_id": "P5-TO-P6-20260720-01",
+  "from_phase": 5,
+  "to_phase": 6,
+  "approval_status": "approved",
+  "evidence_manifest": "docs/woozoo-trading-desk/phase-5/p5-acceptance-evidence-manifest.json",
+  "acceptance_evidence_digest": "571c2d344a9f9254f08ed43b1d2f770dc04b4c55446a45b828e7be3fd6fafc8e",
+  "approval_prompt": "Phase 6 transition approval: approve P5 acceptance digest 571c2d344a9f9254f08ed43b1d2f770dc04b4c55446a45b828e7be3fd6fafc8e",
+  "user_response": "P5 acceptance digest 571c2d344a9f9254f08ed43b1d2f770dc04b4c55446a45b828e7be3fd6fafc8e 승인",
+  "binding_interpretation": "The user explicitly approved the exact Phase 5 acceptance evidence digest. This envelope authorizes only the Phase 5 to Phase 6 transition and does not authorize later phase transitions or prohibited capabilities.",
+  "approved_by": "user",
+  "approved_at": "2026-07-20T01:43:01Z",
+  "recorded_by": "codex-orchestrator",
+  "recorded_at": "2026-07-20T01:43:01Z"
+}

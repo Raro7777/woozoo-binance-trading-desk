@@ -1,0 +1,74 @@
+{
+  "schema_version": "woozoo.market.replay-manifest/v1",
+  "id": "DATA-006",
+  "status": "PASS",
+  "commands": [
+    [
+      "python",
+      [
+        "-m",
+        "uv",
+        "run",
+        "--locked",
+        "pytest",
+        "tests/failure/test_market_data_failures.py::test_data_006_raw_append_failure_has_no_normalized_effect",
+        "tests/failure/test_market_data_failures.py::test_data_006_quality_append_failure_aborts_instead_of_leaving_a_healthy_gap",
+        "tests/unit/test_market_data_pipeline.py::test_quality_append_failure_is_invalid_and_propagates_to_stop_the_collector",
+        "tests/unit/test_restart_recovery.py::test_restart_bootstraps_durable_state_and_recovers_pending_raw_once",
+        "tests/integration/test_platform_infrastructure.py::test_market_raw_and_outbox_are_one_transaction",
+        "tests/integration/test_platform_infrastructure.py::test_normalized_and_outbox_are_one_transaction",
+        "tests/integration/test_platform_infrastructure.py::test_quality_and_outbox_are_one_transaction",
+        "tests/integration/test_platform_infrastructure.py::test_quality_writer_retries_only_bounded_transaction_conflicts",
+        "tests/integration/test_platform_infrastructure.py::test_postgres_restart_recovers_pending_raw_and_preserves_trade_continuity",
+        "tests/integration/test_platform_infrastructure.py::test_postgres_restart_restores_closed_kline_grid_continuity",
+        "-q",
+        "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\DATA-006.xml"
+      ]
+    ]
+  ],
+  "source_revision": "binance-spot-api-docs@29c227d84058dd2be3fe3b42ab368d1d1ce910e5",
+  "policy_version": "woozoo.market.collector-policy/v1",
+  "fixture_manifest_sha256": "7ad31ec79946ab383176360ae3ee069135ea9d8758ad2e16c13d3811cc05ce40",
+  "fixed_seed": 0,
+  "timezone": "UTC",
+  "test_count": 10,
+  "execution_gate": {
+    "framework": "pytest-junit",
+    "tests": 10,
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "invocation_id": "cbb6283c-754f-4a8e-a89e-3e94560ada65",
+    "result_label": "DATA-006",
+    "command": [
+      "python",
+      [
+        "-m",
+        "uv",
+        "run",
+        "--locked",
+        "pytest",
+        "tests/failure/test_market_data_failures.py::test_data_006_raw_append_failure_has_no_normalized_effect",
+        "tests/failure/test_market_data_failures.py::test_data_006_quality_append_failure_aborts_instead_of_leaving_a_healthy_gap",
+        "tests/unit/test_market_data_pipeline.py::test_quality_append_failure_is_invalid_and_propagates_to_stop_the_collector",
+        "tests/unit/test_restart_recovery.py::test_restart_bootstraps_durable_state_and_recovers_pending_raw_once",
+        "tests/integration/test_platform_infrastructure.py::test_market_raw_and_outbox_are_one_transaction",
+        "tests/integration/test_platform_infrastructure.py::test_normalized_and_outbox_are_one_transaction",
+        "tests/integration/test_platform_infrastructure.py::test_quality_and_outbox_are_one_transaction",
+        "tests/integration/test_platform_infrastructure.py::test_quality_writer_retries_only_bounded_transaction_conflicts",
+        "tests/integration/test_platform_infrastructure.py::test_postgres_restart_recovers_pending_raw_and_preserves_trade_continuity",
+        "tests/integration/test_platform_infrastructure.py::test_postgres_restart_restores_closed_kline_grid_continuity",
+        "-q",
+        "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\DATA-006.xml"
+      ]
+    ],
+    "result_digest": "1a43faadb47ba7d12c91376e93d2bc6e07939b0411c76d175e3f3161ba833904",
+    "run_id": "86bd558b1fabb4ae4e899da8f3ee8295704ac060f172952e3eb152116b01faed"
+  },
+  "git_commit": "c0baf4cedd56818da0cc9d5718950b15eaf48b2b",
+  "git_tree": "6f66d2f761a689ab4ed98924b1485f78f7c25478",
+  "working_tree_digest": "fb55680be162ccb23ef0632e97c8880d0cb449b2bad59f1f6dc582d56d969bd4",
+  "frozen_file_count": 405,
+  "output_digest": "0afdd5ffb7f3858f54c9af3f9e13e56e2a4f4eaae24c7a44d85e9d606529bcd2",
+  "recorded_at": "2026-07-21T13:41:24.249Z"
+}

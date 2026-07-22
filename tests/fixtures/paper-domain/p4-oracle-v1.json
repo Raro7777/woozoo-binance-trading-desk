@@ -1,0 +1,19 @@
+{
+  "schema_version": "woozoo.paper.replay-manifest/v1",
+  "financial_policy_version": "woozoo.paper.financial-policy/v1",
+  "fee_rate": "0.001000",
+  "participation_rate": "0.100000",
+  "symbol_rules": {
+    "BTCUSDT": {"tick_size": "0.01000000", "step_size": "0.00001000", "min_quantity": "0.00001000", "min_notional": "5.00000000"},
+    "ETHUSDT": {"tick_size": "0.01000000", "step_size": "0.00010000", "min_quantity": "0.00010000", "min_notional": "5.00000000"}
+  },
+  "initial_usdt": "200.000000",
+  "buy_quantity": "0.01000000",
+  "buy_limit": "10000.000000",
+  "partial_fills": ["0.00200000", "0.00150000", "0.00250000"],
+  "sell_quantity": "0.00400000",
+  "sell_limit": "11000.000000",
+  "expected_realized_pnl": "3.916000",
+  "expected_unrealized_pnl": "1.980000",
+  "expected_total_pnl": "5.896000"
+}

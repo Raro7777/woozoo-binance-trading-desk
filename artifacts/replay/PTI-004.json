@@ -1,0 +1,62 @@
+{
+  "schema_version": "woozoo.evidence.replay-manifest/v1",
+  "id": "PTI-004",
+  "status": "PASS",
+  "commands": [
+    [
+      "python",
+      [
+        "-m",
+        "uv",
+        "run",
+        "--locked",
+        "pytest",
+        "tests/unit/test_evidence_builder.py::test_pti_004_uses_only_explicit_clocks_and_never_reads_wall_clock",
+        "-q",
+        "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\PTI-004.xml"
+      ]
+    ]
+  ],
+  "source_revision": "binance-spot-api-docs@29c227d84058dd2be3fe3b42ab368d1d1ce910e5",
+  "policy_version": "woozoo.market.collector-policy/v1",
+  "fixture_manifest_sha256": "7ad31ec79946ab383176360ae3ee069135ea9d8758ad2e16c13d3811cc05ce40",
+  "fixed_seed": 0,
+  "timezone": "UTC",
+  "test_count": 1,
+  "evidence_recipe_version": "woozoo.evidence.closed-candles-approved-features/v1",
+  "phase7_scenario_manifest_sha256": "bf4079bcb6a003e7d32176f8bf153414ba927ab42ba927776281835f1b47e668",
+  "scenario_input_digest": "99210e12893c1448d08041505d2e88c079a69e046fba6e83f45b73a2e91afb27",
+  "declared_test_nodes": [
+    "tests/unit/test_evidence_builder.py::test_pti_004_uses_only_explicit_clocks_and_never_reads_wall_clock"
+  ],
+  "execution_gate": {
+    "framework": "pytest-junit",
+    "tests": 1,
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "invocation_id": "0208a117-95fe-4e91-8165-91feffbf7c7c",
+    "result_label": "PTI-004",
+    "command": [
+      "python",
+      [
+        "-m",
+        "uv",
+        "run",
+        "--locked",
+        "pytest",
+        "tests/unit/test_evidence_builder.py::test_pti_004_uses_only_explicit_clocks_and_never_reads_wall_clock",
+        "-q",
+        "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\PTI-004.xml"
+      ]
+    ],
+    "result_digest": "528414050c51711e5750f4d3b582266f21ae987bd33dc877d50d04c1415c8045",
+    "run_id": "fcea7e6442f4cbd35ea42638bd13f04f85bddd216a524fbc9e124fae11a4bd2c"
+  },
+  "git_commit": "c0baf4cedd56818da0cc9d5718950b15eaf48b2b",
+  "git_tree": "6f66d2f761a689ab4ed98924b1485f78f7c25478",
+  "working_tree_digest": "fb55680be162ccb23ef0632e97c8880d0cb449b2bad59f1f6dc582d56d969bd4",
+  "frozen_file_count": 405,
+  "output_digest": "8ead2574733762e7cca04799f35f06646da9c2d7d520daa2940317c14ffd6190",
+  "recorded_at": "2026-07-21T13:37:47.919Z"
+}

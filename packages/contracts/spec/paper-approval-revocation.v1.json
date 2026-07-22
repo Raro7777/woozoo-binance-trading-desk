@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "woozoo.paper-approval-revocation/v1",
+  "title": "Phase 7 immutable human Paper approval revocation",
+  "type": "object",
+  "additionalProperties": false,
+  "x-creation-phase": 7,
+  "x-activation-phase": 7,
+  "required": ["revocation_id", "approval_id", "approval_hash", "actor_id", "session_binding_hash", "csrf_binding_hash", "origin_hash", "revocation_nonce", "reason", "expected_version", "revoked_at", "payload_hash"],
+  "properties": {
+    "revocation_id": {"$ref": "#/$defs/hash"},
+    "approval_id": {"$ref": "#/$defs/hash"},
+    "approval_hash": {"$ref": "#/$defs/hash"},
+    "actor_id": {"const": "operator-local-1"},
+    "session_binding_hash": {"$ref": "#/$defs/hash"},
+    "csrf_binding_hash": {"$ref": "#/$defs/hash"},
+    "origin_hash": {"$ref": "#/$defs/hash"},
+    "revocation_nonce": {"$ref": "#/$defs/nonce"},
+    "reason": {"type": "string", "minLength": 1, "maxLength": 512},
+    "expected_version": {"type": "integer", "minimum": 1},
+    "revoked_at": {"type": "string", "format": "date-time"},
+    "payload_hash": {"$ref": "#/$defs/hash"}
+  },
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "nonce": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{31,127}$"}
+  }
+}

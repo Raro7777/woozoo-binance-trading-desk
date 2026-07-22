@@ -1,0 +1,59 @@
+{
+  "schema_version": "woozoo.paper.replay-manifest/v1",
+  "id": "ORD-001",
+  "status": "PASS",
+  "commands": [
+    [
+      "python",
+      [
+        "-m",
+        "uv",
+        "run",
+        "--locked",
+        "pytest",
+        "tests/unit/test_paper_engine.py::test_ord_001_partial_fill_duplicate_cancel_and_terminal_monotonicity",
+        "-q",
+        "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\ORD-001.xml"
+      ]
+    ]
+  ],
+  "source_revision": "binance-spot-api-docs@29c227d84058dd2be3fe3b42ab368d1d1ce910e5",
+  "policy_version": "woozoo.market.collector-policy/v1",
+  "fixture_manifest_sha256": "7ad31ec79946ab383176360ae3ee069135ea9d8758ad2e16c13d3811cc05ce40",
+  "fixed_seed": 0,
+  "timezone": "UTC",
+  "test_count": 1,
+  "financial_policy_version": "woozoo.paper.financial-policy/v1",
+  "oracle_fixture_sha256": "25a307ac9e64bf39cf77609bbee42890b28453a219c57cf2203817514edd76fa",
+  "network_enabled": false,
+  "execution_gate": {
+    "framework": "pytest-junit",
+    "tests": 1,
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "invocation_id": "8dca0971-9bf9-43c6-a64e-ff2e31f12173",
+    "result_label": "ORD-001",
+    "command": [
+      "python",
+      [
+        "-m",
+        "uv",
+        "run",
+        "--locked",
+        "pytest",
+        "tests/unit/test_paper_engine.py::test_ord_001_partial_fill_duplicate_cancel_and_terminal_monotonicity",
+        "-q",
+        "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\ORD-001.xml"
+      ]
+    ],
+    "result_digest": "9b13f7df33452a0f2e69d2d0f6b56697a5e275c8df5ae6c30ccd1d832bb58a85",
+    "run_id": "fe044c8ff246f9486efadef7f4996171f64e655f8b0522c7d7d6913fccee1bad"
+  },
+  "git_commit": "c0baf4cedd56818da0cc9d5718950b15eaf48b2b",
+  "git_tree": "6f66d2f761a689ab4ed98924b1485f78f7c25478",
+  "working_tree_digest": "fb55680be162ccb23ef0632e97c8880d0cb449b2bad59f1f6dc582d56d969bd4",
+  "frozen_file_count": 405,
+  "output_digest": "edbf24fae6fc1d6c7ce784a703bd673bb41df18464c57969df0da8f4a0db7ed0",
+  "recorded_at": "2026-07-21T13:37:45.733Z"
+}
