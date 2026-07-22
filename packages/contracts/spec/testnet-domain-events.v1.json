@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "woozoo.testnet-domain-events/v1",
+  "x-creation-phase": 8,
+  "x-activation-phase": 8,
+  "oneOf": [
+    {"$ref": "#/$defs/event"}
+  ],
+  "$defs": {
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["spec_version", "event_id", "event_type", "event_version", "occurred_at", "producer", "activation_phase", "aggregate_id", "aggregate_version", "payload_hash", "data"],
+      "properties": {
+        "spec_version": {"const": "woozoo.testnet-event/v1"},
+        "event_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "event_type": {"enum": ["testnet.gateway.command.accepted.v1", "testnet.gateway.command.rejected.v1", "testnet.order.submission-unknown.v1", "testnet.order.observed.v1", "testnet.order.rejected.v1", "testnet.order.not-found-confirmed.v1", "testnet.fill.observed.v1", "testnet.cancel.observed.v1", "testnet.user-data.state-changed.v1", "testnet.account.snapshot-observed.v1", "testnet.account.reset-suspected.v1", "testnet.account.reset-confirmed.v1", "testnet.account.generation-acknowledged.v1", "testnet.reconciliation.completed.v1", "testnet.safety-barrier.activated.v1", "testnet.safety-barrier.recovered.v1"]},
+        "event_version": {"const": 1},
+        "occurred_at": {"type": "string", "format": "date-time"},
+        "producer": {"enum": ["testnet-execution-service", "spot-testnet-gateway"]},
+        "activation_phase": {"const": 8},
+        "aggregate_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "aggregate_version": {"type": "integer", "minimum": 1},
+        "payload_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "data": {"type": "object", "propertyNames": {"not": {"pattern": "(?i)secret|signature|credential|api.?key|authorization|listen.?key"}}, "additionalProperties": {"type": ["string", "number", "integer", "boolean", "null"]}}
+      }
+    }
+  }
+}

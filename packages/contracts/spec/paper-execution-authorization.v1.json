@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "woozoo.paper-execution-authorization/v1",
+  "title": "Phase 7 one-time Paper execution authorization",
+  "type": "object",
+  "additionalProperties": false,
+  "x-creation-phase": 7,
+  "x-activation-phase": 7,
+  "required": ["authorization_id", "namespace", "approval_id", "approval_hash", "approval_nonce_hash", "authorization_nonce", "proposal_id", "proposal_hash", "risk_decision_id", "risk_decision_hash", "risk_input_digest", "risk_policy_version", "paper_order_preview_hash", "authorization_input_digest", "current_data_state_hash", "current_data_as_of", "current_knowledge_cutoff", "kill_switch_version", "reconciliation_checkpoint_hash", "ledger_snapshot_hash", "paper_account_id", "issued_at", "expires_at"],
+  "properties": {
+    "authorization_id": {"$ref": "#/$defs/hash"},
+    "namespace": {"const": "paper"},
+    "approval_id": {"$ref": "#/$defs/hash"},
+    "approval_hash": {"$ref": "#/$defs/hash"},
+    "approval_nonce_hash": {"$ref": "#/$defs/hash"},
+    "authorization_nonce": {"$ref": "#/$defs/nonce"},
+    "proposal_id": {"$ref": "#/$defs/hash"},
+    "proposal_hash": {"$ref": "#/$defs/hash"},
+    "risk_decision_id": {"$ref": "#/$defs/hash"},
+    "risk_decision_hash": {"$ref": "#/$defs/hash"},
+    "risk_input_digest": {"$ref": "#/$defs/hash"},
+    "risk_policy_version": {"type": "string", "minLength": 1, "maxLength": 64},
+    "paper_order_preview_hash": {"$ref": "#/$defs/hash"},
+    "authorization_input_digest": {"$ref": "#/$defs/hash"},
+    "current_data_state_hash": {"$ref": "#/$defs/hash"},
+    "current_data_as_of": {"type": "string", "format": "date-time"},
+    "current_knowledge_cutoff": {"type": "string", "format": "date-time"},
+    "kill_switch_version": {"type": "integer", "minimum": 0},
+    "reconciliation_checkpoint_hash": {"$ref": "#/$defs/hash"},
+    "ledger_snapshot_hash": {"$ref": "#/$defs/hash"},
+    "paper_account_id": {"$ref": "#/$defs/hash"},
+    "issued_at": {"type": "string", "format": "date-time"},
+    "expires_at": {"type": "string", "format": "date-time"}
+  },
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "nonce": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{31,127}$"}
+  }
+}

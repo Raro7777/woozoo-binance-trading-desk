@@ -1,0 +1,17 @@
+_workspace/
+_workspace_*/
+.staging_backup/
+.env.local
+.env.phase8.local
+.tmp/
+.secrets/
+.venv/
+.next/
+node_modules/
+dist/
+*.tsbuildinfo
+coverage/
+artifacts/
+.p1-integration.lock
+__pycache__/
+*.py[cod]

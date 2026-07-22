@@ -1,0 +1,553 @@
+{
+  "schema_version": "woozoo.phase-7-scenario-manifest/v1",
+  "phase": 7,
+  "release": "MVP / Release 1a",
+  "base_manifest": "docs/woozoo-trading-desk/phase-0/verification-strategy.md",
+  "base_manifest_version": 2,
+  "base_manifest_sha256": "bdb7c3d335efa5b2c5b486ae0ab19a1e2b391f01d71cc4a6fcde8ed2c7e344a3",
+  "phase_schedule_amendment": "docs/woozoo-trading-desk/phase-5/phase-0-contract-amendment.md",
+  "phase_schedule_amendment_sha256": "faab0952b4c60d6cc432bd699d549f52d9c9b43f75e4e7050b30e01bb70b6c68",
+  "implementation_contract": "docs/woozoo-trading-desk/phase-7/implementation-contract.md",
+  "implementation_contract_sha256": "ade54071efcaf2fef7731994df175f17009e6ffffcbc90eaac3e2569f5634c51",
+  "fixed_seed": 0,
+  "timezone": "UTC",
+  "trading_mode": "paper",
+  "runtime_namespace": "paper",
+  "production_activation_phase": 7,
+  "external_network_enabled": false,
+  "phase_scope_and_forbidden_capabilities": "docs/woozoo-trading-desk/phase-state.json",
+  "regression_manifests": [
+    {
+      "path": "docs/woozoo-trading-desk/phase-7/p7-agent-regression-manifest.json",
+      "sha256": "333e8d522876e8055e8d33ae7cd5ec2b9e6933b73d7922725d88ee891b9877cc"
+    },
+    {
+      "path": "docs/woozoo-trading-desk/phase-7/p7-risk-regression-manifest.json",
+      "sha256": "30919ef76721906d0799bed56ffe7b0cd1eed1391f20626fc57b3b072983f23f"
+    }
+  ],
+  "browser_matrix": {
+    "desktop_chromium": "1440x900",
+    "mobile_chromium": "360x800",
+    "operations_chromium": "1440x900"
+  },
+  "denominator": {
+    "rule": "Every Phase 0 manifest row whose required phase is at most 7 is mandatory; AUTH-001 and AUTH-002 are assigned to Phase 7 by the approved Phase 5 schedule amendment.",
+    "required_count": 43,
+    "required_ids": [
+      "CORE-001",
+      "PLAT-001",
+      "PLAT-002",
+      "PLAT-003",
+      "CONTRACT-001",
+      "SAFE-001",
+      "SAFE-002",
+      "SAFE-003",
+      "SAFE-004",
+      "DATA-001",
+      "DATA-002",
+      "DATA-003",
+      "DATA-004",
+      "DATA-005",
+      "DATA-006",
+      "DATA-007",
+      "PTI-001",
+      "PTI-002",
+      "PTI-003",
+      "PTI-004",
+      "FIN-001",
+      "FIN-002",
+      "FIN-003",
+      "FIN-004",
+      "ORD-001",
+      "ORD-002",
+      "ATOM-001",
+      "ATOM-002",
+      "RISK-001",
+      "RISK-002",
+      "KILL-001",
+      "KILL-002",
+      "AUTH-001",
+      "AUTH-002",
+      "AI-001",
+      "AI-002",
+      "SEC-001",
+      "SEC-002",
+      "E2E-001",
+      "E2E-002",
+      "E2E-003",
+      "E2E-004",
+      "E2E-005"
+    ],
+    "required_artifacts": {
+      "CORE-001": "artifacts/unit/CORE-001.json",
+      "PLAT-001": "artifacts/integration/PLAT-001.json",
+      "PLAT-002": "artifacts/integration/PLAT-002.json",
+      "PLAT-003": "artifacts/integration/PLAT-003.json",
+      "CONTRACT-001": "artifacts/contracts/CONTRACT-001.json",
+      "SAFE-001": "artifacts/safety/SAFE-001.json",
+      "SAFE-002": "artifacts/safety/SAFE-002.json",
+      "SAFE-003": "artifacts/safety/SAFE-003.json",
+      "SAFE-004": "artifacts/safety/SAFE-004.json",
+      "DATA-001": "artifacts/replay/DATA-001.json",
+      "DATA-002": "artifacts/replay/DATA-002.json",
+      "DATA-003": "artifacts/failure/DATA-003.json",
+      "DATA-004": "artifacts/failure/DATA-004.json",
+      "DATA-005": "artifacts/failure/DATA-005.json",
+      "DATA-006": "artifacts/failure/DATA-006.json",
+      "DATA-007": "artifacts/property/DATA-007.json",
+      "PTI-001": "artifacts/replay/PTI-001.json",
+      "PTI-002": "artifacts/replay/PTI-002.json",
+      "PTI-003": "artifacts/safety/PTI-003.json",
+      "PTI-004": "artifacts/replay/PTI-004.json",
+      "FIN-001": "artifacts/property/FIN-001.json",
+      "FIN-002": "artifacts/property/FIN-002.json",
+      "FIN-003": "artifacts/unit/FIN-003.json",
+      "FIN-004": "artifacts/integration/FIN-004.json",
+      "ORD-001": "artifacts/property/ORD-001.json",
+      "ORD-002": "artifacts/replay/ORD-002.json",
+      "ATOM-001": "artifacts/failure/ATOM-001.json",
+      "ATOM-002": "artifacts/failure/ATOM-002.json",
+      "RISK-001": "artifacts/replay/RISK-001.json",
+      "RISK-002": "artifacts/unit/RISK-002.json",
+      "KILL-001": "artifacts/failure/KILL-001.json",
+      "KILL-002": "artifacts/safety/KILL-002.json",
+      "AUTH-001": "artifacts/unit/AUTH-001.json",
+      "AUTH-002": "artifacts/failure/AUTH-002.json",
+      "AI-001": "artifacts/contracts/AI-001.json",
+      "AI-002": "artifacts/safety/AI-002.json",
+      "SEC-001": "artifacts/safety/SEC-001.json",
+      "SEC-002": "artifacts/safety/SEC-002.json",
+      "E2E-001": "artifacts/e2e/E2E-001/result.json",
+      "E2E-002": "artifacts/e2e/E2E-002/result.json",
+      "E2E-003": "artifacts/e2e/E2E-003/result.json",
+      "E2E-004": "artifacts/e2e/E2E-004/result.json",
+      "E2E-005": "artifacts/e2e/E2E-005/result.json"
+    },
+    "phase_7_required_count": 7,
+    "phase_7_required_ids": [
+      "AUTH-001",
+      "AUTH-002",
+      "E2E-001",
+      "E2E-002",
+      "E2E-003",
+      "E2E-004",
+      "E2E-005"
+    ],
+    "compatibility_evidence": {
+      "point_in_time": "PTI-001 through PTI-004 are executed directly at their original Phase 0 artifact paths in addition to the approved Phase 3 EVID regression set.",
+      "atomic_ack_loss": "ATOM-002 is executed at the original failure artifact path while retaining the approved Phase 4 replay regression artifact.",
+      "browser_bundles": "Each E2E flat result is copied byte-for-byte to artifacts/e2e/E2E-00N/result.json so the original directory evidence contract is satisfied."
+    }
+  },
+  "compatibility_scenarios": [
+    {
+      "id": "PTI-001",
+      "owner": "evidence-worker",
+      "command": "corepack pnpm test:replay",
+      "artifact": "artifacts/replay/PTI-001.json",
+      "test_nodes": [
+        "tests/property/test_evidence_boundaries.py::test_dual_cutoff_is_independently_inclusive[event_delta0-received_delta0-True]",
+        "tests/property/test_evidence_boundaries.py::test_dual_cutoff_is_independently_inclusive[event_delta1-received_delta1-True]",
+        "tests/property/test_evidence_boundaries.py::test_dual_cutoff_is_independently_inclusive[event_delta2-received_delta2-False]",
+        "tests/property/test_evidence_boundaries.py::test_dual_cutoff_is_independently_inclusive[event_delta3-received_delta3-False]"
+      ],
+      "source_sha256": ["a5c2ff41fb5cb88feb0470db09196938679a8d1b73f72cb831bf8e06480090f0"],
+      "oracle": "event_time and received_at independently honor the frozen inclusive just-before, equal and just-after boundaries."
+    },
+    {
+      "id": "PTI-002",
+      "owner": "evidence-worker",
+      "command": "corepack pnpm test:replay",
+      "artifact": "artifacts/replay/PTI-002.json",
+      "test_nodes": [
+        "tests/unit/test_evidence_builder.py::test_builder_is_deterministic_and_prior_snapshot_is_immutable_under_late_arrival",
+        "tests/unit/test_evidence_builder.py::test_newer_cutoff_deterministically_replaces_a_same_bucket_late_materialization"
+      ],
+      "source_sha256": ["6279a0acfd63435bc657b146c8db2d30a0bf299ad288811fe8ddb5f698bff581"],
+      "oracle": "A late arrival cannot mutate an earlier cutoff, while a newer explicit cutoff produces a deterministic replacement snapshot."
+    },
+    {
+      "id": "PTI-003",
+      "owner": "evidence-worker",
+      "command": "corepack pnpm test:safety",
+      "artifact": "artifacts/safety/PTI-003.json",
+      "test_nodes": [
+        "tests/unit/test_evidence_builder.py::test_pti_003_missing_raw_id_cannot_enter_evidence",
+        "tests/unit/test_evidence_builder.py::test_pti_003_stale_collector_fails_closed",
+        "tests/unit/test_evidence_builder.py::test_pti_003_watermark_binds_each_approved_kline_stream[1m]",
+        "tests/unit/test_evidence_builder.py::test_pti_003_watermark_binds_each_approved_kline_stream[5m]",
+        "tests/unit/test_evidence_builder.py::test_pti_003_watermark_binds_each_approved_kline_stream[1h]",
+        "tests/unit/test_evidence_builder.py::test_pti_003_watermark_binds_each_approved_kline_stream[4h]",
+        "tests/unit/test_evidence_builder.py::test_pti_003_raw_stream_mismatch_fails_closed",
+        "tests/unit/test_evidence_builder.py::test_pti_003_incomplete_watermark_fails_closed",
+        "tests/unit/test_phase7_agent_risk_services.py::test_unhealthy_or_future_evidence_persists_audited_hold_without_proposal",
+        "tests/unit/test_evidence_builder.py::test_builder_fails_closed_when_an_interval_has_no_complete_window",
+        "tests/unit/test_evidence_builder.py::test_builder_rejects_a_terminal_window_that_is_stale_at_the_cutoffs",
+        "tests/unit/test_evidence_builder.py::test_builder_rejects_every_non_healthy_quality[degraded]",
+        "tests/unit/test_evidence_builder.py::test_builder_rejects_every_non_healthy_quality[stale]",
+        "tests/unit/test_evidence_builder.py::test_builder_rejects_every_non_healthy_quality[invalid]",
+        "tests/unit/test_evidence_builder.py::test_builder_rejects_every_non_healthy_quality[reconnecting]"
+      ],
+      "source_sha256": [
+        "6279a0acfd63435bc657b146c8db2d30a0bf299ad288811fe8ddb5f698bff581",
+        "542cf03d41eaf9e7b01dbb924f3a8d977a49ddb5be59a996076264de55b27d47"
+      ],
+      "oracle": "Every approved kline interval binds the exact raw stream; a missing raw ID, stale collector session, incomplete or mismatched watermark, missing terminal window, stale cutoff or non-healthy quality fails closed without producing actionable Evidence."
+    },
+    {
+      "id": "PTI-004",
+      "owner": "evidence-worker",
+      "command": "corepack pnpm test:replay",
+      "artifact": "artifacts/replay/PTI-004.json",
+      "test_nodes": [
+        "tests/unit/test_evidence_builder.py::test_pti_004_uses_only_explicit_clocks_and_never_reads_wall_clock"
+      ],
+      "source_sha256": ["6279a0acfd63435bc657b146c8db2d30a0bf299ad288811fe8ddb5f698bff581"],
+      "oracle": "Changing the simulated wall clock leaves the Evidence digest identical and the wall-clock read canary remains untouched."
+    },
+    {
+      "id": "ATOM-002",
+      "owner": "control-api+paper-engine",
+      "command": "corepack pnpm test:failure",
+      "artifact": "artifacts/failure/ATOM-002.json",
+      "test_nodes": [
+        "tests/replay/test_paper_restart_replay.py::test_atom_002_ack_loss_retry_returns_same_order_without_new_effect",
+        "tests/integration/test_trading_room_command_ports.py::test_approval_ack_loss_replays_receipt_after_worker_failure",
+        "tests/integration/test_paper_postgres_persistence.py::test_atomic_write_is_durable_idempotent_and_restart_stable",
+        "tests/integration/test_paper_postgres_persistence.py::test_concurrent_command_and_observation_retries_return_one_stored_effect"
+      ],
+      "source_sha256": [
+        "c69138d0379deaa38656b20c1ef50fe08d586d2da3348f0b9b1a8d9117bf0026",
+        "5df68171d47cfbf6dc19e8c6672e326380dc7ab60a978905e09941cab81fad42",
+        "16c4257805a95a32de14f5f9286c35176aa32eff888287289c1d1e6b1805a3ec"
+      ],
+      "oracle": "A committed response lost before acknowledgement is replayed after restart with zero additional order, fill, posting or event effect. A durable approval receipt is replayed before mutable worker-health checks, while a changed body under the same idempotency key conflicts."
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "AUTH-001",
+      "owner": "control-api+paper-engine",
+      "command": "corepack pnpm test:unit",
+      "artifact": "artifacts/unit/AUTH-001.json",
+      "test_nodes": [
+        "tests/unit/test_trading_room_security.py::test_auth_001_session_rotation_csrf_one_time_and_absolute_expiry",
+        "tests/unit/test_trading_room_security.py::test_auth_002_foreign_or_missing_origin_has_effect_zero",
+        "tests/unit/test_trading_room_security.py::test_logout_revokes_session_and_consumes_csrf",
+        "tests/unit/test_trading_room_security.py::test_in_memory_invalid_or_replayed_csrf_does_not_touch_session",
+        "tests/unit/test_trading_room_security.py::test_in_memory_command_guard_and_logout_serialize_in_both_orders",
+        "tests/integration/test_trading_room_postgres_authority.py::test_postgres_command_guard_and_logout_serialize_and_roll_back",
+        "tests/contract/test_phase7_trading_contract.py::test_phase7_approval_chain_is_closed_hash_bound_and_nonce_distinct",
+        "tests/property/test_trading_room_properties.py::test_phase7_preview_hash_is_mutation_sensitive_and_notional_is_policy_capped",
+        "tests/failure/test_trading_room_authorization_failures.py::test_auth_002_stale_state_before_human_decision_has_zero_order_effect",
+        "tests/integration/test_trading_room_command_ports.py::test_concurrent_same_request_issues_once_without_browser_paper_effect",
+        "tests/integration/test_trading_room_command_ports.py::test_revocation_can_win_after_authorization_issue_before_first_paper_attempt",
+        "tests/integration/test_trading_room_command_ports.py::test_malformed_preconditions_have_zero_effect_and_do_not_consume_csrf",
+        "tests/integration/test_trading_room_command_ports.py::test_reject_does_not_consult_unavailable_worker_projection",
+        "tests/integration/test_trading_room_command_ports.py::test_approve_delegates_to_risk_authority_without_mutable_worker_preflight[stale]",
+        "tests/integration/test_trading_room_command_ports.py::test_approve_delegates_to_risk_authority_without_mutable_worker_preflight[failed]",
+        "tests/integration/test_trading_room_command_ports.py::test_approve_delegates_to_risk_authority_without_mutable_worker_preflight[missing]",
+        "tests/integration/test_trading_room_command_ports.py::test_approve_delegates_to_risk_authority_without_mutable_worker_preflight[unavailable]",
+        "tests/integration/test_trading_room_command_ports.py::test_approval_view_projects_worker_failure_as_approve_only_block[stale]",
+        "tests/integration/test_trading_room_command_ports.py::test_approval_view_projects_worker_failure_as_approve_only_block[failed]",
+        "tests/integration/test_trading_room_command_ports.py::test_approval_view_projects_worker_failure_as_approve_only_block[missing]",
+        "tests/integration/test_trading_room_command_ports.py::test_approval_view_projects_worker_failure_as_approve_only_block[unavailable]",
+        "tests/integration/test_trading_room_command_ports.py::test_approval_view_projects_worker_failure_as_approve_only_block[invalid]"
+      ],
+      "source_sha256": [
+        "d477334cd1b479a723175d21192f993ad180858766ef0e1dcf7599a6530b64df",
+        "f4ddb1a8cb9f835f043ce03d2a0e2b51c97e16c336978a68225f02541e53e042",
+        "dab3213f194c3bc1161f9279fe200b66bd810c09ef6482a1c3d526ebd0835fec",
+        "799fbd11362ba754a2a385d84d01f0ac4a37ed283de66553be5876e3524d69c3",
+        "9d5d32d65c8bf17db096b4ecd718969c96b4be5f613db594f8021b7ff2325abc",
+        "5df68171d47cfbf6dc19e8c6672e326380dc7ab60a978905e09941cab81fad42"
+      ],
+      "oracle": "Session, Origin, one-time CSRF, exact preview hashes, approval version and distinct authorization nonce are all valid. Session validation, idle touch, one-time CSRF consumption and logout revocation serialize atomically; when logout wins, a waiting command is rejected without consuming its CSRF or creating a financial effect. Worker failure is projected as APPROVE-only disabled while one immutable, idempotent REJECT remains available; the command API does not use that mutable projection as authority and delegates new approval enforcement to the database Risk boundary. Every stale, replayed, foreign or malformed counterexample has zero new financial effect."
+    },
+    {
+      "id": "AUTH-002",
+      "owner": "paper-engine+risk-engine",
+      "command": "corepack pnpm test:failure",
+      "artifact": "artifacts/failure/AUTH-002.json",
+      "test_nodes": [
+        "tests/failure/test_trading_room_authorization_failures.py::test_auth_002_stale_state_before_human_decision_has_zero_order_effect",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_denied_and_error_risk_reject_commands_have_no_db_or_api_effects",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_sql_worker_authority_blocks_failed_worker_without_effects",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_newer_denied_risk_serializes_before_waiting_approval_without_stale_effects",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_approval_lock_wait_crossing_risk_ttl_uses_post_lock_wall_clock",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_first_attempt_rejects_authorization_superseded_by_newer_denied_risk",
+        "tests/integration/test_agent_postgres_persistence.py::test_authoritative_risk_context_requires_latest_raw_bound_books",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_first_attempt_blocks_normalized_only_newest_books_without_financial_effects",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_first_attempt_does_not_fall_back_from_newest_unverified_book",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_paper_lock_wait_crossing_expiry_uses_post_lock_wall_clock",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_market_authority_lock_wait_crossing_expiry_uses_post_lock_wall_clock",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_newer_book_commit_while_verifier_waits_blocks_stale_first_attempt",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_quality_writer_and_book_verifier_share_one_lock_order_without_healthy_gap",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_expired_and_revoked_authorization_uses_expiry_precedence",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_revoked_and_newer_denied_risk_uses_risk_precedence",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_kill_and_expired_authorization_uses_kill_precedence_and_drains",
+        "tests/integration/test_trading_room_migration_contract.py::test_approval_sql_authority_requires_allowed_risk_and_rechecks_worker_atomically",
+        "tests/integration/test_trading_room_migration_contract.py::test_market_quality_writer_matches_the_phase7_authority_lock_and_failure_contract",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_approval_rejects_checkpoint_that_predates_a_paper_effect",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_kill_first_attempt_stays_blocked_after_recovery_and_retry",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_missing_reconciliation_consumes_authorization_without_financial_effects",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_kill_recovery_lock_wait_crossing_worker_ttl_uses_post_lock_wall_clock",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_newer_changed_book_blocks_and_audit_projection_removes_nonce[BTCUSDT-10001-10002]",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_newer_changed_book_blocks_and_audit_projection_removes_nonce[ETHUSDT-2999-3001]",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_six_second_old_books_terminally_block_first_attempt",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_non_target_same_midpoint_book_drift_terminally_blocks_first_attempt",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_revocation_and_first_attempt_serialize_without_revoked_order",
+        "tests/integration/test_trading_room_command_ports.py::test_malformed_preconditions_have_zero_effect_and_do_not_consume_csrf"
+      ],
+      "source_sha256": [
+        "9d5d32d65c8bf17db096b4ecd718969c96b4be5f613db594f8021b7ff2325abc",
+        "7628265578a7256890a0238a81baac7fddc68a006df387e3e33ced604724f699",
+        "d872eb3e9060624ea526d68d5f249fa096d94a285f9e97e24257d54e9465faf4",
+        "9546684afc83993b459fa885bf0041c29e5c835603837813a940ddc2373f9286",
+        "5df68171d47cfbf6dc19e8c6672e326380dc7ab60a978905e09941cab81fad42"
+      ],
+      "oracle": "A direct human decision is recorded only for a complete latest ALLOWED Risk decision: DENIED or ERROR blocks both APPROVE and REJECT with zero approval, receipt, outbox, authorization, attempt or order effect. New APPROVE locks and rechecks the authoritative worker row inside the issuance transaction; worker readiness never blocks a valid human REJECT. Risk persistence, approval and the first Paper attempt share one proposal authority lock: a newer DENIED decision wins before a waiting approval and supersedes an already-issued authorization at first attempt without an order. Approval issuance samples one database wall clock only after every authority lock, so a Risk decision that expires while the command waits creates no approval or authorization. Authoritative Risk context and the first Paper attempt select the newest BTCUSDT and ETHUSDT normalized rows before verifying their exact raw bytes and hash, collector identity, stream watermark and current-market projection. The shared verifier serializes against concurrent normalized inserts and then requires the originally selected ID to remain the exact newest symbol book, so a newer commit made while the verifier waits fails closed instead of using the stale price; rawless or unverified newest rows likewise fail closed and never fall back to an older valid row. Collector session, normalized and quality writers share a writer fence; a quality downgrade binds one exact latest session and locks watermark, market and collector in the verifier order before rechecking latest-session identity. A forced quality-writer/verifier interleaving therefore completes without deadlock, returns DATA_INVALID and has zero order, fill, hold or ledger effect. After all blocking market-authority locks, one wall-clock sample controls the first-attempt expiry/freshness boundary and every effect, so an authorization that expires on either the account or verifier lock cannot create an order. Kill recovery likewise locks the worker and market authority before sampling its recovery clock; a heartbeat that becomes stale while waiting leaves Kill active with zero recovery effect. Approval issuance rejects a reconciliation checkpoint whose stamped authority sequence predates any committed Paper effect. Composite first-attempt blockers resolve to exactly one database-enforced reason in Risk drift, Kill active, Kill version drift, expiry at or after the boundary, then revocation priority; expired plus revoked, revoked plus newer DENIED, and Kill plus expired each create one terminal attempt, receipt, broker input and blocked outbox with zero order, hold, fill or ledger effect, replay immutably, and do not stall the Kill drain. Reconciliation, stale books and execution-quality drift remain terminal fail-closed checks."
+    },
+    {
+      "id": "E2E-001",
+      "owner": "trading-room-web+control-api",
+      "command": "corepack pnpm test:e2e",
+      "artifact_bundle": "artifacts/e2e/E2E-001/",
+      "result_artifact": "artifacts/e2e/E2E-001/result.json",
+      "test_nodes": [
+        "tests/e2e/trading-room.spec.ts::[live] E2E-001",
+        "tests/integration/test_trading_room_api.py::test_e2e_001_authenticated_proposal_approval_creates_exactly_one_paper_order",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_authorized_order_recorded_book_partial_fill_then_cancel_is_atomic_and_idempotent",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_recorded_book_rejects_malformed_or_unbound_raw_provenance_without_effects",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_no_fill_replay_returns_immutable_first_response_after_later_fill",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_same_side_orders_compete_in_accepted_at_order_id_order_for_one_book_budget",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_recorded_book_revalidates_current_stream_health_and_defers_stale_event",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_recorded_book_kill_barrier_holds_without_any_paper_effect",
+        "tests/unit/test_paper_engine.py::test_side_partitioned_book_observations_keep_canonical_order_and_budgets_independent",
+        "tests/unit/test_paper_authorization_worker_runtime.py::test_recorded_book_hold_reconciles_without_reporting_progress_or_failing_worker[PAPER_RECONCILIATION_HOLD]",
+        "tests/unit/test_paper_authorization_worker_runtime.py::test_recorded_book_hold_reconciles_without_reporting_progress_or_failing_worker[PAPER_KILL_SWITCH_ACTIVE]",
+        "tests/unit/test_paper_authorization_worker_runtime.py::test_recorded_book_hold_reconciles_without_reporting_progress_or_failing_worker[ORDER_NOT_FILLABLE]",
+        "tests/unit/test_paper_authorization_worker_runtime.py::test_recorded_book_hold_reconciles_without_reporting_progress_or_failing_worker[INVALID_RECORDED_BOOK_INPUT]",
+        "tests/unit/test_paper_authorization_worker_runtime.py::test_recorded_book_hold_reconciles_without_reporting_progress_or_failing_worker[CURRENT_MARKET_STATE_UNHEALTHY]",
+        "tests/unit/test_paper_authorization_worker_runtime.py::test_unexpected_recorded_book_exception_remains_fatal",
+        "tests/unit/test_paper_authorization_worker_runtime.py::test_unknown_recorded_book_hold_reason_remains_fatal",
+        "tests/integration/test_trading_room_migration_contract.py::test_phase7_migration_upgrades_with_digest_only_storage_and_least_privilege"
+      ],
+      "source_sha256": [
+        "90a31939b5325fb4ec774edd91789ef40b51c70ff35d97206f2393e6f756d3ef",
+        "dd85d3264e1a7374d1e34e8f7fde5a083fd8ae115b927d453941c5a4be9942d3",
+        "7628265578a7256890a0238a81baac7fddc68a006df387e3e33ced604724f699",
+        "07cb535db57cca0e4f13b44a2ad75a2716461abe283517bb6cfe67d0409757c6",
+        "5769abf0ed4b9a57c849a168da2536cb6397d2b24dc514d06b8c45e54633c7a8",
+        "9546684afc83993b459fa885bf0041c29e5c835603837813a940ddc2373f9286"
+      ],
+      "configuration_sources": [
+        {
+          "path": "tests/e2e/live_control_api.py",
+          "sha256": "186e6b4af3d6f9d1334d78cd0f59dc3ae38da940da7bfa507639ab02d9d08381"
+        },
+        {
+          "path": "tests/e2e/https-web-server.mjs",
+          "sha256": "ed8a38bdd219d1d76bde521f3edeecc9276d1f208fce4965deaa39982adfa1b5"
+        },
+        {
+          "path": "tests/e2e/infrastructure-lifecycle.mjs",
+          "sha256": "299c6a8f9d7dbd27dd23462fbc351ceda131a0bf54ce60a5d2bf503effc1d5c3"
+        },
+        {
+          "path": "tests/e2e/global-teardown.mjs",
+          "sha256": "a8cf811891be0061add7098a56dee325a1f2719082c83b018d2fdea06706a911"
+        },
+        {
+          "path": "tests/e2e/compose.yaml",
+          "sha256": "1c0a942bb8545123cd57b44d925341b00dc0f17e09e4802725c514f16ae9e48b"
+        },
+        {
+          "path": "playwright.config.ts",
+          "sha256": "f70d2fd33a33dded6a8a112e66ec6ea065acd9927d3a04ebd39ee50dc8930c48"
+        }
+      ],
+      "oracle": "Local HTTPS login, healthy Evidence, deterministic analysis, Risk, exact server preview, human approval and one-time authorization create exactly one Paper order. A post-acceptance public recorded book produces an authoritative partial fill only when raw bytes, raw hash and normalized bid/ask are exactly bound; same-side competing orders share one canonical liquidity budget, NO_FILL replay remains immutable after later state changes, and received-time provenance, current session/watermark/market health, transient HOLD handling, unexpected-failure behavior and least-privilege DB access are exact-node checked. The desktop operator cancellation preserves matching API, event and ledger authority, and the mobile outstanding order remains an exact Kill-cancellation precondition for E2E-004."
+    },
+    {
+      "id": "E2E-002",
+      "owner": "trading-room-web+control-api",
+      "command": "corepack pnpm test:e2e",
+      "artifact_bundle": "artifacts/e2e/E2E-002/",
+      "result_artifact": "artifacts/e2e/E2E-002/result.json",
+      "test_nodes": [
+        "tests/e2e/trading-room.spec.ts::[live] E2E-002",
+        "tests/integration/test_trading_room_api.py::test_e2e_002_stale_data_consumes_csrf_and_blocks_without_order"
+      ],
+      "source_sha256": [
+        "90a31939b5325fb4ec774edd91789ef40b51c70ff35d97206f2393e6f756d3ef",
+        "dd85d3264e1a7374d1e34e8f7fde5a083fd8ae115b927d453941c5a4be9942d3"
+      ],
+      "configuration_sources": [
+        {
+          "path": "tests/e2e/live_control_api.py",
+          "sha256": "186e6b4af3d6f9d1334d78cd0f59dc3ae38da940da7bfa507639ab02d9d08381"
+        },
+        {
+          "path": "tests/e2e/https-web-server.mjs",
+          "sha256": "ed8a38bdd219d1d76bde521f3edeecc9276d1f208fce4965deaa39982adfa1b5"
+        },
+        {
+          "path": "tests/e2e/infrastructure-lifecycle.mjs",
+          "sha256": "299c6a8f9d7dbd27dd23462fbc351ceda131a0bf54ce60a5d2bf503effc1d5c3"
+        },
+        {
+          "path": "tests/e2e/global-teardown.mjs",
+          "sha256": "a8cf811891be0061add7098a56dee325a1f2719082c83b018d2fdea06706a911"
+        },
+        {
+          "path": "tests/e2e/compose.yaml",
+          "sha256": "1c0a942bb8545123cd57b44d925341b00dc0f17e09e4802725c514f16ae9e48b"
+        },
+        {
+          "path": "playwright.config.ts",
+          "sha256": "f70d2fd33a33dded6a8a112e66ec6ea065acd9927d3a04ebd39ee50dc8930c48"
+        }
+      ],
+      "oracle": "Stale Evidence is displayed in Korean as a fail-closed hold, consumes the command token according to policy and creates no Proposal, authorization or Paper order."
+    },
+    {
+      "id": "E2E-003",
+      "owner": "trading-room-web+control-api+paper-engine",
+      "command": "corepack pnpm test:e2e",
+      "artifact_bundle": "artifacts/e2e/E2E-003/",
+      "result_artifact": "artifacts/e2e/E2E-003/result.json",
+      "test_nodes": [
+        "tests/e2e/trading-room.spec.ts::[live] E2E-003",
+        "tests/property/test_trading_room_properties.py::test_phase7_preview_hash_is_mutation_sensitive_and_notional_is_policy_capped",
+        "tests/property/test_trading_room_properties.py::test_phase7_idempotency_same_hash_replays_and_changed_hash_conflicts",
+        "tests/integration/test_trading_room_command_ports.py::test_approval_ack_loss_replays_receipt_after_worker_failure",
+        "tests/integration/test_trading_room_command_ports.py::test_concurrent_same_request_issues_once_without_browser_paper_effect"
+      ],
+      "source_sha256": [
+        "90a31939b5325fb4ec774edd91789ef40b51c70ff35d97206f2393e6f756d3ef",
+        "799fbd11362ba754a2a385d84d01f0ac4a37ed283de66553be5876e3524d69c3",
+        "5df68171d47cfbf6dc19e8c6672e326380dc7ab60a978905e09941cab81fad42"
+      ],
+      "configuration_sources": [
+        {
+          "path": "tests/e2e/live_control_api.py",
+          "sha256": "186e6b4af3d6f9d1334d78cd0f59dc3ae38da940da7bfa507639ab02d9d08381"
+        },
+        {
+          "path": "tests/e2e/https-web-server.mjs",
+          "sha256": "ed8a38bdd219d1d76bde521f3edeecc9276d1f208fce4965deaa39982adfa1b5"
+        },
+        {
+          "path": "tests/e2e/infrastructure-lifecycle.mjs",
+          "sha256": "299c6a8f9d7dbd27dd23462fbc351ceda131a0bf54ce60a5d2bf503effc1d5c3"
+        },
+        {
+          "path": "tests/e2e/global-teardown.mjs",
+          "sha256": "a8cf811891be0061add7098a56dee325a1f2719082c83b018d2fdea06706a911"
+        },
+        {
+          "path": "tests/e2e/compose.yaml",
+          "sha256": "1c0a942bb8545123cd57b44d925341b00dc0f17e09e4802725c514f16ae9e48b"
+        },
+        {
+          "path": "playwright.config.ts",
+          "sha256": "f70d2fd33a33dded6a8a112e66ec6ea065acd9927d3a04ebd39ee50dc8930c48"
+        }
+      ],
+      "oracle": "Concurrent click, retry, reload and restart replay one durable response and one effect. A committed approval receipt is replayed before mutable worker-health checks after ACK loss, while any preview or request-hash mutation conflicts or blocks without financial effect."
+    },
+    {
+      "id": "E2E-004",
+      "owner": "trading-room-web+risk-engine+paper-engine",
+      "command": "corepack pnpm test:e2e",
+      "artifact_bundle": "artifacts/e2e/E2E-004/",
+      "result_artifact": "artifacts/e2e/E2E-004/result.json",
+      "test_nodes": [
+        "tests/e2e/trading-room.spec.ts::[live] E2E-004",
+        "tests/integration/test_trading_room_api.py::test_e2e_004_kill_cancels_open_order_and_manual_recovery_is_audited",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_recovery_races_consumer_but_requires_completion_and_later_checkpoint",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_kill_completion_waits_for_pending_authorization_and_recovery_resumes",
+        "tests/integration/test_phase7_paper_first_attempt_authority.py::test_test_namespace_attempt_cannot_satisfy_pending_paper_authorization",
+        "tests/unit/test_paper_authorization_worker_runtime.py::test_kill_worker_yields_when_completion_waits_for_authorization_drain",
+        "tests/unit/test_paper_authorization_worker_runtime.py::test_runner_drains_pending_authorization_before_kill_completion"
+      ],
+      "source_sha256": [
+        "90a31939b5325fb4ec774edd91789ef40b51c70ff35d97206f2393e6f756d3ef",
+        "dd85d3264e1a7374d1e34e8f7fde5a083fd8ae115b927d453941c5a4be9942d3",
+        "7628265578a7256890a0238a81baac7fddc68a006df387e3e33ced604724f699",
+        "5769abf0ed4b9a57c849a168da2536cb6397d2b24dc514d06b8c45e54633c7a8"
+      ],
+      "configuration_sources": [
+        {
+          "path": "tests/e2e/live_control_api.py",
+          "sha256": "186e6b4af3d6f9d1334d78cd0f59dc3ae38da940da7bfa507639ab02d9d08381"
+        },
+        {
+          "path": "tests/e2e/https-web-server.mjs",
+          "sha256": "ed8a38bdd219d1d76bde521f3edeecc9276d1f208fce4965deaa39982adfa1b5"
+        },
+        {
+          "path": "tests/e2e/infrastructure-lifecycle.mjs",
+          "sha256": "299c6a8f9d7dbd27dd23462fbc351ceda131a0bf54ce60a5d2bf503effc1d5c3"
+        },
+        {
+          "path": "tests/e2e/global-teardown.mjs",
+          "sha256": "a8cf811891be0061add7098a56dee325a1f2719082c83b018d2fdea06706a911"
+        },
+        {
+          "path": "tests/e2e/compose.yaml",
+          "sha256": "1c0a942bb8545123cd57b44d925341b00dc0f17e09e4802725c514f16ae9e48b"
+        },
+        {
+          "path": "playwright.config.ts",
+          "sha256": "f70d2fd33a33dded6a8a112e66ec6ea065acd9927d3a04ebd39ee50dc8930c48"
+        }
+      ],
+      "oracle": "Kill activation cancels the open Paper order, permits no later fill and remains active until an authenticated operator supplies the bound incident reference after healthy reconciliation. Recovery remains blocked when the current market projection, stream watermark, collector session or raw-bound public book authority is stale or invalid, even if a recent normalized book row still says healthy. Cancellation completion waits until all already-issued Paper authorizations are terminally blocked under Kill, and a test-namespace attempt cannot satisfy that drain condition; a pre-completion checkpoint cannot release Kill, while the later checkpoint bound to the immutable completion digest restores manual recovery."
+    },
+    {
+      "id": "E2E-005",
+      "owner": "trading-room-web+control-api",
+      "command": "corepack pnpm test:e2e",
+      "artifact_bundle": "artifacts/e2e/E2E-005/",
+      "result_artifact": "artifacts/e2e/E2E-005/result.json",
+      "test_nodes": [
+        "tests/e2e/trading-room.spec.ts::[live] E2E-005",
+        "tests/integration/test_trading_room_api.py::test_audit_api_preserves_provenance_and_recursively_redacts_command_secrets"
+      ],
+      "source_sha256": [
+        "90a31939b5325fb4ec774edd91789ef40b51c70ff35d97206f2393e6f756d3ef",
+        "dd85d3264e1a7374d1e34e8f7fde5a083fd8ae115b927d453941c5a4be9942d3"
+      ],
+      "configuration_sources": [
+        {
+          "path": "tests/e2e/live_control_api.py",
+          "sha256": "186e6b4af3d6f9d1334d78cd0f59dc3ae38da940da7bfa507639ab02d9d08381"
+        },
+        {
+          "path": "tests/e2e/https-web-server.mjs",
+          "sha256": "ed8a38bdd219d1d76bde521f3edeecc9276d1f208fce4965deaa39982adfa1b5"
+        },
+        {
+          "path": "tests/e2e/infrastructure-lifecycle.mjs",
+          "sha256": "299c6a8f9d7dbd27dd23462fbc351ceda131a0bf54ce60a5d2bf503effc1d5c3"
+        },
+        {
+          "path": "tests/e2e/global-teardown.mjs",
+          "sha256": "a8cf811891be0061add7098a56dee325a1f2719082c83b018d2fdea06706a911"
+        },
+        {
+          "path": "tests/e2e/compose.yaml",
+          "sha256": "1c0a942bb8545123cd57b44d925341b00dc0f17e09e4802725c514f16ae9e48b"
+        },
+        {
+          "path": "playwright.config.ts",
+          "sha256": "f70d2fd33a33dded6a8a112e66ec6ea065acd9927d3a04ebd39ee50dc8930c48"
+        }
+      ],
+      "oracle": "The live core screens are traversed on desktop and mobile with keyboard navigation; a fresh approval is keyboard-operable while a canonical repeated symbol intent is visibly fail-closed with DUPLICATE_ORDER_INTENT. Both viewports have no horizontal overflow, zero serious or critical Axe findings, Korean presentation and recursively secret-free audit provenance."
+    }
+  ]
+}

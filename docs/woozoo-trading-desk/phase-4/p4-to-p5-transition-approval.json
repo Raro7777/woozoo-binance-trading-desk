@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "approval_id": "P4-TO-P5-20260720-01",
+  "from_phase": 4,
+  "to_phase": 5,
+  "approval_status": "approved",
+  "evidence_manifest": "docs/woozoo-trading-desk/phase-4/p4-acceptance-evidence-manifest.json",
+  "acceptance_evidence_digest": "80dc665bf231fc2857e107177985f637907b7c90d9ede1e0959be177c3a95e8f",
+  "approval_prompt": "Phase 5 transition approval: approve P4 acceptance digest 80dc665bf231fc2857e107177985f637907b7c90d9ede1e0959be177c3a95e8f",
+  "user_response": "P4 acceptance digest 80dc665bf231fc2857e107177985f637907b7c90d9ede1e0959be177c3a95e8f 승인",
+  "binding_interpretation": "The user explicitly approved the exact Phase 4 acceptance evidence digest. This envelope authorizes only the Phase 4 to Phase 5 transition and does not authorize later phase transitions or prohibited capabilities.",
+  "approved_by": "user",
+  "approved_at": "2026-07-19T20:35:32Z",
+  "recorded_by": "codex-orchestrator",
+  "recorded_at": "2026-07-19T20:35:32Z"
+}

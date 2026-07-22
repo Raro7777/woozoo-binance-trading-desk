@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "phase": 0,
+  "status": "external-review-unavailable",
+  "runner": "codex",
+  "selected_reviewer": "agy",
+  "attempts": 1,
+  "external_gate_satisfied": false,
+  "review_scope": "current Phase 0 frozen candidate",
+  "note": "The permitted agy retry exited successfully but produced no review text. No external PASS is claimed; role-separated safety QA and same-engine Codex cross-review remain separate evidence."
+}

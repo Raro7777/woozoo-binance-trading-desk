@@ -1,0 +1,153 @@
+{
+  "schema_version": "woozoo.market.replay-manifest/v1",
+  "id": "E2E-003",
+  "status": "PASS",
+  "commands": [
+    [
+      "python",
+      [
+        "-m",
+        "uv",
+        "run",
+        "--locked",
+        "pytest",
+        "-q",
+        "tests/integration/test_trading_room_api.py",
+        "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\phase7-api.xml"
+      ]
+    ],
+    [
+      "C:\\Program Files\\nodejs\\node.exe",
+      [
+        "C:\\Users\\xxx\\woozoo-binance-trading-desk\\node_modules\\@playwright\\test\\cli.js",
+        "test",
+        "--reporter=junit"
+      ]
+    ],
+    [
+      "python",
+      [
+        "-m",
+        "uv",
+        "run",
+        "--locked",
+        "pytest",
+        "tests/property/test_trading_room_properties.py::test_phase7_preview_hash_is_mutation_sensitive_and_notional_is_policy_capped",
+        "tests/property/test_trading_room_properties.py::test_phase7_idempotency_same_hash_replays_and_changed_hash_conflicts",
+        "tests/integration/test_trading_room_command_ports.py::test_approval_ack_loss_replays_receipt_after_worker_failure",
+        "tests/integration/test_trading_room_command_ports.py::test_concurrent_same_request_issues_once_without_browser_paper_effect",
+        "-q",
+        "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\e2e-E2E-003.xml"
+      ]
+    ]
+  ],
+  "source_revision": "binance-spot-api-docs@29c227d84058dd2be3fe3b42ab368d1d1ce910e5",
+  "policy_version": "woozoo.market.collector-policy/v1",
+  "fixture_manifest_sha256": "7ad31ec79946ab383176360ae3ee069135ea9d8758ad2e16c13d3811cc05ce40",
+  "fixed_seed": 0,
+  "timezone": "UTC",
+  "test_count": 30,
+  "phase7_scenario_manifest_sha256": "bf4079bcb6a003e7d32176f8bf153414ba927ab42ba927776281835f1b47e668",
+  "scenario_input_digest": "02e07f9d8af8b24d9304fcb5f7acc00d1d11ad98ab43f844f8c45f88e825c5f1",
+  "declared_test_nodes": [
+    "tests/e2e/trading-room.spec.ts::[live] E2E-003",
+    "tests/property/test_trading_room_properties.py::test_phase7_preview_hash_is_mutation_sensitive_and_notional_is_policy_capped",
+    "tests/property/test_trading_room_properties.py::test_phase7_idempotency_same_hash_replays_and_changed_hash_conflicts",
+    "tests/integration/test_trading_room_command_ports.py::test_approval_ack_loss_replays_receipt_after_worker_failure",
+    "tests/integration/test_trading_room_command_ports.py::test_concurrent_same_request_issues_once_without_browser_paper_effect"
+  ],
+  "infrastructure_preflight": {
+    "path": "artifacts/e2e/E2E-INFRA-001.json",
+    "sha256": "13d0a01cf2a19be5499ed7c79b25341245f17aa899c46e36840fcfa9d5214032",
+    "output_digest": "06f451b2ef8959ae9c4c607dc6cf137540d26c35b90d426ba4170d6591fb8c32"
+  },
+  "declared_browser_scenario": "tests/e2e/trading-room.spec.ts::[live] E2E-003",
+  "declared_pytest_count": 4,
+  "execution_gate": {
+    "framework": "combined-junit",
+    "tests": 30,
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "cancelled": 0,
+    "todo": 0,
+    "components": [
+      {
+        "framework": "pytest-junit",
+        "tests": 7,
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "invocation_id": "a257e1b9-8baa-42bb-9954-546e5603acb6",
+        "result_label": "phase7-api",
+        "command": [
+          "python",
+          [
+            "-m",
+            "uv",
+            "run",
+            "--locked",
+            "pytest",
+            "-q",
+            "tests/integration/test_trading_room_api.py",
+            "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\phase7-api.xml"
+          ]
+        ],
+        "result_digest": "4a20c47a5159c50f5146453bf58bed756066eea6168eae97ac0e0b6a349d7e63",
+        "run_id": "b1bea0b2d87fcab5e1e927c2df8ad62a21be32d25a1cca4d4e8bf17b2e38785f"
+      },
+      {
+        "framework": "playwright-junit",
+        "tests": 19,
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "invocation_id": "223a480f-6534-4bad-9914-6ec27e39ade7",
+        "result_label": "phase7-playwright",
+        "command": [
+          "C:\\Program Files\\nodejs\\node.exe",
+          [
+            "C:\\Users\\xxx\\woozoo-binance-trading-desk\\node_modules\\@playwright\\test\\cli.js",
+            "test",
+            "--reporter=junit"
+          ]
+        ],
+        "result_digest": "ceef0690443bcfc5c71bfa288b244cf01e997d23dad8fdeb883a720759199a68",
+        "run_id": "7042d8d85a949dd92d3db96c1c2f734f5163d00a71e87b7b3ef85666308fbbe4"
+      },
+      {
+        "framework": "pytest-junit",
+        "tests": 4,
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "invocation_id": "9a32b578-53c9-4e73-bd42-98f3d068ef9c",
+        "result_label": "e2e-E2E-003",
+        "command": [
+          "python",
+          [
+            "-m",
+            "uv",
+            "run",
+            "--locked",
+            "pytest",
+            "tests/property/test_trading_room_properties.py::test_phase7_preview_hash_is_mutation_sensitive_and_notional_is_policy_capped",
+            "tests/property/test_trading_room_properties.py::test_phase7_idempotency_same_hash_replays_and_changed_hash_conflicts",
+            "tests/integration/test_trading_room_command_ports.py::test_approval_ack_loss_replays_receipt_after_worker_failure",
+            "tests/integration/test_trading_room_command_ports.py::test_concurrent_same_request_issues_once_without_browser_paper_effect",
+            "-q",
+            "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\e2e-E2E-003.xml"
+          ]
+        ],
+        "result_digest": "754c309e5aa48bdab687c851d9f30291b273709968221639f29fcdb30a4b2718",
+        "run_id": "fc22af406e6f7130cca7cc738a1ba14fc5aeeb21c664e449bc053f03a2ba5fe7"
+      }
+    ]
+  },
+  "git_commit": "c0baf4cedd56818da0cc9d5718950b15eaf48b2b",
+  "git_tree": "6f66d2f761a689ab4ed98924b1485f78f7c25478",
+  "working_tree_digest": "fb55680be162ccb23ef0632e97c8880d0cb449b2bad59f1f6dc582d56d969bd4",
+  "frozen_file_count": 405,
+  "output_digest": "7200a10c997e1b4e601b2e11803b80d13c880d80088e226382bbbc2e3932c52d",
+  "recorded_at": "2026-07-21T13:47:41.841Z"
+}

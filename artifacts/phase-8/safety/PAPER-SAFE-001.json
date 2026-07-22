@@ -1,0 +1,61 @@
+{
+  "schema_version": "woozoo.paper.replay-manifest/v1",
+  "id": "PAPER-SAFE-001",
+  "status": "PASS",
+  "commands": [
+    [
+      "python",
+      [
+        "-m",
+        "uv",
+        "run",
+        "--locked",
+        "pytest",
+        "tests/safety/test_phase4_paper_boundaries.py::test_phase_four_has_no_active_paper_route_or_network_ingress",
+        "tests/safety/test_phase4_paper_boundaries.py::test_phase_four_settings_reject_credential_vocabulary",
+        "-q",
+        "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\phase-8\\.pytest-results\\PAPER-SAFE-001.xml"
+      ]
+    ]
+  ],
+  "source_revision": "binance-spot-api-docs@29c227d84058dd2be3fe3b42ab368d1d1ce910e5",
+  "policy_version": "woozoo.market.collector-policy/v1",
+  "fixture_manifest_sha256": "7ad31ec79946ab383176360ae3ee069135ea9d8758ad2e16c13d3811cc05ce40",
+  "fixed_seed": 0,
+  "timezone": "UTC",
+  "test_count": 2,
+  "financial_policy_version": "woozoo.paper.financial-policy/v1",
+  "oracle_fixture_sha256": "25a307ac9e64bf39cf77609bbee42890b28453a219c57cf2203817514edd76fa",
+  "network_enabled": false,
+  "execution_gate": {
+    "framework": "pytest-junit",
+    "tests": 2,
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "invocation_id": "84c232af-0fc8-4f1c-87ed-b3896dd63180",
+    "result_label": "PAPER-SAFE-001",
+    "command": [
+      "python",
+      [
+        "-m",
+        "uv",
+        "run",
+        "--locked",
+        "pytest",
+        "tests/safety/test_phase4_paper_boundaries.py::test_phase_four_has_no_active_paper_route_or_network_ingress",
+        "tests/safety/test_phase4_paper_boundaries.py::test_phase_four_settings_reject_credential_vocabulary",
+        "-q",
+        "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\phase-8\\.pytest-results\\PAPER-SAFE-001.xml"
+      ]
+    ],
+    "result_digest": "c98a068952702d546db5730b5094d94496a163643fd1405090468e065ca7b506",
+    "run_id": "12d361a340a149adc8325cc82d7e598a1f1633b70ebb331b2e4fcdbd48e7dd5f"
+  },
+  "git_commit": "cecbe3c7fe43dda466e645ec3c94edf0549fb380",
+  "git_tree": "edacc82ab76b5d762c7a868ac4cc50c4a6c164e6",
+  "working_tree_digest": "34bd3e667a3805f05275458a1e9fa7978513f3e66258d1d11c5932aecc6c7f3d",
+  "frozen_file_count": 554,
+  "output_digest": "a4aa95f842723ff881f0a19a49b17e1e5814da52f2e9194883780109b4d0d512",
+  "recorded_at": "2026-07-21T19:25:38.012Z"
+}

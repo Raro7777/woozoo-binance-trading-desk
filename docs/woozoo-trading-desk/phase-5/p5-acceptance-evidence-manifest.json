@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "phase": 5,
+  "status": "READY_FOR_DIGEST_BOUND_USER_APPROVAL",
+  "acceptance_status": "UNVERIFIED",
+  "digest_algorithm": "SHA-256",
+  "digest_definition": "SHA-256 of this UTF-8 manifest. The manifest does not contain its own digest; the frozen implementation commit and tree bind product source, while the artifact list binds ignored CI evidence.",
+  "frozen_code_revision": {
+    "commit": "f45fd13c320c54fdc3bbf182c0bf84217bf4b528",
+    "tree": "4325154f9eafb4a0aa8a0238dd6c1bd78a64ac2b",
+    "verified_worktree_digest": "0d2d134a12fa04710c3838dfc9b63369081e162d00693f36a0e0ef08f93a561d",
+    "verified_file_count": 286,
+    "branch": "codex/phase-5-risk-engine",
+    "verdict": "PASS"
+  },
+  "acceptance_support_revision": {
+    "commit": "a74d80665122f5eb87fb8caeaf1c0329f0aea847",
+    "tree": "a1383e19d3788dda659d6fc4a6c850ffdc597cb9"
+  },
+  "phase_item_verdicts": {
+    "P5-01": "PASS",
+    "P5-02": "PASS",
+    "P5-03": "PASS",
+    "P5-04": "PASS",
+    "P5-05": "PASS",
+    "P5-06": "PASS",
+    "P5-07": "PASS",
+    "P5-08": "PASS",
+    "P5-09": "PASS",
+    "P5-10": "PASS",
+    "P5-11": "PASS",
+    "P5-12": "PASS"
+  },
+  "review_gate": {
+    "role_separated_safety_qa": "PASS",
+    "codex_cross_review": "NO_CONFIRMED_FINDINGS",
+    "codex_cross_review_is_same_engine": true,
+    "external_review": "external-review-unavailable",
+    "external_gate_satisfied": false,
+    "external_review_is_not_pass": true,
+    "claude_used": false,
+    "approval_boundary": "Acceptance remains UNVERIFIED until the user explicitly approves the SHA-256 of this exact manifest. This manifest is not authority to begin Phase 6."
+  },
+  "git_gate": {
+    "status": "PASS",
+    "evidence_path": "docs/woozoo-trading-desk/phase-5/p5-git-gate-evidence.json",
+    "draft_pr": "https://github.com/Raro7777/woozoo-binance-trading-desk/pull/6",
+    "verified_pr_head": "8abd2ed71c31101ca207e17d10ac8955ca154f95",
+    "base": "main"
+  },
+  "verification": {
+    "canonical_command": "corepack pnpm ci",
+    "status": "PASS",
+    "scenario_evidence": "docs/woozoo-trading-desk/phase-5/p5-scenario-manifest.json",
+    "artifact_worktree_digest": "0d2d134a12fa04710c3838dfc9b63369081e162d00693f36a0e0ef08f93a561d"
+  },
+  "artifacts": [
+    {"path": "AGENTS.md", "sha256": "48a07aed6f8ac753df49740797cbbbf20e821240d1c14e63912b6c0a289b4e64", "verdict": "PASS"},
+    {"path": "artifacts/replay/RISK-001.json", "sha256": "e75979d3ebf90c2c6d02860fbd423b05351fc9ec0280dc0523f12e614224c7c2", "verdict": "PASS"},
+    {"path": "artifacts/unit/RISK-002.json", "sha256": "123fc98c8df8162410df71da178b9aa0e874b52c63dc4de2f4b39493a36e43d4", "verdict": "PASS"},
+    {"path": "artifacts/failure/KILL-001.json", "sha256": "5c1b83f9c0556fad443541ed6c5b24144940ce4acacba2138ad3ff915e194129", "verdict": "PASS"},
+    {"path": "artifacts/safety/KILL-002.json", "sha256": "2ed5a7b84d357a119d93b9636aa5144ca3b5cef2f4d86684365de9bd2974ba1c", "verdict": "PASS"},
+    {"path": "artifacts/contracts/RISK-CONTRACT-001.json", "sha256": "6f31ed41f1320aed8da33502bc690781cce64c0e47c16abc611e7535b1448077", "verdict": "PASS"},
+    {"path": "artifacts/integration/RISK-MIGRATION-001.json", "sha256": "f033b7aac2c0f6ea8fdf37abe28565892ab8eafb8fa2c2be0c94773d45abbb4a", "verdict": "PASS"},
+    {"path": "artifacts/safety/RISK-SAFE-001.json", "sha256": "86fc88719d0e4839f0422f6f95a613632b9ea16bf468cfb323761ef05c42fb86", "verdict": "PASS"},
+    {"path": "docs/woozoo-trading-desk/phase-5/implementation-contract.md", "sha256": "93c1d3cbc43bc9d11482ff524e33e6b0e073aa9b824b748517dc8a675a10b5d9", "verdict": "PASS"},
+    {"path": "docs/woozoo-trading-desk/phase-5/phase-0-contract-amendment.md", "sha256": "faab0952b4c60d6cc432bd699d549f52d9c9b43f75e4e7050b30e01bb70b6c68", "verdict": "PASS"},
+    {"path": "docs/woozoo-trading-desk/phase-5/p5-scenario-manifest.json", "sha256": "76e982cf8c978f754350792dc22edeb00373ea30ec2418afbfecfda5eeb741d5", "verdict": "PASS"},
+    {"path": "docs/woozoo-trading-desk/phase-5/external-review-status.json", "sha256": "dce9aa2cddbed9388398ff8a2cc4e3519e4cc22f523898604dd762d2fa0b2375", "verdict": "external-review-unavailable"},
+    {"path": "docs/woozoo-trading-desk/phase-5/final-review-record.md", "sha256": "ace96101e1d870bfa47766ca2eee210b9b0ef8eb87452ac8d369f0f55f7e7634", "verdict": "PASS"},
+    {"path": "docs/woozoo-trading-desk/phase-5/p5-git-gate-evidence.json", "sha256": "87a4b42814e439e1b04983148df8204da83d19ad65f3cf86218b97c04c40e99f", "verdict": "PASS"},
+    {"path": "docs/woozoo-trading-desk/working_history/phase-5_risk-engine-kill-switch_20260720.md", "sha256": "12c0e65b86f11f2d3a4fe4b9b10c8ad68d3c2195326697442a561083ab47d591", "verdict": "PASS"}
+  ]
+}

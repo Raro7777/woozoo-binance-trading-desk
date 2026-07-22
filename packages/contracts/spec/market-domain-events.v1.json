@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "woozoo.market-domain-events/v1",
+  "oneOf": [
+    {
+      "allOf": [
+        {"$ref": "event-envelope.v1.json"},
+        {
+          "type": "object",
+          "properties": {
+            "event_type": {"const": "market.raw.appended.v1"},
+            "event_version": {"const": 1},
+            "producer": {"const": "market-data-worker"},
+            "data": {"$ref": "#/$defs/RawAppendedDataV1"}
+          }
+        }
+      ]
+    },
+    {
+      "allOf": [
+        {"$ref": "event-envelope.v1.json"},
+        {
+          "type": "object",
+          "properties": {
+            "event_type": {"const": "market.normalized.recorded.v1"},
+            "event_version": {"const": 1},
+            "producer": {"const": "market-data-worker"},
+            "data": {"$ref": "market-event.v1.json"}
+          }
+        }
+      ]
+    },
+    {
+      "allOf": [
+        {"$ref": "event-envelope.v1.json"},
+        {
+          "type": "object",
+          "properties": {
+            "event_type": {"const": "market.quality.changed.v1"},
+            "event_version": {"const": 1},
+            "producer": {"const": "market-data-worker"},
+            "data": {"$ref": "#/$defs/QualityChangedDataV1"}
+          }
+        }
+      ]
+    }
+  ],
+  "$defs": {
+    "RawAppendedDataV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "raw_event_id",
+        "collector_session_id",
+        "source",
+        "stream",
+        "symbol",
+        "source_dedupe_key",
+        "source_event_time",
+        "received_at",
+        "raw_payload_hash",
+        "classification"
+      ],
+      "properties": {
+        "raw_event_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "collector_session_id": {"type": "string", "minLength": 1},
+        "source": {"const": "binance_spot_public"},
+        "stream": {"type": "string", "minLength": 1},
+        "symbol": {"enum": ["BTCUSDT", "ETHUSDT", null]},
+        "source_dedupe_key": {"type": "string", "minLength": 1},
+        "source_event_time": {"type": ["string", "null"], "format": "date-time"},
+        "received_at": {"type": "string", "format": "date-time"},
+        "raw_payload_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "classification": {"enum": ["market", "operational_control", "quarantined"]}
+      }
+    },
+    "QualityChangedDataV1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "quality_event_id",
+        "scope",
+        "previous_status",
+        "new_status",
+        "reason_codes",
+        "observed_at",
+        "raw_event_id",
+        "recovery_required"
+      ],
+      "properties": {
+        "quality_event_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "scope": {"type": "string", "minLength": 1},
+        "previous_status": {"enum": ["healthy", "degraded", "stale", "invalid", "reconnecting"]},
+        "new_status": {"enum": ["healthy", "degraded", "stale", "invalid", "reconnecting"]},
+        "reason_codes": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+        "observed_at": {"type": "string", "format": "date-time"},
+        "raw_event_id": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+        "recovery_required": {"type": "boolean"}
+      }
+    }
+  }
+}

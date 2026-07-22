@@ -1,0 +1,81 @@
+{
+  "schema_version": "woozoo.paper.replay-manifest/v1",
+  "id": "FIN-004",
+  "status": "PASS",
+  "commands": [
+    [
+      "python",
+      [
+        "-m",
+        "uv",
+        "run",
+        "--locked",
+        "pytest",
+        "tests/integration/test_paper_ledger_immutability.py::test_fin_004_posted_journal_is_immutable_and_correction_is_reversal_replacement",
+        "tests/integration/test_platform_infrastructure.py::test_phase_four_postgres_enforces_balance_and_immutable_ledger",
+        "tests/integration/test_paper_postgres_persistence.py::test_atomic_write_is_durable_idempotent_and_restart_stable",
+        "tests/integration/test_paper_postgres_persistence.py::test_writer_commit_succeeds_and_unledgered_balance_update_is_rejected",
+        "tests/integration/test_paper_postgres_persistence.py::test_database_rejects_incomplete_financial_state_and_liquidity_overallocation",
+        "tests/integration/test_paper_postgres_persistence.py::test_sell_fill_binds_fifo_basis_and_exact_ledger_amounts",
+        "tests/integration/test_paper_postgres_persistence.py::test_deferred_fifo_rejects_younger_first_even_if_later_sale_exhausts_older",
+        "tests/integration/test_paper_postgres_persistence.py::test_shared_sell_observation_uses_canonical_sale_order_for_fifo_basis",
+        "tests/integration/test_paper_postgres_persistence.py::test_cancel_outbox_binds_exact_receipt_and_rejects_non_ascii_identity",
+        "tests/integration/test_paper_postgres_persistence.py::test_database_rejects_noncanonical_ledger_transaction_id",
+        "tests/unit/test_paper_engine.py::test_ledger_transaction_id_rejects_unicode_and_non_hash_ids",
+        "tests/integration/test_paper_postgres_persistence.py::test_failed_reconciliation_checkpoint_holds_new_lifecycle_command",
+        "-q",
+        "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\FIN-004.xml"
+      ]
+    ]
+  ],
+  "source_revision": "binance-spot-api-docs@29c227d84058dd2be3fe3b42ab368d1d1ce910e5",
+  "policy_version": "woozoo.market.collector-policy/v1",
+  "fixture_manifest_sha256": "7ad31ec79946ab383176360ae3ee069135ea9d8758ad2e16c13d3811cc05ce40",
+  "fixed_seed": 0,
+  "timezone": "UTC",
+  "test_count": 12,
+  "financial_policy_version": "woozoo.paper.financial-policy/v1",
+  "oracle_fixture_sha256": "25a307ac9e64bf39cf77609bbee42890b28453a219c57cf2203817514edd76fa",
+  "network_enabled": false,
+  "execution_gate": {
+    "framework": "pytest-junit",
+    "tests": 12,
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "invocation_id": "611e8aa0-fadc-42e1-9d4e-35b9a7d8a61c",
+    "result_label": "FIN-004",
+    "command": [
+      "python",
+      [
+        "-m",
+        "uv",
+        "run",
+        "--locked",
+        "pytest",
+        "tests/integration/test_paper_ledger_immutability.py::test_fin_004_posted_journal_is_immutable_and_correction_is_reversal_replacement",
+        "tests/integration/test_platform_infrastructure.py::test_phase_four_postgres_enforces_balance_and_immutable_ledger",
+        "tests/integration/test_paper_postgres_persistence.py::test_atomic_write_is_durable_idempotent_and_restart_stable",
+        "tests/integration/test_paper_postgres_persistence.py::test_writer_commit_succeeds_and_unledgered_balance_update_is_rejected",
+        "tests/integration/test_paper_postgres_persistence.py::test_database_rejects_incomplete_financial_state_and_liquidity_overallocation",
+        "tests/integration/test_paper_postgres_persistence.py::test_sell_fill_binds_fifo_basis_and_exact_ledger_amounts",
+        "tests/integration/test_paper_postgres_persistence.py::test_deferred_fifo_rejects_younger_first_even_if_later_sale_exhausts_older",
+        "tests/integration/test_paper_postgres_persistence.py::test_shared_sell_observation_uses_canonical_sale_order_for_fifo_basis",
+        "tests/integration/test_paper_postgres_persistence.py::test_cancel_outbox_binds_exact_receipt_and_rejects_non_ascii_identity",
+        "tests/integration/test_paper_postgres_persistence.py::test_database_rejects_noncanonical_ledger_transaction_id",
+        "tests/unit/test_paper_engine.py::test_ledger_transaction_id_rejects_unicode_and_non_hash_ids",
+        "tests/integration/test_paper_postgres_persistence.py::test_failed_reconciliation_checkpoint_holds_new_lifecycle_command",
+        "-q",
+        "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\FIN-004.xml"
+      ]
+    ],
+    "result_digest": "d40eb539ff43f9782e448db36a864a12bcac20e4d468f81394c8fdf517df3172",
+    "run_id": "e4937f2b1808f38a18ecc6c9eb4b3d66c3858426f61a0964160ac77ced6e98c9"
+  },
+  "git_commit": "c0baf4cedd56818da0cc9d5718950b15eaf48b2b",
+  "git_tree": "6f66d2f761a689ab4ed98924b1485f78f7c25478",
+  "working_tree_digest": "fb55680be162ccb23ef0632e97c8880d0cb449b2bad59f1f6dc582d56d969bd4",
+  "frozen_file_count": 405,
+  "output_digest": "27c7266151d922a12a3ad4102959f0191d6fa918f587da54c580718a2f5b2270",
+  "recorded_at": "2026-07-21T13:36:29.486Z"
+}

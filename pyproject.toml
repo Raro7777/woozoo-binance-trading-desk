@@ -1,0 +1,42 @@
+[project]
+name = "woozoo-platform"
+version = "0.1.0"
+description = "Woozoo Phase 1 platform foundation"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+  "alembic>=1.16,<2",
+  "argon2-cffi>=23.1,<26",
+  "fastapi>=0.115,<1",
+  "jsonschema[format]>=4.23,<5",
+  "psycopg[binary]>=3.2,<4",
+  "redis>=6,<7",
+  "sqlalchemy>=2.0,<3",
+  "uvicorn>=0.34,<1",
+  "websockets>=15,<16",
+]
+
+[project.scripts]
+woozoo-paper-authorization-worker = "paper_engine.authorization_worker:main"
+
+[dependency-groups]
+dev = [
+  "httpx>=0.28,<1",
+  "mypy>=1.15,<2",
+  "pytest>=8.3,<9",
+  "ruff>=0.11,<1",
+  "types-jsonschema>=4.23,<5",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["packages/python/platform-core/src", "services/control-api/src", "services/market-data-worker/src", "services/evidence-worker/src", "services/paper-engine/src", "services/risk-engine/src", "services/agent-orchestrator/src", "services/testnet-execution-service/src", "services/spot-testnet-gateway/src", "tests/unit", "tests/integration"]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+extend-exclude = ["packages/python/platform-core/src/platform_core/generated_contracts.py"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+files = ["packages/python/platform-core/src", "services/control-api/src", "services/outbox-relay/src", "services/market-data-worker/src", "services/evidence-worker/src", "services/paper-engine/src", "services/risk-engine/src", "services/agent-orchestrator/src", "services/testnet-execution-service/src", "services/spot-testnet-gateway/src"]

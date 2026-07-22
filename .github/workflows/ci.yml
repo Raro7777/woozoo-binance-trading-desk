@@ -1,0 +1,37 @@
+name: Phase 1 quality
+
+on:
+  pull_request:
+  push:
+    branches: [main, "codex/**"]
+
+permissions:
+  contents: read
+
+jobs:
+  phase-1-quality:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.17.0
+          cache: pnpm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Run the Phase 1 quality gate
+        run: pnpm run ci
+      - name: Upload scenario evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase-1-scenarios
+          path: artifacts/
+          if-no-files-found: error

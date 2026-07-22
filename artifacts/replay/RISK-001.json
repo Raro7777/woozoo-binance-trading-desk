@@ -1,0 +1,66 @@
+{
+  "schema_version": "woozoo.risk.replay-manifest/v1",
+  "id": "RISK-001",
+  "status": "PASS",
+  "commands": [
+    [
+      "python",
+      [
+        "-m",
+        "uv",
+        "run",
+        "--locked",
+        "pytest",
+        "tests/unit/test_risk_engine.py::test_risk_001_same_complete_input_has_same_allowed_decision",
+        "tests/unit/test_risk_engine.py::test_risk_001_every_bound_section_mutation_changes_digest",
+        "tests/replay/test_risk_replay.py::test_risk_replay_is_independent_of_json_key_order_and_process_identity",
+        "tests/replay/test_risk_replay.py::test_reason_message_or_recording_metadata_cannot_enter_decision_hash",
+        "-q",
+        "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\RISK-001.xml"
+      ]
+    ]
+  ],
+  "source_revision": "binance-spot-api-docs@29c227d84058dd2be3fe3b42ab368d1d1ce910e5",
+  "policy_version": "woozoo.market.collector-policy/v1",
+  "fixture_manifest_sha256": "7ad31ec79946ab383176360ae3ee069135ea9d8758ad2e16c13d3811cc05ce40",
+  "fixed_seed": 0,
+  "timezone": "UTC",
+  "test_count": 4,
+  "risk_policy_version": "woozoo.risk-policy/v1",
+  "scenario_manifest_sha256": "30919ef76721906d0799bed56ffe7b0cd1eed1391f20626fc57b3b072983f23f",
+  "network_enabled": false,
+  "scenario_input_digest": "6fb35960beda7452347b274cf046cc06636ad7e5b90c346c68a1e07e17b513f5",
+  "execution_gate": {
+    "framework": "pytest-junit",
+    "tests": 4,
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "invocation_id": "95195721-709a-4c4a-a0cb-39a464bf5a29",
+    "result_label": "RISK-001",
+    "command": [
+      "python",
+      [
+        "-m",
+        "uv",
+        "run",
+        "--locked",
+        "pytest",
+        "tests/unit/test_risk_engine.py::test_risk_001_same_complete_input_has_same_allowed_decision",
+        "tests/unit/test_risk_engine.py::test_risk_001_every_bound_section_mutation_changes_digest",
+        "tests/replay/test_risk_replay.py::test_risk_replay_is_independent_of_json_key_order_and_process_identity",
+        "tests/replay/test_risk_replay.py::test_reason_message_or_recording_metadata_cannot_enter_decision_hash",
+        "-q",
+        "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\RISK-001.xml"
+      ]
+    ],
+    "result_digest": "6636d7225d2063f057debd8a3ee386aca4f05e92c457d7181d67fa654ba980fd",
+    "run_id": "3346f1ea3675cec9f7c28dbf58ae80347ee6095c3b8d58553671c5ac19a99e24"
+  },
+  "git_commit": "c0baf4cedd56818da0cc9d5718950b15eaf48b2b",
+  "git_tree": "6f66d2f761a689ab4ed98924b1485f78f7c25478",
+  "working_tree_digest": "fb55680be162ccb23ef0632e97c8880d0cb449b2bad59f1f6dc582d56d969bd4",
+  "frozen_file_count": 405,
+  "output_digest": "b18a77ba788f560fb66739ba9c3db54869bc014aa41b2d5b748834a84bf6c8fc",
+  "recorded_at": "2026-07-21T13:38:37.346Z"
+}

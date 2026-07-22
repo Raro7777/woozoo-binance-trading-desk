@@ -1,0 +1,132 @@
+{
+  "schema_version": 1,
+  "project": "woozoo-binance-trading-desk",
+  "current_phase": 8,
+  "status": "active",
+  "updated_at": "2026-07-21T18:54:34Z",
+  "transition_policy": "monotonic_explicit_approval_only",
+  "acceptance_contract_ref": "woozoo-phase-gates#phase-8",
+  "acceptance_contract_runtime_paths": {
+    "codex": ".agents/skills/woozoo-phase-gates/references/phase-contract.md#phase-8",
+    "claude": ".claude/skills/woozoo-phase-gates/references/phase-contract.md#phase-8"
+  },
+  "acceptance_evidence_digest": null,
+  "phase_approval": {
+    "required": true,
+    "status": "not_requested",
+    "artifact_digest": null,
+    "approved_at": null,
+    "approved_by": null
+  },
+  "review_gate": {
+    "major_change_requirement": "external_review_completed_or_external_review_unavailable_recorded",
+    "same_engine_codex_counts_as_external": false,
+    "evidence_ref": null
+  },
+  "phase_scope_ref": "docs/woozoo-trading-desk/mvp-plan-and-acceptance.md",
+  "allowed_change_scope": [
+    "separate_least_privilege_spot_testnet_gateway_package_process_and_environment",
+    "spot_testnet_order_cancel_query_user_data_timeout_and_reconciliation",
+    "gateway_default_disabled_with_explicit_authenticated_operator_activation",
+    "authenticated_deterministic_execution_service_only_gateway_ingress",
+    "separate_digest_bound_human_testnet_approval_with_exact_preview_ttl_and_one_time_nonce",
+    "allowlisted_spot_testnet_host_path_method_auth_and_capability",
+    "single_client_order_id_unknown_outcome_query_and_reconciliation_without_replacement",
+    "testnet_account_order_fill_balance_and_reset_aware_local_authority_reconciliation",
+    "phase_8_contracts_migrations_tests_ci_documentation_and_negative_e2e"
+  ],
+  "forbidden_change_scope": [
+    "mainnet_private_live_withdrawal_futures_margin_leverage_or_short",
+    "browser_or_ai_direct_exchange_order_cancel_account_balance_secret_or_gateway_access",
+    "ai_access_to_account_balance_risk_verdict_approval_order_or_exchange_tools",
+    "unstructured_or_unvalidated_model_output_as_trading_authority",
+    "gateway_enabled_by_default_or_implicit_testnet_or_mainnet_fallback",
+    "testnet_command_without_separate_server_session_actor_proposal_risk_policy_preview_environment_account_ttl_nonce_and_revocation_binding",
+    "testnet_order_replacement_after_timeout_or_unknown_submit_outcome_before_authoritative_query_and_reconciliation",
+    "testnet_secret_in_browser_ai_prompt_tool_log_trace_fixture_or_shared_application_environment",
+    "testnet_private_capability_outside_the_separate_least_privilege_gateway",
+    "testnet_credential_request_or_storage_outside_the_gateway_secret_path",
+    "paper_approval_reused_as_testnet_approval",
+    "public_derivatives_telemetry",
+    "runtime_risk_policy_mutation_or_ui_values_as_financial_authority"
+  ],
+  "advance_requires": [
+    "current_phase_acceptance_criteria_pass",
+    "safety_qa_pass",
+    "major_change_external_review_completed_or_external_review_unavailable_recorded",
+    "explicit_user_approval_bound_to_acceptance_evidence_digest"
+  ],
+  "transition_history": [
+    {
+      "from_phase": null,
+      "to_phase": 0,
+      "event": "initialized",
+      "at": "2026-07-19T00:00:00+09:00",
+      "evidence_digest": null
+    },
+    {
+      "from_phase": 0,
+      "to_phase": 1,
+      "event": "advanced_after_digest_bound_user_approval",
+      "at": "2026-07-19T02:56:00Z",
+      "evidence_digest": "9efd487cf4878528df89cc19c2951e7d61f8fad99e704ccfe1dff03fa7c79571",
+      "approval_ref": "docs/woozoo-trading-desk/phase-0/p0-to-p1-transition-approval.json"
+    },
+    {
+      "from_phase": 1,
+      "to_phase": 2,
+      "event": "advanced_after_digest_bound_user_approval",
+      "at": "2026-07-19T04:29:45Z",
+      "evidence_digest": "f27e59b5e308ebd121eefa86824750a857ffb7ae70d02b724e92d1995b98c4c8",
+      "approval_ref": "docs/woozoo-trading-desk/phase-1/p1-to-p2-transition-approval.json"
+    },
+    {
+      "from_phase": 2,
+      "to_phase": 3,
+      "event": "advanced_after_digest_bound_user_approval",
+      "at": "2026-07-19T07:21:51Z",
+      "evidence_digest": "2d9c8158b12de3ebe55f040fccfe0872d6a39e5368b737182bb500c96bb3368f",
+      "approval_ref": "docs/woozoo-trading-desk/phase-2/p2-to-p3-transition-approval.json"
+    },
+    {
+      "from_phase": 3,
+      "to_phase": 4,
+      "event": "advanced_after_digest_bound_user_approval",
+      "at": "2026-07-19T10:32:03Z",
+      "evidence_digest": "a85fa86194bf7c3b8fc52a36199b2206244b71ef5e6575d3b754de6a0a5e076c",
+      "approval_ref": "docs/woozoo-trading-desk/phase-3/p3-to-p4-transition-approval.json"
+    },
+    {
+      "from_phase": 4,
+      "to_phase": 5,
+      "event": "advanced_after_digest_bound_user_approval",
+      "at": "2026-07-19T20:35:32Z",
+      "evidence_digest": "80dc665bf231fc2857e107177985f637907b7c90d9ede1e0959be177c3a95e8f",
+      "approval_ref": "docs/woozoo-trading-desk/phase-4/p4-to-p5-transition-approval.json"
+    },
+    {
+      "from_phase": 5,
+      "to_phase": 6,
+      "event": "advanced_after_digest_bound_user_approval",
+      "at": "2026-07-20T01:43:01Z",
+      "evidence_digest": "571c2d344a9f9254f08ed43b1d2f770dc04b4c55446a45b828e7be3fd6fafc8e",
+      "approval_ref": "docs/woozoo-trading-desk/phase-5/p5-to-p6-transition-approval.json"
+    },
+    {
+      "from_phase": 6,
+      "to_phase": 7,
+      "event": "advanced_after_digest_bound_user_approval",
+      "at": "2026-07-20T04:22:42Z",
+      "evidence_digest": "6a1472efd1277f90656979dd6d73984468c20b7affdfad39dcc9941a848ef794",
+      "approval_ref": "docs/woozoo-trading-desk/phase-6/p6-to-p7-transition-approval.json"
+    },
+    {
+      "from_phase": 7,
+      "to_phase": 8,
+      "event": "advanced_after_digest_bound_user_approval",
+      "at": "2026-07-21T18:54:34Z",
+      "evidence_digest": "a7d13e1d04f80bbcee94bcdad997357aa191e6510739a7e3415edd5d25ad194f",
+      "approval_ref": "docs/woozoo-trading-desk/phase-7/p7-to-p8-transition-approval.json"
+    }
+  ]
+}

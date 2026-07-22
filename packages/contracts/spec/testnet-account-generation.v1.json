@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "woozoo.testnet-account-generation/v1",
+  "x-creation-phase": 8,
+  "x-activation-phase": 8,
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "environment", "account_binding_id", "account_generation", "generation_id", "status", "opening_snapshot_digest", "reconciliation_checkpoint_digest", "operator_confirmation_digest", "opened_at", "closed_at", "version"],
+  "properties": {
+    "schema_version": {"const": "woozoo.testnet-account-generation/v1"},
+    "environment": {"const": "BINANCE_SPOT_TESTNET"},
+    "account_binding_id": {"$ref": "#/$defs/hash"},
+    "account_generation": {"type": "integer", "minimum": 1},
+    "generation_id": {"$ref": "#/$defs/hash"},
+    "status": {"enum": ["PENDING_RECONCILIATION", "ACTIVE", "RESET_SUSPECTED", "AWAITING_OPERATOR_CONFIRMATION", "RETIRED"]},
+    "opening_snapshot_digest": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+    "reconciliation_checkpoint_digest": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+    "operator_confirmation_digest": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+    "opened_at": {"type": "string", "format": "date-time"},
+    "closed_at": {"type": ["string", "null"], "format": "date-time"},
+    "version": {"type": "integer", "minimum": 1}
+  },
+  "$defs": {"hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}
+}

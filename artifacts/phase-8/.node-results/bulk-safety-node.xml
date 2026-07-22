@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<testsuites>
+	<testcase name="SAFE-002 through SAFE-004 keep Phase 1 capability-zero" time="0.593982" classname="test" file="C:\Users\xxx\woozoo-binance-trading-desk\tests\safety\capability-zero.test.ts"/>
+	<!-- tests 1 -->
+	<!-- suites 0 -->
+	<!-- pass 1 -->
+	<!-- fail 0 -->
+	<!-- cancelled 0 -->
+	<!-- skipped 0 -->
+	<!-- todo 0 -->
+	<!-- duration_ms 693.0873 -->
+</testsuites>

@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "woozoo.agent-domain-events/v1",
+  "title": "Dormant Phase 6 agent event registry",
+  "x-creation-phase": 6,
+  "x-activation-phase": 7,
+  "oneOf": [
+    {"$ref": "#/$defs/runCompleted"},
+    {"$ref": "#/$defs/runHeld"},
+    {"$ref": "#/$defs/proposalCreated"}
+  ],
+  "$defs": {
+    "base": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["spec_version", "event_id", "event_type", "event_version", "occurred_at", "producer", "activation_phase", "aggregate_id", "aggregate_version", "payload_hash", "data"],
+      "properties": {
+        "spec_version": {"const": "woozoo.event/v1"},
+        "event_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "event_type": {"type": "string"},
+        "event_version": {"const": 1},
+        "occurred_at": {"type": "string", "format": "date-time"},
+        "producer": {"const": "agent-orchestrator"},
+        "activation_phase": {"const": 7},
+        "aggregate_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "aggregate_version": {"const": 1},
+        "payload_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "data": {"type": "object"}
+      }
+    },
+    "runCompleted": {"allOf": [{"$ref": "#/$defs/base"}, {"properties": {"event_type": {"const": "analysis.run.completed.v1"}, "data": {"$ref": "analysis-run.v1.json"}}}]},
+    "runHeld": {"allOf": [{"$ref": "#/$defs/base"}, {"properties": {"event_type": {"const": "analysis.run.held.v1"}, "data": {"$ref": "analysis-run.v1.json"}}}]},
+    "proposalCreated": {"allOf": [{"$ref": "#/$defs/base"}, {"properties": {"event_type": {"const": "trade.proposal.created.v1"}, "data": {"$ref": "trade-proposal.v1.json"}}}]}
+  }
+}

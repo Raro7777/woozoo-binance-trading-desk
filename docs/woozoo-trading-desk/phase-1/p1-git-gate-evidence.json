@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "phase": 1,
+  "status": "PASS",
+  "frozen_code_commit": "c629ab7217d143a93a5e58e5de5d4dcebdd1c535",
+  "branch": "codex/phase-1-platform-skeleton",
+  "base": "main",
+  "draft_pr": {
+    "number": 2,
+    "url": "https://github.com/Raro7777/woozoo-binance-trading-desk/pull/2",
+    "state": "open",
+    "draft": true,
+    "head_sha": "c629ab7217d143a93a5e58e5de5d4dcebdd1c535",
+    "verified_at": "2026-07-19T04:10:19Z"
+  },
+  "commands": [
+    "git diff --check",
+    "corepack pnpm ci",
+    "git push origin codex/phase-1-platform-skeleton"
+  ],
+  "conventional_commits": [
+    "feat(phase-1): build platform foundation",
+    "fix(phase-1): close capability scan coverage",
+    "fix(phase-1): reject private account capabilities"
+  ]
+}

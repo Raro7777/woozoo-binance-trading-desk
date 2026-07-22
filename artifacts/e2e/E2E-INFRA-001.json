@@ -1,0 +1,46 @@
+{
+  "schema_version": "woozoo.e2e-infrastructure-preflight/v1",
+  "id": "E2E-INFRA-001",
+  "status": "PASS",
+  "compose_project": "woozoo-e2e",
+  "postgres_volume": "woozoo-e2e_postgres_data",
+  "compose_sha256": "b6a313ebeaf0dad2f6c6e7abfb9b95f71fd4fb0be3431909a416600d327342cb",
+  "postgres_health_transport": "tcp://127.0.0.1",
+  "cleanup": {
+    "status": "PASS",
+    "remove_volumes": true,
+    "remove_orphans": true
+  },
+  "volume_absence": {
+    "status": "PASS",
+    "expected_volume": "woozoo-e2e_postgres_data",
+    "observed_volume_names": []
+  },
+  "startup": {
+    "status": "PASS",
+    "wait_for_health": true,
+    "services": [
+      "postgres",
+      "redis"
+    ]
+  },
+  "migration": {
+    "status": "PASS",
+    "target": "head"
+  },
+  "postgres_authentication": {
+    "status": "PASS",
+    "host_method": "scram-sha-256",
+    "distinct_application_roles": [
+      "woozoo_control_api",
+      "woozoo_testnet_execution",
+      "woozoo_spot_testnet_gateway"
+    ],
+    "committed_secret_values": false
+  },
+  "public_data_bootstrap": {
+    "status": "PASS",
+    "source": "recorded"
+  },
+  "output_digest": "db46fdcc86400b8a7c7e78b98e07e6657bd03e79b04758cbe245d65ec515a2c5"
+}

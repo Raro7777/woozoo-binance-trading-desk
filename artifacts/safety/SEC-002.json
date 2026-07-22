@@ -1,0 +1,66 @@
+{
+  "schema_version": "woozoo.agent.replay-manifest/v1",
+  "id": "SEC-002",
+  "status": "PASS",
+  "commands": [
+    [
+      "python",
+      [
+        "-m",
+        "uv",
+        "run",
+        "--locked",
+        "pytest",
+        "tests/safety/test_phase6_agent_boundaries.py::test_sec_002_agent_has_no_execution_or_exchange_capability",
+        "tests/safety/test_phase6_agent_boundaries.py::test_sec_002_phase7_api_exposes_analysis_command_without_ai_execution_capability",
+        "-q",
+        "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\SEC-002.xml"
+      ]
+    ]
+  ],
+  "source_revision": "binance-spot-api-docs@29c227d84058dd2be3fe3b42ab368d1d1ce910e5",
+  "policy_version": "woozoo.market.collector-policy/v1",
+  "fixture_manifest_sha256": "7ad31ec79946ab383176360ae3ee069135ea9d8758ad2e16c13d3811cc05ce40",
+  "fixed_seed": 0,
+  "timezone": "UTC",
+  "test_count": 2,
+  "workflow_version": "woozoo.agent-workflow/v1",
+  "provider": "mock",
+  "model": "woozoo-deterministic-mock/v1",
+  "scenario_manifest_sha256": "333e8d522876e8055e8d33ae7cd5ec2b9e6933b73d7922725d88ee891b9877cc",
+  "network_enabled": false,
+  "tool_allowlist": [],
+  "runtime_namespace": "paper",
+  "scenario_input_digest": "427d188c6fe04ecd7f35f991380d46af47ab5f9c3a96493a92dd1a94e598961c",
+  "execution_gate": {
+    "framework": "pytest-junit",
+    "tests": 2,
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "invocation_id": "8b2cea76-12d5-4a0a-82da-945ad4bc8acf",
+    "result_label": "SEC-002",
+    "command": [
+      "python",
+      [
+        "-m",
+        "uv",
+        "run",
+        "--locked",
+        "pytest",
+        "tests/safety/test_phase6_agent_boundaries.py::test_sec_002_agent_has_no_execution_or_exchange_capability",
+        "tests/safety/test_phase6_agent_boundaries.py::test_sec_002_phase7_api_exposes_analysis_command_without_ai_execution_capability",
+        "-q",
+        "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\SEC-002.xml"
+      ]
+    ],
+    "result_digest": "1a911b0af8b7615e3ead8b6d29ab3cd72e3426a4d155a25c70d22db03b83cff4",
+    "run_id": "2428a9b311d54bdd7104507bfbdc4fb10bfe3262798685d3051c8af01434ef4a"
+  },
+  "git_commit": "c0baf4cedd56818da0cc9d5718950b15eaf48b2b",
+  "git_tree": "6f66d2f761a689ab4ed98924b1485f78f7c25478",
+  "working_tree_digest": "fb55680be162ccb23ef0632e97c8880d0cb449b2bad59f1f6dc582d56d969bd4",
+  "frozen_file_count": 405,
+  "output_digest": "e67f87fdab6d8d77a6711681a7cfb33b92372ee758a21584ea5bcd16899151ed",
+  "recorded_at": "2026-07-21T13:29:26.086Z"
+}

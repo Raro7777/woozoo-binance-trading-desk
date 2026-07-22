@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "phase": 7,
+  "status": "external-review-unavailable",
+  "runner": "codex",
+  "target_commit": "c0baf4cedd56818da0cc9d5718950b15eaf48b2b",
+  "target_tree": "6f66d2f761a689ab4ed98924b1485f78f7c25478",
+  "prompt_evidence": {
+    "path": "_workspace/reviews/p7_mvp_prompt_external.md",
+    "sha256": "501faf5c7a36942ecba23ba22d44fda5535a50624734f1083dd8e358c3a8b916"
+  },
+  "selected_reviewers": [
+    "agy"
+  ],
+  "external_gate_satisfied": false,
+  "tool_status": "unavailable-after-permitted-attempt-and-one-retry",
+  "attempts_are_pre_freeze_capability_evidence": true,
+  "attempts": [
+    {
+      "attempt": 1,
+      "result": "headless-command-permission-auto-denied",
+      "artifact": "_workspace/reviews/p7_mvp_agy.md",
+      "scope": "pre-freeze capability attempt; no candidate review produced"
+    },
+    {
+      "attempt": 2,
+      "result": "timeout-empty-output",
+      "timeout_seconds": 600,
+      "artifact": "_workspace/reviews/p7_mvp_agy_retry.md",
+      "scope": "permitted retry; no candidate review produced"
+    }
+  ],
+  "final_inventory_check": {
+    "checked_at": "2026-07-21T04:12:32Z",
+    "project_selector_result": "EXTERNAL_REVIEWERS: agy",
+    "allowed_external_reviewers": [
+      "agy",
+      "Gemini"
+    ],
+    "detected_binaries": [
+      "agy",
+      "gemini"
+    ],
+    "selected_callable_tools": [
+      "agy"
+    ],
+    "usable_review_outputs": [],
+    "result": "external-review-unavailable"
+  },
+  "same_engine_codex_is_external_pass": false,
+  "user_approval_or_transition_authority": false,
+  "claude_used": false,
+  "note": "No external PASS was produced. The attempts are preserved as pre-freeze capability evidence only; neither produced a candidate review. Safety QA and same-engine Codex cross-review remain separate internal evidence and do not satisfy external independence."
+}

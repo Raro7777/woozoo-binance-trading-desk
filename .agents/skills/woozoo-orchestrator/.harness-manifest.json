@@ -1,0 +1,8 @@
+{
+  "schema_version": "1",
+  "factory_version": "unknown",
+  "files": {
+    "references/dev-rules.md": "c839536d771888d86a0394b90333c22fb6300818b2c9068d3927943b785eb4be",
+    "references/tdd-doctrine.md": "8ec03515b052c3f135c66269c3a3dba2c871e4427c9cbeacde5bdf48f5b5135a"
+  }
+}

@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "phase": 6,
+  "status": "READY_FOR_DIGEST_BOUND_USER_APPROVAL",
+  "acceptance_status": "UNVERIFIED",
+  "digest_algorithm": "SHA-256",
+  "digest_definition": "SHA-256 of this UTF-8 manifest. The manifest does not contain its own digest; the frozen implementation commit and tree bind product source, while the artifact list binds ignored CI evidence.",
+  "frozen_code_revision": {
+    "commit": "2f7682c00a1ab93029ba1dfec1e472d1abf944a5",
+    "tree": "858429669b9d0dba6577fe951d8c70b852355772",
+    "verified_worktree_digest": "61ba068680f14ab439ae96c5f14792734aabef989969c0b16231be5ac5a4d6a5",
+    "verified_file_count": 320,
+    "branch": "codex/phase-6-ai-proposal",
+    "verdict": "PASS"
+  },
+  "acceptance_support_revision": {
+    "commit": "a04c3b80706049f901ebac152201ee64f5097a57",
+    "tree": "5fa9a93965b5aa1a230eaf3e1d345d6549169cb9"
+  },
+  "phase_item_verdicts": {
+    "P6-01": "PASS",
+    "P6-02": "PASS",
+    "P6-03": "PASS",
+    "P6-04": "PASS",
+    "P6-05": "PASS",
+    "P6-06": "PASS",
+    "P6-07": "PASS",
+    "P6-08": "PASS",
+    "P6-09": "PASS",
+    "P6-10": "PASS",
+    "P6-11": "PASS",
+    "P6-12": "PASS"
+  },
+  "review_gate": {
+    "role_separated_safety_qa": "PASS",
+    "codex_cross_review": "NO_CONFIRMED_FINDINGS",
+    "codex_cross_review_is_same_engine": true,
+    "external_review": "NO_CONFIRMED_FINDINGS",
+    "external_review_engine": "Gemini 3.1 Pro (High)",
+    "external_gate_satisfied": true,
+    "external_review_is_not_user_approval": true,
+    "claude_used": false,
+    "approval_boundary": "Acceptance remains UNVERIFIED until the user explicitly approves the SHA-256 of this exact manifest. This manifest is not authority to begin Phase 7."
+  },
+  "git_gate": {
+    "status": "PASS",
+    "evidence_path": "docs/woozoo-trading-desk/phase-6/p6-git-gate-evidence.json",
+    "draft_pr": "https://github.com/Raro7777/woozoo-binance-trading-desk/pull/7",
+    "verified_pr_head": "6aa5ff5d382df5a71c1acdb1f1c2dc6d92474a73",
+    "base": "main"
+  },
+  "verification": {
+    "canonical_command": "corepack pnpm ci",
+    "status": "PASS",
+    "scenario_evidence": "docs/woozoo-trading-desk/phase-6/p6-scenario-manifest.json",
+    "artifact_worktree_digest": "61ba068680f14ab439ae96c5f14792734aabef989969c0b16231be5ac5a4d6a5"
+  },
+  "artifacts": [
+    {"path": "AGENTS.md", "sha256": "48a07aed6f8ac753df49740797cbbbf20e821240d1c14e63912b6c0a289b4e64", "verdict": "PASS"},
+    {"path": "artifacts/contracts/AI-001.json", "sha256": "a6972e46e83c93be08b24f341d0989546843790647be77951314734e401b0778", "verdict": "PASS"},
+    {"path": "artifacts/safety/AI-002.json", "sha256": "99317cefa7562d8dd64cdfefab56d684fa92a4b9aa2cd8762e05d03260f90387", "verdict": "PASS"},
+    {"path": "artifacts/safety/SEC-001.json", "sha256": "8097c3f721a08a10352345b0f9e350f5e9dd4f7a1df388df09d17f77e74d7e6d", "verdict": "PASS"},
+    {"path": "artifacts/safety/SEC-002.json", "sha256": "62bd43b8976938e5d602579a7fe5b34709ca4cbd83421638b57d4e39b51cb87a", "verdict": "PASS"},
+    {"path": "artifacts/replay/AGENT-REPLAY-001.json", "sha256": "21286418d8e1d1292c0a39f20e122e4f0251263ab44fa51b1aa12fd211812ffe", "verdict": "PASS"},
+    {"path": "artifacts/property/AGENT-PROPERTY-001.json", "sha256": "e4fd446abf4b2abbea37765f97b31960a92992806465bdfd2ba321b3d69930ff", "verdict": "PASS"},
+    {"path": "artifacts/failure/AGENT-FAILURE-001.json", "sha256": "27539aaeb3169bd5a7485450f6ccc847606c6c0782da5c4f48e78f6b5bb9981e", "verdict": "PASS"},
+    {"path": "artifacts/integration/AGENT-INTEGRATION-001.json", "sha256": "7dc674da3a07326c4bd4aeb0d16e50e56eb9ef52db73b628805dad0db841e33f", "verdict": "PASS"},
+    {"path": "docs/woozoo-trading-desk/phase-6/implementation-contract.md", "sha256": "1567f7de3c42ba8bc7d49542969a7b582c0168352f81fea56348617559a7f2f1", "verdict": "PASS"},
+    {"path": "docs/woozoo-trading-desk/phase-6/p6-scenario-manifest.json", "sha256": "8e30ac7a59b89c012c15ead82fd051f5b323b549fdef635c7b47fa658fc93dd0", "verdict": "PASS"},
+    {"path": "docs/woozoo-trading-desk/phase-6/external-review-status.json", "sha256": "6e7243e0316b2396acfa7d2047f8286b4912b7e7a4f4b7e0c4b2abb555f0d278", "verdict": "PASS"},
+    {"path": "docs/woozoo-trading-desk/phase-6/final-review-record.md", "sha256": "148596cd422a26c4e714e97eb6e456d295ec5c3ed670d2e29f9dc5660e1a0a15", "verdict": "PASS"},
+    {"path": "docs/woozoo-trading-desk/phase-6/p6-git-gate-evidence.json", "sha256": "adaf7388b47e97e8a073fecf938ba061d79f3cf908f913955e4facf9c2774819", "verdict": "PASS"},
+    {"path": "docs/woozoo-trading-desk/working_history/phase-6_ai-proposals_20260720.md", "sha256": "95ef57ba9d926de4a345ff339fadcb935c943f6a0cb2e8c673651b9efbb1e46b", "verdict": "PASS"}
+  ]
+}

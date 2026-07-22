@@ -1,0 +1,852 @@
+"""Create dormant Phase 5 Risk authority and monotonic Paper Kill barrier."""
+
+from __future__ import annotations
+
+from alembic import op
+import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
+
+
+revision = "20260719_0005"
+down_revision = "20260719_0004"
+branch_labels = None
+depends_on = None
+
+
+def _append_only(table: str) -> None:
+    op.execute(f"""
+        CREATE TRIGGER {table}_append_only BEFORE UPDATE OR DELETE ON {table}
+        FOR EACH ROW EXECUTE FUNCTION reject_risk_history_mutation()
+    """)
+
+
+def upgrade() -> None:
+    op.execute("""
+        CREATE FUNCTION reject_risk_history_mutation() RETURNS trigger AS $$
+        BEGIN
+          RAISE EXCEPTION 'Phase 5 Risk/Kill history is append-only';
+        END;
+        $$ LANGUAGE plpgsql
+    """)
+    op.create_table(
+        "risk_migration_metadata",
+        sa.Column("migration_revision", sa.String(32), primary_key=True),
+        sa.Column("writer_role_created", sa.Boolean(), nullable=False),
+        sa.Column("schema_usage_preexisting", sa.Boolean(), nullable=False),
+        sa.Column("outbox_select_preexisting", sa.Boolean(), nullable=False),
+        sa.Column("outbox_insert_preexisting", sa.Boolean(), nullable=False),
+        sa.Column("reconciliation_select_preexisting", sa.Boolean(), nullable=False),
+    )
+    op.create_table(
+        "risk_policy_versions",
+        sa.Column("policy_version", sa.String(64), primary_key=True),
+        sa.Column("policy_hash", sa.String(64), nullable=False, unique=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.CheckConstraint("policy_hash ~ '^[a-f0-9]{64}$'", name="ck_risk_policy_hash"),
+    )
+    op.create_table(
+        "risk_decisions",
+        sa.Column("decision_id", sa.String(64), primary_key=True),
+        sa.Column("risk_input_digest", sa.String(64), nullable=False, unique=True),
+        sa.Column("risk_input", postgresql.JSONB(), nullable=False),
+        sa.Column("decision_hash", sa.String(64), nullable=False, unique=True),
+        sa.Column("verdict", sa.String(16), nullable=False),
+        sa.Column("primary_reason", sa.String(64), nullable=False),
+        sa.Column("ordered_reason_codes", postgresql.JSONB(), nullable=False),
+        sa.Column("policy_version", sa.String(64), nullable=False),
+        sa.Column("proposal_hash", sa.String(64), nullable=False),
+        sa.Column("portfolio_snapshot_hash", sa.String(64), nullable=False),
+        sa.Column("data_state_hash", sa.String(64), nullable=False),
+        sa.Column("paper_order_preview_hash", sa.String(64), nullable=False),
+        sa.Column("reconciliation_checkpoint_hash", sa.String(64), nullable=False),
+        sa.Column("kill_switch_version", sa.BigInteger(), nullable=False),
+        sa.Column("decision_as_of", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("recorded_at", sa.DateTime(timezone=True), nullable=False),
+        sa.ForeignKeyConstraint(
+            ["policy_version"], ["risk_policy_versions.policy_version"], ondelete="RESTRICT"
+        ),
+        sa.CheckConstraint("decision_id ~ '^[a-f0-9]{64}$'", name="ck_risk_decision_id"),
+        sa.CheckConstraint(
+            "risk_input_digest ~ '^[a-f0-9]{64}$' AND decision_hash ~ '^[a-f0-9]{64}$'",
+            name="ck_risk_decision_hashes",
+        ),
+        sa.CheckConstraint("verdict IN ('ALLOWED','DENIED','ERROR')", name="ck_risk_verdict"),
+        sa.CheckConstraint("kill_switch_version>=0", name="ck_risk_kill_version"),
+    )
+    op.create_table(
+        "kill_switch_events",
+        sa.Column("activation_event_id", sa.String(64), primary_key=True),
+        sa.Column("scope", sa.String(32), nullable=False),
+        sa.Column("request_id", sa.String(128), nullable=False, unique=True),
+        sa.Column("request_hash", sa.String(64), nullable=False),
+        sa.Column("trigger_kind", sa.String(16), nullable=False),
+        sa.Column("actor_id", sa.String(128), nullable=False),
+        sa.Column("reason_code", sa.String(64), nullable=False),
+        sa.Column("reason", sa.String(512), nullable=False),
+        sa.Column("observed_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("context_digest", sa.String(64), nullable=False),
+        sa.Column("prior_version", sa.BigInteger(), nullable=False),
+        sa.Column("new_version", sa.BigInteger(), nullable=False),
+        sa.UniqueConstraint("scope", "new_version", name="uq_kill_scope_version"),
+        sa.CheckConstraint("scope='paper-global'", name="ck_kill_event_scope"),
+        sa.CheckConstraint("trigger_kind IN ('MANUAL','INVARIANT')", name="ck_kill_trigger"),
+        sa.CheckConstraint(
+            "reason_code IN ('MANUAL_SAFETY_STOP','LEDGER_IMBALANCE',"
+            "'PHYSICAL_LEDGER_MISMATCH','AUTHORIZATION_RECEIPT_MISMATCH')",
+            name="ck_kill_reason_code",
+        ),
+        sa.CheckConstraint("new_version=prior_version+1", name="ck_kill_version_step"),
+        sa.CheckConstraint(
+            "request_id ~ '^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$' AND "
+            "actor_id ~ '^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$' AND "
+            "length(reason) BETWEEN 1 AND 512 AND "
+            "((trigger_kind='MANUAL' AND actor_id LIKE 'operator:%' AND "
+            "reason_code='MANUAL_SAFETY_STOP') OR "
+            "(trigger_kind='INVARIANT' AND actor_id LIKE 'safety-service:%' AND "
+            "reason_code IN ('LEDGER_IMBALANCE','PHYSICAL_LEDGER_MISMATCH',"
+            "'AUTHORIZATION_RECEIPT_MISMATCH')))",
+            name="ck_kill_event_actor_reason",
+        ),
+        sa.CheckConstraint(
+            "activation_event_id ~ '^[a-f0-9]{64}$' AND request_hash ~ '^[a-f0-9]{64}$' "
+            "AND context_digest ~ '^[a-f0-9]{64}$'",
+            name="ck_kill_hashes",
+        ),
+    )
+    op.create_table(
+        "kill_switch_state",
+        sa.Column("scope", sa.String(32), primary_key=True),
+        sa.Column("active", sa.Boolean(), nullable=False),
+        sa.Column("version", sa.BigInteger(), nullable=False),
+        sa.Column("last_activation_event_id", sa.String(64), nullable=True),
+        sa.ForeignKeyConstraint(
+            ["last_activation_event_id"],
+            ["kill_switch_events.activation_event_id"],
+            ondelete="RESTRICT",
+            deferrable=True,
+            initially="DEFERRED",
+        ),
+        sa.CheckConstraint("scope='paper-global'", name="ck_kill_state_scope"),
+        sa.CheckConstraint(
+            "(active=false AND version=0 AND last_activation_event_id IS NULL) OR "
+            "(active=true AND version>0 AND last_activation_event_id IS NOT NULL)",
+            name="ck_kill_state_monotonic",
+        ),
+    )
+    op.create_table(
+        "risk_kill_command_receipts",
+        sa.Column("request_id", sa.String(128), primary_key=True),
+        sa.Column("request_hash", sa.String(64), nullable=False),
+        sa.Column("activation_event_id", sa.String(64), nullable=False, unique=True),
+        sa.Column("response", postgresql.JSONB(), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.ForeignKeyConstraint(
+            ["activation_event_id"],
+            ["kill_switch_events.activation_event_id"],
+            ondelete="RESTRICT",
+            deferrable=True,
+            initially="DEFERRED",
+        ),
+        sa.CheckConstraint("request_hash ~ '^[a-f0-9]{64}$'", name="ck_kill_receipt_hash"),
+    )
+    op.create_table(
+        "risk_outbox_links",
+        sa.Column("event_id", sa.String(64), primary_key=True),
+        sa.Column("aggregate_kind", sa.String(32), nullable=False),
+        sa.Column("aggregate_id", sa.String(64), nullable=False),
+        sa.ForeignKeyConstraint(["event_id"], ["outbox_events.event_id"], ondelete="RESTRICT"),
+        sa.CheckConstraint(
+            "aggregate_kind IN ('risk-decision','kill-switch')", name="ck_risk_outbox_kind"
+        ),
+    )
+    op.create_table(
+        "paper_kill_inbox",
+        sa.Column("activation_event_id", sa.String(64), primary_key=True),
+        sa.Column("payload_hash", sa.String(64), nullable=False),
+        sa.Column("received_at", sa.DateTime(timezone=True), nullable=False),
+        sa.ForeignKeyConstraint(
+            ["activation_event_id"],
+            ["kill_switch_events.activation_event_id"],
+            ondelete="RESTRICT",
+        ),
+        sa.CheckConstraint("payload_hash ~ '^[a-f0-9]{64}$'", name="ck_paper_kill_inbox_hash"),
+    )
+    op.create_table(
+        "paper_kill_cancel_batches",
+        sa.Column("activation_event_id", sa.String(64), primary_key=True),
+        sa.Column("batch_key", sa.String(64), primary_key=True),
+        sa.Column("paper_account_id", sa.String(64), nullable=False),
+        sa.Column("first_cursor", postgresql.JSONB(), nullable=False),
+        sa.Column("last_cursor", postgresql.JSONB(), nullable=False),
+        sa.Column("cancelled_count", sa.Integer(), nullable=False),
+        sa.Column("completed_at", sa.DateTime(timezone=True), nullable=False),
+        sa.ForeignKeyConstraint(
+            ["activation_event_id"],
+            ["paper_kill_inbox.activation_event_id"],
+            ondelete="RESTRICT",
+        ),
+        sa.ForeignKeyConstraint(
+            ["paper_account_id"], ["paper_accounts.account_id"], ondelete="RESTRICT"
+        ),
+        sa.CheckConstraint("batch_key ~ '^[a-f0-9]{64}$'", name="ck_paper_kill_batch_hash"),
+        sa.CheckConstraint("cancelled_count BETWEEN 1 AND 100", name="ck_paper_kill_batch_bound"),
+    )
+    op.create_table(
+        "paper_kill_cancel_items",
+        sa.Column("activation_event_id", sa.String(64), primary_key=True),
+        sa.Column("order_id", sa.String(64), primary_key=True),
+        sa.Column("batch_key", sa.String(64), nullable=False),
+        sa.Column("paper_account_id", sa.String(64), nullable=False),
+        sa.Column("cancel_id", sa.String(128), nullable=False, unique=True),
+        sa.Column("released_asset", sa.String(8), nullable=False),
+        sa.Column("released_amount", sa.Numeric(38, 18), nullable=False),
+        sa.Column("cancelled_at", sa.DateTime(timezone=True), nullable=False),
+        sa.ForeignKeyConstraint(
+            ["activation_event_id", "batch_key"],
+            [
+                "paper_kill_cancel_batches.activation_event_id",
+                "paper_kill_cancel_batches.batch_key",
+            ],
+            ondelete="RESTRICT",
+        ),
+        sa.ForeignKeyConstraint(["order_id"], ["paper_orders.order_id"], ondelete="RESTRICT"),
+        sa.ForeignKeyConstraint(
+            ["paper_account_id"], ["paper_accounts.account_id"], ondelete="RESTRICT"
+        ),
+        sa.CheckConstraint("released_amount>=0", name="ck_paper_kill_release_nonnegative"),
+    )
+
+    op.execute("""
+        INSERT INTO risk_policy_versions(policy_version,policy_hash,created_at)
+        VALUES ('woozoo.risk-policy/v1',
+          'f031ed0eaceafefce69f63b5470cc8678ef2e2d28b2c80d8e5da02ee0ae7960d',
+          '2026-07-19T00:00:00Z')
+    """)
+    op.execute("""
+        INSERT INTO kill_switch_state(scope,active,version,last_activation_event_id)
+        VALUES ('paper-global',false,0,NULL)
+    """)
+    op.execute("""
+        CREATE FUNCTION enforce_kill_state_activation_only() RETURNS trigger AS $$
+        BEGIN
+          IF OLD.scope<>'paper-global' OR OLD.active OR OLD.version<>0
+             OR NEW.scope<>OLD.scope OR NEW.active IS DISTINCT FROM true
+             OR NEW.version<>OLD.version+1 OR NEW.last_activation_event_id IS NULL
+             OR NOT EXISTS (
+               SELECT 1 FROM kill_switch_events event
+               WHERE event.activation_event_id=NEW.last_activation_event_id
+                 AND event.scope=NEW.scope
+                 AND event.prior_version=OLD.version
+                 AND event.new_version=NEW.version)
+          THEN
+            RAISE EXCEPTION 'Kill state permits monotonic activation only';
+          END IF;
+          RETURN NEW;
+        END;
+        $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public
+    """)
+    op.execute("REVOKE ALL ON FUNCTION enforce_kill_state_activation_only() FROM PUBLIC")
+    op.execute("""
+        CREATE TRIGGER kill_switch_state_activation_only
+        BEFORE UPDATE ON kill_switch_state FOR EACH ROW
+        EXECUTE FUNCTION enforce_kill_state_activation_only()
+    """)
+    op.execute(r"""
+        CREATE FUNCTION risk_canonical_jsonb(value jsonb) RETURNS text AS $$
+        DECLARE result text;
+        BEGIN
+          CASE jsonb_typeof(value)
+            WHEN 'object' THEN
+              SELECT '{'||COALESCE(string_agg(
+                to_jsonb(entry.key)::text||':'||risk_canonical_jsonb(entry.value),
+                ',' ORDER BY entry.key),'')||'}'
+                INTO result FROM jsonb_each(value) AS entry(key,value);
+            WHEN 'array' THEN
+              SELECT '['||COALESCE(string_agg(
+                risk_canonical_jsonb(entry.value),',' ORDER BY entry.ordinality),'')||']'
+                INTO result
+                FROM jsonb_array_elements(value) WITH ORDINALITY AS entry(value,ordinality);
+            ELSE result := value::text;
+          END CASE;
+          RETURN result;
+        END;
+        $$ LANGUAGE plpgsql IMMUTABLE STRICT
+    """)
+    op.execute("REVOKE ALL ON FUNCTION risk_canonical_jsonb(jsonb) FROM PUBLIC")
+    op.execute("""
+        CREATE FUNCTION assert_kill_activation_consistency() RETURNS trigger AS $$
+        BEGIN
+          IF EXISTS (
+            SELECT 1 FROM kill_switch_events event
+            LEFT JOIN risk_kill_command_receipts receipt
+              ON receipt.request_id=event.request_id
+             AND receipt.request_hash=event.request_hash
+             AND receipt.activation_event_id=event.activation_event_id
+            LEFT JOIN risk_outbox_links link
+              ON link.aggregate_kind='kill-switch'
+             AND link.aggregate_id=event.activation_event_id
+            LEFT JOIN outbox_events outbox ON outbox.event_id=link.event_id
+            LEFT JOIN kill_switch_state state
+              ON state.scope=event.scope AND state.active
+             AND state.version=event.new_version
+             AND state.last_activation_event_id=event.activation_event_id
+            WHERE state.scope IS NULL
+               OR receipt.request_id IS NULL OR link.event_id IS NULL OR outbox.event_id IS NULL
+               OR receipt.response IS DISTINCT FROM jsonb_build_object(
+                    'activation_event_id',event.activation_event_id,
+                    'prior_version',event.prior_version,
+                    'version',event.new_version,
+                    'outbox_event_id',link.event_id)
+               OR outbox.event_type<>'kill-switch.activated.v1'
+               OR outbox.aggregate_type<>'kill_switch'
+               OR outbox.aggregate_id<>event.activation_event_id
+               OR outbox.aggregate_version<>event.new_version
+               OR outbox.event_id<>encode(digest(convert_to(
+                    '['||to_jsonb('event'::text)::text||','||
+                    to_jsonb(outbox.event_type)::text||','||
+                    to_jsonb(event.activation_event_id)::text||','||
+                    to_jsonb(event.new_version::text)::text||']','UTF8'),'sha256'),'hex')
+               OR jsonb_typeof(outbox.payload)<>'object'
+               OR jsonb_strip_nulls(outbox.payload) IS DISTINCT FROM outbox.payload
+               OR (SELECT count(*) FROM jsonb_object_keys(outbox.payload))<>11
+               OR NOT (outbox.payload ?& ARRAY[
+                    'spec_version','event_id','event_type','event_version','occurred_at',
+                    'producer','activation_phase','aggregate_id','aggregate_version',
+                    'payload_hash','data'])
+               OR outbox.payload->>'spec_version'<>'woozoo.event/v1'
+               OR outbox.payload->>'event_id'<>outbox.event_id
+               OR outbox.payload->>'event_type'<>outbox.event_type
+               OR outbox.payload->'event_version' IS DISTINCT FROM '1'::jsonb
+               OR (outbox.payload->>'occurred_at')::timestamptz IS DISTINCT FROM event.observed_at
+               OR outbox.occurred_at IS DISTINCT FROM event.observed_at
+               OR outbox.payload->>'producer'<>'risk-engine'
+               OR outbox.payload->'activation_phase' IS DISTINCT FROM '7'::jsonb
+               OR outbox.payload->>'aggregate_id'<>event.activation_event_id
+               OR outbox.payload->'aggregate_version' IS DISTINCT FROM to_jsonb(event.new_version)
+               OR outbox.payload->>'payload_hash'<>outbox.payload_hash
+               OR jsonb_typeof(outbox.payload->'data')<>'object'
+               OR (SELECT count(*) FROM jsonb_object_keys(outbox.payload->'data'))<>11
+               OR NOT ((outbox.payload->'data') ?& ARRAY[
+                    'scope','active','prior_version','version','activation_event_id',
+                    'trigger_kind','actor_id','reason_code','reason','observed_at',
+                    'context_digest'])
+               OR outbox.payload->'data'->>'scope'<>event.scope
+               OR outbox.payload->'data'->'active' IS DISTINCT FROM 'true'::jsonb
+               OR outbox.payload->'data'->'prior_version' IS DISTINCT FROM
+                    to_jsonb(event.prior_version)
+               OR outbox.payload->'data'->'version' IS DISTINCT FROM to_jsonb(event.new_version)
+               OR outbox.payload->'data'->>'activation_event_id'<>event.activation_event_id
+               OR outbox.payload->'data'->>'trigger_kind'<>event.trigger_kind
+               OR outbox.payload->'data'->>'actor_id'<>event.actor_id
+               OR outbox.payload->'data'->>'reason_code'<>event.reason_code
+               OR outbox.payload->'data'->>'reason'<>event.reason
+               OR (outbox.payload->'data'->>'observed_at')::timestamptz IS DISTINCT FROM
+                    event.observed_at
+               OR outbox.payload->'data'->>'context_digest'<>event.context_digest
+               OR outbox.payload_hash<>encode(digest(convert_to(
+                    '{"activation_event_id":'||
+                      to_jsonb(outbox.payload->'data'->>'activation_event_id')::text||
+                    ',"active"'||':'||'true'||
+                    ',"actor_id":'||to_jsonb(outbox.payload->'data'->>'actor_id')::text||
+                    ',"context_digest":'||
+                      to_jsonb(outbox.payload->'data'->>'context_digest')::text||
+                    ',"observed_at":'||
+                      to_jsonb(outbox.payload->'data'->>'observed_at')::text||
+                    ',"prior_version":'||(outbox.payload->'data'->>'prior_version')||
+                    ',"reason":'||to_jsonb(outbox.payload->'data'->>'reason')::text||
+                    ',"reason_code":'||
+                      to_jsonb(outbox.payload->'data'->>'reason_code')::text||
+                    ',"scope":'||to_jsonb(outbox.payload->'data'->>'scope')::text||
+                    ',"trigger_kind":'||
+                      to_jsonb(outbox.payload->'data'->>'trigger_kind')::text||
+                    ',"version":'||(outbox.payload->'data'->>'version')||'}',
+                    'UTF8'),'sha256'),'hex')
+               OR event.request_hash<>encode(digest(convert_to(
+                    '{"actor_id":'||to_jsonb(event.actor_id)::text||
+                    ',"context_digest":'||to_jsonb(event.context_digest)::text||
+                    ',"expected_version":'||event.prior_version::text||
+                    ',"observed_at":'||
+                      to_jsonb(outbox.payload->'data'->>'observed_at')::text||
+                    ',"reason":'||to_jsonb(event.reason)::text||
+                    ',"reason_code":'||to_jsonb(event.reason_code)::text||
+                    ',"request_id":'||to_jsonb(event.request_id)::text||
+                    ',"scope":'||to_jsonb(event.scope)::text||
+                    ',"trigger_kind":'||to_jsonb(event.trigger_kind)::text||'}',
+                    'UTF8'),'sha256'),'hex')
+               OR event.activation_event_id<>encode(digest(convert_to(
+                    '{"actor_id":'||to_jsonb(event.actor_id)::text||
+                    ',"context_digest":'||to_jsonb(event.context_digest)::text||
+                    ',"expected_version":'||event.prior_version::text||
+                    ',"observed_at":'||
+                      to_jsonb(outbox.payload->'data'->>'observed_at')::text||
+                    ',"prior_version":'||event.prior_version::text||
+                    ',"reason":'||to_jsonb(event.reason)::text||
+                    ',"reason_code":'||to_jsonb(event.reason_code)::text||
+                    ',"request_id":'||to_jsonb(event.request_id)::text||
+                    ',"scope":'||to_jsonb(event.scope)::text||
+                    ',"trigger_kind":'||to_jsonb(event.trigger_kind)::text||
+                    ',"version":'||event.new_version::text||'}',
+                    'UTF8'),'sha256'),'hex')
+          ) OR EXISTS (
+            SELECT 1 FROM kill_switch_state state
+            LEFT JOIN kill_switch_events event
+              ON event.activation_event_id=state.last_activation_event_id
+             AND event.scope=state.scope AND event.new_version=state.version
+            WHERE state.active AND event.activation_event_id IS NULL
+          ) OR EXISTS (
+            SELECT 1 FROM risk_kill_command_receipts receipt
+            LEFT JOIN kill_switch_events event
+              ON event.activation_event_id=receipt.activation_event_id
+             AND event.request_id=receipt.request_id
+             AND event.request_hash=receipt.request_hash
+            WHERE event.activation_event_id IS NULL
+          ) OR EXISTS (
+            SELECT 1 FROM risk_outbox_links link
+            LEFT JOIN kill_switch_events event
+              ON event.activation_event_id=link.aggregate_id
+            LEFT JOIN outbox_events outbox ON outbox.event_id=link.event_id
+            WHERE link.aggregate_kind='kill-switch'
+              AND (event.activation_event_id IS NULL OR outbox.event_id IS NULL)
+          ) OR EXISTS (
+            SELECT 1 FROM outbox_events outbox
+            LEFT JOIN risk_outbox_links link ON link.event_id=outbox.event_id
+            WHERE outbox.payload->>'producer'='risk-engine' AND link.event_id IS NULL
+          ) OR EXISTS (
+            SELECT 1 FROM risk_outbox_links link
+            LEFT JOIN outbox_events outbox ON outbox.event_id=link.event_id
+            LEFT JOIN risk_decisions decision
+              ON link.aggregate_kind='risk-decision'
+             AND decision.decision_id=link.aggregate_id
+            WHERE link.aggregate_kind='risk-decision'
+              AND (decision.decision_id IS NULL OR outbox.event_id IS NULL
+                   OR jsonb_typeof(decision.risk_input) IS DISTINCT FROM 'object'
+                   OR decision.risk_input->>'risk_input_schema_version'
+                        IS DISTINCT FROM 'woozoo.risk-input/v1'
+                   OR decision.risk_input->>'namespace' IS DISTINCT FROM 'test'
+                   OR decision.risk_input_digest IS DISTINCT FROM encode(digest(convert_to(
+                        risk_canonical_jsonb(decision.risk_input),'UTF8'),'sha256'),'hex')
+                   OR decision.decision_id IS DISTINCT FROM encode(digest(convert_to(
+                        risk_canonical_jsonb(jsonb_build_array(
+                          'risk-decision',decision.decision_hash)),'UTF8'),'sha256'),'hex')
+                   OR decision.decision_hash IS DISTINCT FROM encode(digest(convert_to(
+                        risk_canonical_jsonb(jsonb_build_object(
+                          'decision_schema_version','woozoo.risk-decision/v1',
+                          'ordered_reason_codes',decision.ordered_reason_codes,
+                          'risk_input_digest',decision.risk_input_digest,
+                          'verdict',decision.verdict)),'UTF8'),'sha256'),'hex')
+                   OR jsonb_typeof(decision.ordered_reason_codes) IS DISTINCT FROM 'array'
+                   OR CASE
+                        WHEN jsonb_typeof(decision.ordered_reason_codes)='array'
+                        THEN jsonb_array_length(decision.ordered_reason_codes)<1
+                        ELSE true
+                      END
+                   OR decision.primary_reason IS DISTINCT FROM
+                        decision.ordered_reason_codes->>0
+                   OR (decision.verdict='ALLOWED') IS DISTINCT FROM
+                        (decision.ordered_reason_codes='["RISK_ALLOWED"]'::jsonb)
+                   OR (decision.verdict='ERROR') IS DISTINCT FROM
+                        (decision.primary_reason IN (
+                          'RISK_POLICY_MISSING','RISK_POLICY_HASH_MISMATCH',
+                          'DECIMAL_POLICY_INVALID','INPUT_SCHEMA_INVALID','EQUITY_INVALID'))
+                   OR decision.policy_version IS DISTINCT FROM
+                        decision.risk_input->'policy'->>'version'
+                   OR decision.proposal_hash IS DISTINCT FROM
+                        decision.risk_input->'proposal'->>'proposal_hash'
+                   OR decision.portfolio_snapshot_hash IS DISTINCT FROM
+                        decision.risk_input->'portfolio'->>'snapshot_hash'
+                   OR decision.data_state_hash IS DISTINCT FROM encode(digest(convert_to(
+                        risk_canonical_jsonb(decision.risk_input->'data'),
+                        'UTF8'),'sha256'),'hex')
+                   OR decision.paper_order_preview_hash IS DISTINCT FROM
+                        decision.risk_input->'order_preview'->>'paper_order_preview_hash'
+                   OR decision.reconciliation_checkpoint_hash IS DISTINCT FROM
+                        decision.risk_input->'reconciliation'->>'checkpoint_hash'
+                   OR to_jsonb(decision.kill_switch_version) IS DISTINCT FROM
+                        decision.risk_input->'kill_switch'->'version'
+                   OR decision.decision_as_of IS DISTINCT FROM
+                        (decision.risk_input->'decision_clock'->>'decision_as_of')::timestamptz
+                   OR outbox.event_type IS DISTINCT FROM 'risk.decision.recorded.v1'
+                   OR outbox.aggregate_type IS DISTINCT FROM 'risk_decision'
+                   OR outbox.aggregate_id IS DISTINCT FROM decision.decision_id
+                   OR outbox.aggregate_version IS DISTINCT FROM 1
+                   OR outbox.event_id IS DISTINCT FROM encode(digest(convert_to(
+                        risk_canonical_jsonb(jsonb_build_array(
+                          'event','risk.decision.recorded.v1',decision.decision_id,'1')),
+                        'UTF8'),'sha256'),'hex')
+                   OR jsonb_typeof(outbox.payload) IS DISTINCT FROM 'object'
+                   OR jsonb_strip_nulls(outbox.payload) IS DISTINCT FROM outbox.payload
+                   OR (SELECT count(*) FROM jsonb_object_keys(outbox.payload))<>11
+                   OR outbox.payload->>'spec_version' IS DISTINCT FROM 'woozoo.event/v1'
+                   OR outbox.payload->>'event_id' IS DISTINCT FROM outbox.event_id
+                   OR outbox.payload->>'event_type' IS DISTINCT FROM outbox.event_type
+                   OR outbox.payload->'event_version' IS DISTINCT FROM '1'::jsonb
+                   OR (outbox.payload->>'occurred_at')::timestamptz
+                        IS DISTINCT FROM decision.recorded_at
+                   OR outbox.occurred_at IS DISTINCT FROM decision.recorded_at
+                   OR outbox.payload->>'producer' IS DISTINCT FROM 'risk-engine'
+                   OR outbox.payload->'activation_phase' IS DISTINCT FROM '7'::jsonb
+                   OR outbox.payload->>'aggregate_id' IS DISTINCT FROM decision.decision_id
+                   OR outbox.payload->'aggregate_version' IS DISTINCT FROM '1'::jsonb
+                   OR outbox.payload->>'payload_hash' IS DISTINCT FROM outbox.payload_hash
+                   OR (outbox.payload->'data'->>'decision_as_of')::timestamptz
+                        IS DISTINCT FROM decision.decision_as_of
+                   OR outbox.payload->'data' IS DISTINCT FROM jsonb_build_object(
+                        'decision_schema_version','woozoo.risk-decision/v1',
+                        'decision_id',decision.decision_id,
+                        'risk_input_digest',decision.risk_input_digest,
+                        'decision_hash',decision.decision_hash,
+                        'verdict',decision.verdict,
+                        'primary_reason',decision.primary_reason,
+                        'ordered_reason_codes',decision.ordered_reason_codes,
+                        'policy_version',decision.policy_version,
+                        'proposal_hash',decision.proposal_hash,
+                        'portfolio_snapshot_hash',decision.portfolio_snapshot_hash,
+                        'data_state_hash',decision.data_state_hash,
+                        'paper_order_preview_hash',decision.paper_order_preview_hash,
+                        'reconciliation_checkpoint_hash',
+                          decision.reconciliation_checkpoint_hash,
+                        'kill_switch_version',decision.kill_switch_version,
+                        'decision_as_of',
+                          outbox.payload->'data'->>'decision_as_of')
+                   OR outbox.payload_hash IS DISTINCT FROM encode(digest(convert_to(
+                        risk_canonical_jsonb(outbox.payload->'data'),
+                        'UTF8'),'sha256'),'hex'))
+          ) OR EXISTS (
+            SELECT 1 FROM risk_decisions decision
+            LEFT JOIN risk_outbox_links link
+              ON link.aggregate_kind='risk-decision'
+             AND link.aggregate_id=decision.decision_id
+            WHERE link.event_id IS NULL
+          ) THEN
+            RAISE EXCEPTION 'Kill activation transaction is incomplete';
+          END IF;
+          RETURN NULL;
+        END;
+        $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public
+    """)
+    op.execute("REVOKE ALL ON FUNCTION assert_kill_activation_consistency() FROM PUBLIC")
+    for table in (
+        "risk_decisions",
+        "kill_switch_events",
+        "kill_switch_state",
+        "risk_kill_command_receipts",
+        "risk_outbox_links",
+        "outbox_events",
+    ):
+        op.execute(f"""
+            CREATE CONSTRAINT TRIGGER {table}_kill_activation_consistency
+            AFTER INSERT OR UPDATE OR DELETE ON {table}
+            DEFERRABLE INITIALLY DEFERRED
+            FOR EACH ROW EXECUTE FUNCTION assert_kill_activation_consistency()
+        """)
+    op.execute("""
+        CREATE FUNCTION paper_lock_kill_barrier()
+        RETURNS TABLE(active boolean, version bigint, last_activation_event_id varchar) AS $$
+          SELECT state.active,state.version,state.last_activation_event_id
+          FROM kill_switch_state state WHERE state.scope='paper-global' FOR SHARE
+        $$ LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, public
+    """)
+    op.execute("REVOKE ALL ON FUNCTION paper_lock_kill_barrier() FROM PUBLIC")
+
+    for table in (
+        "risk_policy_versions",
+        "risk_decisions",
+        "kill_switch_events",
+        "risk_kill_command_receipts",
+        "risk_outbox_links",
+        "paper_kill_inbox",
+        "paper_kill_cancel_batches",
+        "paper_kill_cancel_items",
+    ):
+        _append_only(table)
+
+    op.create_table(
+        "phase5_p4_function_backup",
+        sa.Column("function_name", sa.String(128), primary_key=True),
+        sa.Column("function_definition", sa.Text(), nullable=False),
+    )
+    op.execute(r"""
+        INSERT INTO phase5_p4_function_backup(function_name,function_definition)
+        SELECT 'append_paper_outbox',pg_get_functiondef(
+          'append_paper_outbox(varchar,varchar,jsonb,varchar,timestamptz,varchar,varchar,bigint)'
+            ::regprocedure
+        )
+        UNION ALL
+        SELECT 'assert_paper_relational_consistency',
+               pg_get_functiondef('assert_paper_relational_consistency()'::regprocedure)
+    """)
+
+    # A critical Paper mismatch must still permit the separately-owned Risk transaction
+    # that activates Kill. Risk outbox writes carry no Paper financial effect and are
+    # checked by assert_kill_activation_consistency instead.
+    op.execute(r"""
+        DO $$
+        DECLARE
+          v_definition text;
+          v_replaced text;
+        BEGIN
+          SELECT pg_get_functiondef('assert_paper_relational_consistency()'::regprocedure)
+            INTO v_definition;
+          v_replaced := regexp_replace(
+            v_definition,
+            'BEGIN',
+            'BEGIN IF TG_TABLE_NAME=''outbox_events'' AND TG_OP IN (''INSERT'',''UPDATE'') '
+            'AND COALESCE(to_jsonb(NEW)->''payload''->>''producer'', '
+            'to_jsonb(OLD)->''payload''->>''producer'')=''risk-engine'' '
+            'THEN RETURN NULL; END IF;'
+          );
+          IF v_replaced=v_definition THEN
+            RAISE EXCEPTION 'Could not isolate Risk outbox from Paper consistency trigger';
+          END IF;
+          EXECUTE v_replaced;
+        END $$
+    """)
+
+    # Preserve every Phase 4 relational check, changing only the assumption that
+    # all cancelled orders have a human-command receipt. A system Kill item is a
+    # separate immutable cancellation authority.
+    op.execute(r"""
+        DO $$
+        DECLARE
+          v_definition text;
+          v_replaced text;
+        BEGIN
+          SELECT pg_get_functiondef('assert_paper_relational_consistency()'::regprocedure)
+            INTO v_definition;
+          v_replaced := regexp_replace(
+            v_definition,
+            'cancelled_receipts\.receipt_count\s*<>\s*1',
+            '(cancelled_receipts.receipt_count<>1 AND NOT EXISTS (SELECT 1 FROM '
+            'paper_kill_cancel_items kill_item WHERE kill_item.order_id=paper_order.order_id))',
+            'g'
+          );
+          IF v_replaced=v_definition THEN
+            RAISE EXCEPTION 'Could not extend Phase 4 cancellation consistency';
+          END IF;
+          EXECUTE v_replaced;
+        END $$
+    """)
+    op.execute(r"""
+        DO $$
+        DECLARE
+          v_definition text;
+          v_replaced text;
+        BEGIN
+          SELECT pg_get_functiondef('assert_paper_relational_consistency()'::regprocedure)
+            INTO v_definition;
+          v_replaced := regexp_replace(
+            v_definition,
+            $pattern$\(event\.event_type='paper\.order\.cancelled\.v1' AND \(\s*input\.source_kind IS DISTINCT FROM 'TEST_COMMAND'\s*OR NOT EXISTS \(\s*SELECT 1 FROM paper_command_receipts receipt\s*WHERE receipt\.paper_order_id=event\.order_id\s*AND receipt\.broker_seq=input\.broker_seq\s*AND receipt\.outcome='ORDER_CANCELLED'\)\)\)$pattern$,
+            $replacement$(event.event_type='paper.order.cancelled.v1' AND ((input.source_kind IS DISTINCT FROM 'TEST_COMMAND' OR NOT EXISTS (SELECT 1 FROM paper_command_receipts receipt WHERE receipt.paper_order_id=event.order_id AND receipt.broker_seq=input.broker_seq AND receipt.outcome='ORDER_CANCELLED')) AND NOT EXISTS (SELECT 1 FROM paper_kill_cancel_items kill_item WHERE kill_item.order_id=event.order_id)))$replacement$,
+            'g'
+          );
+          IF v_replaced=v_definition THEN
+            RAISE EXCEPTION 'Could not extend Phase 4 Kill event authority';
+          END IF;
+          EXECUTE v_replaced;
+        END $$
+    """)
+    op.execute(r"""
+        DO $$
+        DECLARE
+          v_definition text;
+          v_replaced text;
+        BEGIN
+          SELECT pg_get_functiondef(
+            'append_paper_outbox(varchar,varchar,jsonb,varchar,timestamptz,varchar,varchar,bigint)'
+              ::regprocedure
+          ) INTO v_definition;
+          v_replaced := regexp_replace(
+            v_definition,
+            'AND receipt\.outcome\s*=\s*''ORDER_CANCELLED''\)\)',
+            'AND receipt.outcome=''ORDER_CANCELLED'') AND NOT EXISTS (SELECT 1 FROM '
+            'paper_kill_cancel_items kill_item WHERE kill_item.order_id=p_aggregate_id '
+            'AND kill_item.cancel_id=p_payload->''data''->>''cancel_id''))',
+            'g'
+          );
+          IF v_replaced=v_definition THEN
+            RAISE EXCEPTION 'Could not extend Phase 4 Kill outbox authority';
+          END IF;
+          EXECUTE v_replaced;
+        END $$
+    """)
+
+    op.execute("""
+        DO $$
+        DECLARE
+          role_created boolean := false;
+          role_oid oid;
+          schema_usage boolean := false;
+          outbox_select boolean := false;
+          outbox_insert boolean := false;
+          reconciliation_select boolean := false;
+        BEGIN
+          IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='woozoo_risk_engine') THEN
+            CREATE ROLE woozoo_risk_engine LOGIN;
+            role_created := true;
+          ELSE
+            SELECT oid INTO role_oid FROM pg_roles WHERE rolname='woozoo_risk_engine';
+            SELECT EXISTS (
+              SELECT 1 FROM pg_namespace namespace,
+                LATERAL aclexplode(COALESCE(
+                  namespace.nspacl,acldefault('n',namespace.nspowner))) acl
+              WHERE namespace.nspname='public' AND acl.grantee=role_oid
+                AND acl.privilege_type='USAGE'
+            ) INTO schema_usage;
+            SELECT EXISTS (
+              SELECT 1 FROM pg_class relation,
+                LATERAL aclexplode(COALESCE(
+                  relation.relacl,acldefault('r',relation.relowner))) acl
+              WHERE relation.oid='outbox_events'::regclass AND acl.grantee=role_oid
+                AND acl.privilege_type='SELECT'
+            ) INTO outbox_select;
+            SELECT EXISTS (
+              SELECT 1 FROM pg_class relation,
+                LATERAL aclexplode(COALESCE(
+                  relation.relacl,acldefault('r',relation.relowner))) acl
+              WHERE relation.oid='outbox_events'::regclass AND acl.grantee=role_oid
+                AND acl.privilege_type='INSERT'
+            ) INTO outbox_insert;
+            SELECT EXISTS (
+              SELECT 1 FROM pg_class relation,
+                LATERAL aclexplode(COALESCE(
+                  relation.relacl,acldefault('r',relation.relowner))) acl
+              WHERE relation.oid='paper_reconciliation_checkpoints'::regclass
+                AND acl.grantee=role_oid AND acl.privilege_type='SELECT'
+            ) INTO reconciliation_select;
+          END IF;
+          INSERT INTO risk_migration_metadata(
+            migration_revision,writer_role_created,schema_usage_preexisting,
+            outbox_select_preexisting,outbox_insert_preexisting,
+            reconciliation_select_preexisting)
+          VALUES ('20260719_0005',role_created,schema_usage,outbox_select,
+                  outbox_insert,reconciliation_select);
+        END $$
+    """)
+    op.execute("GRANT USAGE ON SCHEMA public TO woozoo_risk_engine")
+    op.execute(
+        "GRANT SELECT ON risk_policy_versions, risk_decisions, kill_switch_events, "
+        "kill_switch_state, risk_kill_command_receipts, risk_outbox_links, "
+        "paper_reconciliation_checkpoints, outbox_events TO woozoo_risk_engine"
+    )
+    op.execute(
+        "GRANT INSERT ON kill_switch_events, risk_kill_command_receipts, "
+        "risk_outbox_links, outbox_events TO woozoo_risk_engine"
+    )
+    op.execute(
+        "GRANT UPDATE (active,version,last_activation_event_id) ON kill_switch_state "
+        "TO woozoo_risk_engine"
+    )
+    op.execute(
+        "GRANT SELECT ON kill_switch_state, kill_switch_events, risk_outbox_links "
+        "TO woozoo_paper_engine"
+    )
+    op.execute("GRANT EXECUTE ON FUNCTION paper_lock_kill_barrier() TO woozoo_paper_engine")
+    op.execute(
+        "GRANT SELECT, INSERT ON paper_kill_inbox, paper_kill_cancel_batches, "
+        "paper_kill_cancel_items TO woozoo_paper_engine"
+    )
+
+
+def downgrade() -> None:
+    op.execute(r"""
+        DO $$
+        BEGIN
+          IF EXISTS (SELECT 1 FROM risk_decisions)
+             OR EXISTS (SELECT 1 FROM kill_switch_events)
+             OR EXISTS (SELECT 1 FROM risk_kill_command_receipts)
+             OR EXISTS (SELECT 1 FROM risk_outbox_links)
+             OR EXISTS (SELECT 1 FROM paper_kill_inbox)
+             OR EXISTS (SELECT 1 FROM paper_kill_cancel_batches)
+             OR EXISTS (SELECT 1 FROM paper_kill_cancel_items)
+          THEN
+            RAISE EXCEPTION
+              'Phase 5 downgrade blocked: immutable Risk/Kill history exists';
+          END IF;
+        END $$
+    """)
+    op.execute(
+        "CREATE TEMP TABLE phase5_outbox_cleanup AS "
+        "SELECT event_id FROM risk_outbox_links UNION "
+        "SELECT event_id FROM outbox_events WHERE payload->>'producer'='risk-engine'"
+    )
+    op.execute("""
+        CREATE TEMP TABLE phase5_role_cleanup AS
+        SELECT writer_role_created,schema_usage_preexisting,
+               outbox_select_preexisting,outbox_insert_preexisting,
+               reconciliation_select_preexisting
+        FROM risk_migration_metadata WHERE migration_revision='20260719_0005'
+    """)
+    op.execute(r"""
+        DO $$
+        DECLARE saved record;
+        BEGIN
+          FOR saved IN
+            SELECT function_definition FROM phase5_p4_function_backup ORDER BY function_name
+          LOOP
+            EXECUTE saved.function_definition;
+          END LOOP;
+        END $$
+    """)
+    op.drop_table("phase5_p4_function_backup")
+    op.execute("""
+        DO $$ BEGIN
+          IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='woozoo_risk_engine') THEN
+            IF NOT EXISTS (
+              SELECT 1 FROM phase5_role_cleanup WHERE outbox_select_preexisting
+            ) THEN
+              REVOKE SELECT ON outbox_events FROM woozoo_risk_engine;
+            END IF;
+            IF NOT EXISTS (
+              SELECT 1 FROM phase5_role_cleanup WHERE outbox_insert_preexisting
+            ) THEN
+              REVOKE INSERT ON outbox_events FROM woozoo_risk_engine;
+            END IF;
+            IF NOT EXISTS (
+              SELECT 1 FROM phase5_role_cleanup WHERE reconciliation_select_preexisting
+            ) THEN
+              REVOKE SELECT ON paper_reconciliation_checkpoints FROM woozoo_risk_engine;
+            END IF;
+          END IF;
+        END $$
+    """)
+    op.execute("DROP FUNCTION IF EXISTS paper_lock_kill_barrier()")
+    for table in (
+        "paper_kill_cancel_items",
+        "paper_kill_cancel_batches",
+        "paper_kill_inbox",
+        "risk_outbox_links",
+        "risk_kill_command_receipts",
+        "kill_switch_state",
+        "kill_switch_events",
+        "risk_decisions",
+        "risk_policy_versions",
+        "risk_migration_metadata",
+    ):
+        op.drop_table(table)
+    op.execute(
+        "DELETE FROM outbox_events WHERE event_id IN (SELECT event_id FROM phase5_outbox_cleanup)"
+    )
+    op.execute("DROP TABLE phase5_outbox_cleanup")
+    op.execute("DROP FUNCTION enforce_kill_state_activation_only()")
+    op.execute("DROP TRIGGER outbox_events_kill_activation_consistency ON outbox_events")
+    op.execute("DROP FUNCTION assert_kill_activation_consistency()")
+    op.execute("DROP FUNCTION risk_canonical_jsonb(jsonb)")
+    # Alembic may continue directly into the Phase 4 downgrade in the same
+    # transaction. Drain deferred outbox consistency triggers before that
+    # migration alters the shared outbox table.
+    op.execute("SET CONSTRAINTS ALL IMMEDIATE")
+    op.execute("DROP FUNCTION reject_risk_history_mutation()")
+    op.execute("""
+        DO $$ BEGIN
+          IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='woozoo_risk_engine')
+             AND NOT EXISTS (
+               SELECT 1 FROM phase5_role_cleanup WHERE schema_usage_preexisting
+             ) THEN
+            REVOKE USAGE ON SCHEMA public FROM woozoo_risk_engine;
+          END IF;
+          IF EXISTS (SELECT 1 FROM phase5_role_cleanup WHERE writer_role_created) THEN
+            DROP ROLE woozoo_risk_engine;
+          END IF;
+        END $$
+    """)

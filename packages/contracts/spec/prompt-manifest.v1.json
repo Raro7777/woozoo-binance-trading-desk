@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "woozoo.prompt-manifest/v1",
+  "title": "Phase 6 immutable prompt manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "x-creation-phase": 6,
+  "x-activation-phase": 7,
+  "required": ["schema_version", "prompt_manifest_id", "version", "role", "template_hash", "response_schema_id", "tool_allowlist", "manifest_hash"],
+  "properties": {
+    "schema_version": {"const": "woozoo.prompt-manifest/v1"},
+    "prompt_manifest_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "version": {"type": "string", "minLength": 1, "maxLength": 64},
+    "role": {"enum": ["MARKET_REGIME", "TECHNICAL", "TRADE_FLOW", "BULL", "BEAR", "TRADER", "PORTFOLIO", "AUDIT"]},
+    "template_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "response_schema_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "tool_allowlist": {"const": []},
+    "manifest_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+  }
+}

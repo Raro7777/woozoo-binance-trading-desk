@@ -1,0 +1,798 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Woozoo control API",
+    "version": "v1"
+  },
+  "paths": {
+    "/api/v1/health": {
+      "get": {
+        "operationId": "getPlatformHealth",
+        "responses": {
+          "200": {
+            "description": "platform health",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/HealthEnvelopeV1"}
+              }
+            }
+          },
+          "503": {
+            "description": "required dependency unavailable",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/ErrorEnvelopeV1"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/markets/{symbol}/status": {
+      "get": {
+        "operationId": "getMarketStatus",
+        "parameters": [
+          {
+            "name": "symbol",
+            "in": "path",
+            "required": true,
+            "schema": {"enum": ["BTCUSDT", "ETHUSDT"]}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "current durable market status projection",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/MarketStatusEnvelopeV1"}
+              }
+            }
+          },
+          "404": {
+            "description": "market projection not found",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/MarketErrorEnvelopeV1"}
+              }
+            }
+          },
+          "503": {
+            "description": "market projection unavailable",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/MarketErrorEnvelopeV1"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/evidence/{evidence_id}": {
+      "get": {
+        "operationId": "getEvidenceSnapshot",
+        "parameters": [
+          {
+            "name": "evidence_id",
+            "in": "path",
+            "required": true,
+            "schema": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "immutable point-in-time Evidence snapshot",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/EvidenceSnapshotEnvelopeV1"}
+              }
+            }
+          },
+          "404": {
+            "description": "Evidence snapshot not found",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/EvidenceErrorEnvelopeV1"}
+              }
+            }
+          },
+          "503": {
+            "description": "Evidence projection unavailable",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/EvidenceErrorEnvelopeV1"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/commands/evidence-snapshots": {
+      "post": {
+        "operationId": "createEvidenceSnapshot",
+        "security": [{"InternalServiceMutualTLS": []}],
+        "parameters": [{"name": "Idempotency-Key", "in": "header", "required": true, "schema": {"type": "string", "minLength": 1, "maxLength": 128}}],
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {"$ref": "#/components/schemas/EvidenceCommandV1"}}}
+        },
+        "responses": {
+          "200": {"description": "exact idempotent retry", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/EvidenceCommandReceiptEnvelopeV1"}}}},
+          "201": {"description": "Evidence snapshot created", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/EvidenceCommandReceiptEnvelopeV1"}}}},
+          "400": {"description": "closed command schema invalid", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/EvidenceCommandErrorEnvelopeV1"}}}},
+          "403": {"description": "authenticated internal service principal required", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/EvidenceCommandErrorEnvelopeV1"}}}},
+          "409": {"description": "idempotency conflict", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/EvidenceCommandErrorEnvelopeV1"}}}},
+          "422": {"$ref": "#/components/responses/Phase7ErrorResponse"}
+        }
+      }
+    },
+    "/api/v1/session/login": {
+      "post": {
+        "operationId": "loginLocalOperator", "security": [],
+        "parameters": [{"$ref": "#/components/parameters/OriginHeader"}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/LoginCommandV1"}}}},
+        "responses": {
+          "200": {"description": "rotated secure local operator session", "headers": {"Set-Cookie": {"schema": {"type": "string"}}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/LoginResponseV1"}}}},
+          "400": {"$ref": "#/components/responses/Phase7ErrorResponse"},
+          "401": {"$ref": "#/components/responses/Phase7ErrorResponse"},
+          "422": {"$ref": "#/components/responses/Phase7ErrorResponse"}
+        }
+      }
+    },
+    "/api/v1/session": {
+      "get": {
+        "operationId": "getLocalOperatorSession", "security": [{"LocalOperatorSession": []}],
+        "responses": {
+          "200": {"description": "session and one-time CSRF token", "headers": {"Cache-Control": {"schema": {"const": "no-store"}}}, "content": {"application/json": {"schema": {"$ref": "local-session.v1.json"}}}},
+          "401": {"$ref": "#/components/responses/Phase7ErrorResponse"}
+        }
+      }
+    },
+    "/api/v1/session/logout": {
+      "post": {
+        "operationId": "logoutLocalOperator", "security": [{"LocalOperatorSession": []}],
+        "parameters": [{"$ref": "#/components/parameters/OriginHeader"}, {"$ref": "#/components/parameters/CsrfHeader"}, {"$ref": "#/components/parameters/IdempotencyHeader"}],
+        "responses": {
+          "200": {"description": "session revoked", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/LogoutResponseV1"}}}},
+          "403": {"$ref": "#/components/responses/Phase7ErrorResponse"},
+          "409": {"$ref": "#/components/responses/Phase7ErrorResponse"}
+        }
+      }
+    },
+    "/api/v1/trading-room": {
+      "get": {
+        "operationId": "getTradingRoomDashboard", "security": [{"LocalOperatorSession": []}],
+        "responses": {"200": {"description": "closed Paper operations dashboard", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TradingRoomDashboardV1"}}}}, "401": {"$ref": "#/components/responses/Phase7ErrorResponse"}}
+      }
+    },
+    "/api/v1/analysis-runs": {
+      "post": {
+        "operationId": "createPaperAnalysisRun", "security": [{"LocalOperatorSession": []}],
+        "parameters": [{"$ref": "#/components/parameters/OriginHeader"}, {"$ref": "#/components/parameters/CsrfHeader"}, {"$ref": "#/components/parameters/IdempotencyHeader"}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AnalysisCommandV2"}}}},
+        "responses": {"200": {"description": "exact idempotent replay", "content": {"application/json": {"schema": {"$ref": "analysis-run-view.v1.json"}}}}, "201": {"description": "Mock-LLM Paper analysis completed", "content": {"application/json": {"schema": {"$ref": "analysis-run-view.v1.json"}}}}, "403": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "409": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "422": {"$ref": "#/components/responses/Phase7ErrorResponse"}}
+      }
+    },
+    "/api/v1/analysis-runs/{run_id}": {
+      "get": {
+        "operationId": "getPaperAnalysisRun", "security": [{"LocalOperatorSession": []}],
+        "parameters": [{"$ref": "#/components/parameters/HashRunId"}],
+        "responses": {"200": {"description": "Paper analysis projection", "content": {"application/json": {"schema": {"$ref": "analysis-run-view.v1.json"}}}}, "401": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "404": {"$ref": "#/components/responses/Phase7ErrorResponse"}}
+      }
+    },
+    "/api/v1/risk-decisions/{risk_id}": {
+      "get": {
+        "operationId": "getPaperRiskDecision", "security": [{"LocalOperatorSession": []}],
+        "parameters": [{"$ref": "#/components/parameters/HashRiskId"}],
+        "responses": {"200": {"description": "deterministic Risk projection", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/RiskDecisionViewV1"}}}}, "401": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "404": {"$ref": "#/components/responses/Phase7ErrorResponse"}}
+      }
+    },
+    "/api/v1/proposals/{proposal_id}/approval-view": {
+      "get": {
+        "operationId": "getPaperApprovalView", "security": [{"LocalOperatorSession": []}],
+        "parameters": [{"$ref": "#/components/parameters/HashProposalId"}],
+        "responses": {"200": {"description": "server-authoritative approval view", "content": {"application/json": {"schema": {"$ref": "approval-view.v1.json"}}}}, "401": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "404": {"$ref": "#/components/responses/Phase7ErrorResponse"}}
+      }
+    },
+    "/api/v1/paper-approvals": {
+      "post": {
+        "operationId": "decidePaperApproval", "security": [{"LocalOperatorSession": []}],
+        "parameters": [{"$ref": "#/components/parameters/OriginHeader"}, {"$ref": "#/components/parameters/CsrfHeader"}, {"$ref": "#/components/parameters/IdempotencyHeader"}, {"$ref": "#/components/parameters/IfMatchHeader"}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ApprovalCommandV1"}}}},
+        "responses": {"200": {"description": "exact idempotent replay", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ApprovalCommandReceiptV1"}}}}, "201": {"description": "human decision recorded", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ApprovalCommandReceiptV1"}}}}, "403": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "409": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "412": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "422": {"$ref": "#/components/responses/Phase7ErrorResponse"}}
+      }
+    },
+    "/api/v1/paper-approvals/{approval_id}/revocations": {
+      "post": {
+        "operationId": "revokePaperApproval", "security": [{"LocalOperatorSession": []}],
+        "parameters": [{"$ref": "#/components/parameters/HashApprovalId"}, {"$ref": "#/components/parameters/OriginHeader"}, {"$ref": "#/components/parameters/CsrfHeader"}, {"$ref": "#/components/parameters/IdempotencyHeader"}, {"$ref": "#/components/parameters/IfMatchHeader"}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/VersionedReasonCommandV1"}}}},
+        "responses": {"200": {"description": "exact replay or already revoked", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/MutationReceiptV1"}}}}, "201": {"description": "approval revoked", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/MutationReceiptV1"}}}}, "403": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "409": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "412": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "422": {"$ref": "#/components/responses/Phase7ErrorResponse"}}
+      }
+    },
+    "/api/v1/paper-orders/{order_id}": {
+      "get": {
+        "operationId": "getPaperOrder", "security": [{"LocalOperatorSession": []}],
+        "parameters": [{"$ref": "#/components/parameters/HashOrderId"}],
+        "responses": {"200": {"description": "sanitized Paper order projection", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/PaperOrderViewV1"}}}}, "401": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "404": {"$ref": "#/components/responses/Phase7ErrorResponse"}}
+      }
+    },
+    "/api/v1/paper-orders/{order_id}/cancel": {
+      "post": {
+        "operationId": "cancelPaperOrder", "security": [{"LocalOperatorSession": []}],
+        "parameters": [{"$ref": "#/components/parameters/HashOrderId"}, {"$ref": "#/components/parameters/OriginHeader"}, {"$ref": "#/components/parameters/CsrfHeader"}, {"$ref": "#/components/parameters/IdempotencyHeader"}, {"$ref": "#/components/parameters/IfMatchHeader"}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/VersionedReasonCommandV1"}}}},
+        "responses": {"200": {"description": "already terminal", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OrderMutationReceiptV1"}}}}, "201": {"description": "Paper order cancelled", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OrderMutationReceiptV1"}}}}, "403": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "409": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "412": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "422": {"$ref": "#/components/responses/Phase7ErrorResponse"}}
+      }
+    },
+    "/api/v1/paper-portfolio": {
+      "get": {"operationId": "getPaperPortfolio", "security": [{"LocalOperatorSession": []}], "responses": {"200": {"description": "server-computed Paper portfolio", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/PaperPortfolioViewV1"}}}}, "401": {"$ref": "#/components/responses/Phase7ErrorResponse"}}}
+    },
+    "/api/v1/audit-events": {
+      "get": {"operationId": "getAuditEvents", "security": [{"LocalOperatorSession": []}], "parameters": [{"name": "after", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 0, "default": 0}}], "responses": {"200": {"description": "append-only audit page", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AuditPageV1"}}}}, "401": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "422": {"$ref": "#/components/responses/Phase7ErrorResponse"}}}
+    },
+    "/api/v1/kill-switch": {
+      "get": {"operationId": "getKillSwitch", "security": [{"LocalOperatorSession": []}], "responses": {"200": {"description": "authoritative Kill projection", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/KillSwitchViewV1"}}}}, "401": {"$ref": "#/components/responses/Phase7ErrorResponse"}}}
+    },
+    "/api/v1/kill-switch/activate": {
+      "post": {
+        "operationId": "activateKillSwitch", "security": [{"LocalOperatorSession": []}],
+        "parameters": [{"$ref": "#/components/parameters/OriginHeader"}, {"$ref": "#/components/parameters/CsrfHeader"}, {"$ref": "#/components/parameters/IdempotencyHeader"}, {"$ref": "#/components/parameters/IfMatchHeader"}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/KillActivationCommandV1"}}}},
+        "responses": {"200": {"description": "already active", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/KillActivationReceiptV1"}}}}, "201": {"description": "Kill activated and cancellation requested", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/KillActivationReceiptV1"}}}}, "403": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "409": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "412": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "422": {"$ref": "#/components/responses/Phase7ErrorResponse"}}
+      }
+    },
+    "/api/v1/kill-switch/recover": {
+      "post": {
+        "operationId": "recoverKillSwitch", "security": [{"LocalOperatorSession": []}],
+        "parameters": [{"$ref": "#/components/parameters/OriginHeader"}, {"$ref": "#/components/parameters/CsrfHeader"}, {"$ref": "#/components/parameters/IdempotencyHeader"}, {"$ref": "#/components/parameters/IfMatchHeader"}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/KillRecoveryCommandV1"}}}},
+        "responses": {"200": {"description": "exact idempotent replay", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/KillRecoveryReceiptV1"}}}}, "201": {"description": "manual audited recovery", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/KillRecoveryReceiptV1"}}}}, "403": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "409": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "412": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "422": {"$ref": "#/components/responses/Phase7ErrorResponse"}}
+      }
+    },
+    "/api/v1/testnet/operator-state": {
+      "get": {
+        "operationId": "getTestnetOperatorState", "security": [{"LocalOperatorSession": []}],
+        "responses": {"200": {"description": "sanitized local Testnet operator projection", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TestnetOperatorStateV1"}}}}, "401": {"$ref": "#/components/responses/Phase7ErrorResponse"}}
+      }
+    },
+    "/api/v1/testnet-activations": {
+      "post": {
+        "operationId": "createTestnetActivationIntent", "security": [{"LocalOperatorSession": []}],
+        "parameters": [{"$ref": "#/components/parameters/OriginHeader"}, {"$ref": "#/components/parameters/CsrfHeader"}, {"$ref": "#/components/parameters/IdempotencyHeader"}, {"$ref": "#/components/parameters/IfMatchHeader"}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TestnetActivationCommandV1"}}}},
+        "responses": {"200": {"description": "idempotent activation intent receipt", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TestnetMutationReceiptV1"}}}}, "201": {"description": "activation intent recorded", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TestnetMutationReceiptV1"}}}}, "403": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "409": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "412": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "422": {"$ref": "#/components/responses/Phase7ErrorResponse"}}
+      }
+    },
+    "/api/v1/testnet-activations/{activation_id}/deactivations": {
+      "post": {
+        "operationId": "deactivateTestnet", "security": [{"LocalOperatorSession": []}],
+        "parameters": [{"name": "activation_id", "in": "path", "required": true, "schema": {"$ref": "#/components/schemas/HashV1"}}, {"$ref": "#/components/parameters/OriginHeader"}, {"$ref": "#/components/parameters/CsrfHeader"}, {"$ref": "#/components/parameters/IdempotencyHeader"}, {"$ref": "#/components/parameters/IfMatchHeader"}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/VersionedReasonCommandV1"}}}},
+        "responses": {"200": {"description": "idempotent deactivation intent receipt", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TestnetMutationReceiptV1"}}}}, "201": {"description": "deactivation intent recorded", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TestnetMutationReceiptV1"}}}}, "403": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "409": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "412": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "422": {"$ref": "#/components/responses/Phase7ErrorResponse"}}
+      }
+    },
+    "/api/v1/proposals/{proposal_id}/testnet-approval-view": {
+      "get": {
+        "operationId": "getTestnetApprovalView", "security": [{"LocalOperatorSession": []}],
+        "parameters": [{"$ref": "#/components/parameters/HashProposalId"}],
+        "responses": {"200": {"description": "server-authoritative Testnet approval view", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TestnetApprovalViewV1"}}}}, "401": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "404": {"$ref": "#/components/responses/Phase7ErrorResponse"}}
+      }
+    },
+    "/api/v1/testnet-approvals": {
+      "post": {
+        "operationId": "decideTestnetApproval", "security": [{"LocalOperatorSession": []}],
+        "parameters": [{"$ref": "#/components/parameters/OriginHeader"}, {"$ref": "#/components/parameters/CsrfHeader"}, {"$ref": "#/components/parameters/IdempotencyHeader"}, {"$ref": "#/components/parameters/IfMatchHeader"}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TestnetApprovalCommandV1"}}}},
+        "responses": {"200": {"description": "idempotent Testnet approval receipt", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TestnetApprovalReceiptV1"}}}}, "201": {"description": "Testnet decision recorded", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TestnetApprovalReceiptV1"}}}}, "403": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "409": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "412": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "422": {"$ref": "#/components/responses/Phase7ErrorResponse"}}
+      }
+    },
+    "/api/v1/testnet-approvals/{approval_id}/revocations": {
+      "post": {
+        "operationId": "revokeTestnetApproval", "security": [{"LocalOperatorSession": []}],
+        "parameters": [{"$ref": "#/components/parameters/HashApprovalId"}, {"$ref": "#/components/parameters/OriginHeader"}, {"$ref": "#/components/parameters/CsrfHeader"}, {"$ref": "#/components/parameters/IdempotencyHeader"}, {"$ref": "#/components/parameters/IfMatchHeader"}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/VersionedReasonCommandV1"}}}},
+        "responses": {"200": {"description": "idempotent Testnet revocation receipt", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TestnetMutationReceiptV1"}}}}, "201": {"description": "Testnet approval revoked", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TestnetMutationReceiptV1"}}}}, "403": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "409": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "412": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "422": {"$ref": "#/components/responses/Phase7ErrorResponse"}}
+      }
+    },
+    "/api/v1/testnet-executions/{execution_id}": {
+      "get": {
+        "operationId": "getTestnetExecution", "security": [{"LocalOperatorSession": []}],
+        "parameters": [{"name": "execution_id", "in": "path", "required": true, "schema": {"$ref": "#/components/schemas/HashV1"}}],
+        "responses": {"200": {"description": "sanitized local Testnet execution projection", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TestnetExecutionViewV1"}}}}, "401": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "404": {"$ref": "#/components/responses/Phase7ErrorResponse"}}
+      }
+    },
+    "/api/v1/testnet-reconciliation/{checkpoint_id}/confirmations": {
+      "post": {
+        "operationId": "confirmTestnetResetCheckpoint", "security": [{"LocalOperatorSession": []}],
+        "parameters": [{"name": "checkpoint_id", "in": "path", "required": true, "schema": {"$ref": "#/components/schemas/HashV1"}}, {"$ref": "#/components/parameters/OriginHeader"}, {"$ref": "#/components/parameters/CsrfHeader"}, {"$ref": "#/components/parameters/IdempotencyHeader"}, {"$ref": "#/components/parameters/IfMatchHeader"}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TestnetResetConfirmationCommandV1"}}}},
+        "responses": {"200": {"description": "idempotent reset confirmation receipt", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TestnetMutationReceiptV1"}}}}, "201": {"description": "reset confirmation recorded", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TestnetMutationReceiptV1"}}}}, "403": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "409": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "412": {"$ref": "#/components/responses/Phase7ErrorResponse"}, "422": {"$ref": "#/components/responses/Phase7ErrorResponse"}}
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "PostgresDependencyV1": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["required", "status"],
+        "properties": {
+          "required": {"const": true},
+          "status": {"const": "healthy"}
+        }
+      },
+      "RedisDependencyV1": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["required", "authoritative", "status"],
+        "properties": {
+          "required": {"const": false},
+          "authoritative": {"const": false},
+          "status": {"enum": ["healthy", "unavailable"]}
+        }
+      },
+      "HealthDependenciesV1": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["postgres", "redis"],
+        "properties": {
+          "postgres": {"$ref": "#/components/schemas/PostgresDependencyV1"},
+          "redis": {"$ref": "#/components/schemas/RedisDependencyV1"}
+        }
+      },
+      "HealthDataV1": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["service", "status", "trading_mode", "dependencies"],
+        "properties": {
+          "service": {"const": "control-api"},
+          "status": {"enum": ["healthy", "degraded"]},
+          "trading_mode": {"const": "paper"},
+          "dependencies": {"$ref": "#/components/schemas/HealthDependenciesV1"}
+        }
+      },
+      "MetaV1": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["resource_version", "next_cursor"],
+        "properties": {
+          "resource_version": {"type": "null"},
+          "next_cursor": {"type": "null"}
+        }
+      },
+      "ErrorV1": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "message"],
+        "properties": {
+          "code": {"const": "DEPENDENCY_UNAVAILABLE"},
+          "message": {"const": "a required platform dependency is unavailable"}
+        }
+      },
+      "HealthEnvelopeV1": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["api_version", "request_id", "correlation_id", "served_at", "data", "meta"],
+        "properties": {
+          "api_version": {"const": "v1"},
+          "request_id": {"type": "string"},
+          "correlation_id": {"type": "string"},
+          "served_at": {"type": "string", "format": "date-time"},
+          "data": {"$ref": "#/components/schemas/HealthDataV1"},
+          "meta": {"$ref": "#/components/schemas/MetaV1"}
+        }
+      },
+      "ErrorEnvelopeV1": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["api_version", "request_id", "correlation_id", "served_at", "error", "meta"],
+        "properties": {
+          "api_version": {"const": "v1"},
+          "request_id": {"type": "string"},
+          "correlation_id": {"type": "string"},
+          "served_at": {"type": "string", "format": "date-time"},
+          "error": {"$ref": "#/components/schemas/ErrorV1"},
+          "meta": {"$ref": "#/components/schemas/MetaV1"}
+        }
+      },
+      "MarketWatermarkV1": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["session_id", "stream", "last_sequence", "observed_at"],
+        "properties": {
+          "session_id": {"type": "string"},
+          "stream": {"type": "string"},
+          "last_sequence": {"type": "integer", "minimum": 0},
+          "observed_at": {"type": "string", "format": "date-time"}
+        }
+      },
+      "MarketStatusDataV1": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["symbol", "price", "event_time", "received_at", "quality", "quality_reasons", "watermark"],
+        "properties": {
+          "symbol": {"enum": ["BTCUSDT", "ETHUSDT"]},
+          "price": {"type": "string", "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$"},
+          "event_time": {"type": "string", "format": "date-time"},
+          "received_at": {"type": "string", "format": "date-time"},
+          "quality": {"enum": ["healthy", "degraded", "stale", "invalid", "reconnecting"]},
+          "quality_reasons": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+          "watermark": {"$ref": "#/components/schemas/MarketWatermarkV1"}
+        }
+      },
+      "MarketErrorV1": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "message"],
+        "properties": {
+          "code": {"enum": ["MARKET_NOT_FOUND", "MARKET_PROJECTION_UNAVAILABLE"]},
+          "message": {"type": "string"}
+        }
+      },
+      "MarketStatusEnvelopeV1": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["api_version", "request_id", "correlation_id", "served_at", "data", "meta"],
+        "properties": {
+          "api_version": {"const": "v1"},
+          "request_id": {"type": "string"},
+          "correlation_id": {"type": "string"},
+          "served_at": {"type": "string", "format": "date-time"},
+          "data": {"$ref": "#/components/schemas/MarketStatusDataV1"},
+          "meta": {"$ref": "#/components/schemas/MetaV1"}
+        }
+      },
+      "MarketErrorEnvelopeV1": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["api_version", "request_id", "correlation_id", "served_at", "error", "meta"],
+        "properties": {
+          "api_version": {"const": "v1"},
+          "request_id": {"type": "string"},
+          "correlation_id": {"type": "string"},
+          "served_at": {"type": "string", "format": "date-time"},
+          "error": {"$ref": "#/components/schemas/MarketErrorV1"},
+          "meta": {"$ref": "#/components/schemas/MetaV1"}
+        }
+      },
+      "EvidenceItemV1": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["item_type", "item_id", "raw_event_id", "raw_payload_hash"],
+        "properties": {
+          "item_type": {"enum": ["normalized_market_event", "feature_observation"]},
+          "item_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "raw_event_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "raw_payload_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+        }
+      },
+      "EvidenceSnapshotDataV1": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["evidence_id", "evidence_digest", "symbol", "as_of", "knowledge_cutoff", "recipe_version", "input_digest", "quality", "quality_reasons", "collector_session_id", "watermark_digest", "items", "candles", "features"],
+        "properties": {
+          "evidence_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "evidence_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "symbol": {"enum": ["BTCUSDT", "ETHUSDT"]},
+          "as_of": {"type": "string", "format": "date-time"},
+          "knowledge_cutoff": {"type": "string", "format": "date-time"},
+          "recipe_version": {"const": "woozoo.evidence.closed-candles-approved-features/v1"},
+          "input_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "quality": {"const": "healthy"},
+          "quality_reasons": {"type": "array", "maxItems": 0},
+          "collector_session_id": {"type": "string", "format": "uuid"},
+          "watermark_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "items": {"type": "array", "minItems": 256, "maxItems": 256, "items": {"$ref": "#/components/schemas/EvidenceItemV1"}},
+          "candles": {"type": "array", "minItems": 84, "maxItems": 84, "items": {"$ref": "#/components/schemas/EvidenceCandleV1"}},
+          "features": {"type": "array", "minItems": 12, "maxItems": 12, "items": {"$ref": "#/components/schemas/EvidenceFeatureV1"}}
+        }
+      },
+      "EvidenceCandleV1": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["normalized_event_id", "raw_event_id", "raw_payload_hash", "interval", "event_time", "received_at", "open_time", "close_time", "open", "high", "low", "close", "base_volume"],
+        "properties": {
+          "normalized_event_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "raw_event_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "raw_payload_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "interval": {"enum": ["1m", "5m", "1h", "4h"]},
+          "event_time": {"type": "string", "format": "date-time"},
+          "received_at": {"type": "string", "format": "date-time"},
+          "open_time": {"type": "string", "format": "date-time"},
+          "close_time": {"type": "string", "format": "date-time"},
+          "open": {"$ref": "#/components/schemas/PositiveDecimalString"},
+          "high": {"$ref": "#/components/schemas/PositiveDecimalString"},
+          "low": {"$ref": "#/components/schemas/PositiveDecimalString"},
+          "close": {"$ref": "#/components/schemas/PositiveDecimalString"},
+          "base_volume": {"$ref": "#/components/schemas/NonNegativeDecimalString"}
+        }
+      },
+      "EvidenceFeatureV1": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["feature_id", "name", "definition_version", "interval", "feature_time", "value", "input_digest"],
+        "properties": {
+          "feature_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "name": {"enum": ["close_return_1", "close_sma_20", "close_rsi_14"]},
+          "definition_version": {"const": "woozoo.feature.ohlcv-return-sma20-rsi14/v1"},
+          "interval": {"enum": ["1m", "5m", "1h", "4h"]},
+          "feature_time": {"type": "string", "format": "date-time"},
+          "value": {"$ref": "#/components/schemas/FixedScale18SignedDecimalString"},
+          "input_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+        }
+      },
+      "NonNegativeDecimalString": {
+        "type": "string", "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+      },
+      "PositiveDecimalString": {
+        "type": "string", "pattern": "^([1-9][0-9]*)(\\.[0-9]+)?$|^0\\.[0-9]*[1-9][0-9]*$"
+      },
+      "FixedScale18SignedDecimalString": {
+        "type": "string", "pattern": "^-?(0|[1-9][0-9]*)\\.[0-9]{18}$"
+      },
+      "EvidenceErrorV1": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "message"],
+        "properties": {
+          "code": {"enum": ["EVIDENCE_NOT_FOUND", "EVIDENCE_PROJECTION_UNAVAILABLE"]},
+          "message": {"type": "string"}
+        }
+      },
+      "EvidenceCommandV1": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["symbol", "as_of", "knowledge_cutoff"],
+        "properties": {
+          "symbol": {"enum": ["BTCUSDT", "ETHUSDT"]},
+          "as_of": {"type": "string", "format": "date-time"},
+          "knowledge_cutoff": {"type": "string", "format": "date-time"}
+        }
+      },
+      "EvidenceCommandReceiptV1": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["evidence_id", "evidence_digest", "created"],
+        "properties": {
+          "evidence_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "evidence_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "created": {"type": "boolean"}
+        }
+      },
+      "EvidenceCommandReceiptEnvelopeV1": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["api_version", "request_id", "correlation_id", "served_at", "data", "meta"],
+        "properties": {
+          "api_version": {"const": "v1"}, "request_id": {"type": "string"},
+          "correlation_id": {"type": "string"}, "served_at": {"type": "string", "format": "date-time"},
+          "data": {"$ref": "#/components/schemas/EvidenceCommandReceiptV1"},
+          "meta": {"$ref": "#/components/schemas/MetaV1"}
+        }
+      },
+      "EvidenceCommandErrorV1": {
+        "type": "object", "additionalProperties": false, "required": ["code"],
+        "properties": {"code": {"enum": ["SCHEMA_INVALID", "IDEMPOTENCY_CONFLICT", "CALLER_UNAUTHORIZED"]}}
+      },
+      "EvidenceCommandErrorEnvelopeV1": {
+        "type": "object", "additionalProperties": false,
+        "required": ["api_version", "request_id", "correlation_id", "served_at", "error", "meta"],
+        "properties": {
+          "api_version": {"const": "v1"}, "request_id": {"type": "string"},
+          "correlation_id": {"type": "string"}, "served_at": {"type": "string", "format": "date-time"},
+          "error": {"$ref": "#/components/schemas/EvidenceCommandErrorV1"},
+          "meta": {"$ref": "#/components/schemas/MetaV1"}
+        }
+      },
+      "EvidenceSnapshotEnvelopeV1": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["api_version", "request_id", "correlation_id", "served_at", "data", "meta"],
+        "properties": {
+          "api_version": {"const": "v1"},
+          "request_id": {"type": "string"},
+          "correlation_id": {"type": "string"},
+          "served_at": {"type": "string", "format": "date-time"},
+          "data": {"$ref": "#/components/schemas/EvidenceSnapshotDataV1"},
+          "meta": {"$ref": "#/components/schemas/MetaV1"}
+        }
+      },
+      "EvidenceErrorEnvelopeV1": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["api_version", "request_id", "correlation_id", "served_at", "error", "meta"],
+        "properties": {
+          "api_version": {"const": "v1"},
+          "request_id": {"type": "string"},
+          "correlation_id": {"type": "string"},
+          "served_at": {"type": "string", "format": "date-time"},
+          "error": {"$ref": "#/components/schemas/EvidenceErrorV1"},
+          "meta": {"$ref": "#/components/schemas/MetaV1"}
+        }
+      },
+      "HashV1": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+      "LoginCommandV1": {
+        "type": "object", "additionalProperties": false, "required": ["password"],
+        "properties": {"password": {"type": "string", "minLength": 1, "maxLength": 1024, "writeOnly": true}}
+      },
+      "LoginResponseV1": {
+        "type": "object", "additionalProperties": false, "required": ["actor_id", "authenticated"],
+        "properties": {"actor_id": {"const": "operator-local-1"}, "authenticated": {"const": true}}
+      },
+      "LogoutResponseV1": {
+        "type": "object", "additionalProperties": false, "required": ["authenticated"],
+        "properties": {"authenticated": {"const": false}}
+      },
+      "Phase7ErrorV1": {
+        "type": "object", "additionalProperties": false, "required": ["error"],
+        "properties": {"error": {"type": "object", "additionalProperties": false, "required": ["code", "message"], "properties": {"code": {"type": "string", "minLength": 1, "maxLength": 64}, "message": {"type": "string", "minLength": 1, "maxLength": 512}}}}
+      },
+      "TestnetOperatorStateV1": {
+        "type": "object", "additionalProperties": false,
+        "required": ["environment", "account_binding_id", "account_label", "account_generation", "activation_id", "activation_status", "activation_version", "activation_view_digest", "gateway_health", "capability_allowlist_digest", "configuration_digest", "testnet_barrier_status", "paper_kill_active", "reconciliation_status", "reconciliation_checkpoint_id", "reconciliation_checkpoint_digest", "reset_state", "new_commands_allowed", "reason_codes", "activate_action_allowed", "deactivate_action_allowed", "reset_confirmation_allowed", "served_at"],
+        "properties": {
+          "environment": {"const": "BINANCE_SPOT_TESTNET"}, "account_binding_id": {"$ref": "#/components/schemas/HashV1"}, "account_label": {"type": "string", "minLength": 1, "maxLength": 64}, "account_generation": {"type": "integer", "minimum": 1}, "activation_id": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"}, "activation_status": {"enum": ["DISABLED", "PENDING", "ACTIVE", "EXPIRED", "REVOKED"]}, "activation_version": {"type": "integer", "minimum": 0}, "activation_view_digest": {"$ref": "#/components/schemas/HashV1"}, "gateway_health": {"enum": ["DISABLED", "ACTIVATING", "READY", "DEGRADED", "UNKNOWN", "RESET_HOLD", "KILLED"]}, "capability_allowlist_digest": {"$ref": "#/components/schemas/HashV1"}, "configuration_digest": {"$ref": "#/components/schemas/HashV1"}, "testnet_barrier_status": {"enum": ["ACTIVE", "INACTIVE"]}, "paper_kill_active": {"type": "boolean"}, "reconciliation_status": {"enum": ["HEALTHY", "RUNNING", "FAILED", "RESET_SUSPECTED", "AWAITING_OPERATOR_CONFIRMATION", "UNKNOWN"]}, "reconciliation_checkpoint_id": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"}, "reconciliation_checkpoint_digest": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"}, "reset_state": {"enum": ["NONE", "SUSPECTED", "AWAITING_CONFIRMATION", "CONFIRMED"]}, "new_commands_allowed": {"type": "boolean"}, "reason_codes": {"type": "array", "items": {"type": "string", "pattern": "^[A-Z0-9_]{1,64}$"}, "uniqueItems": true}, "activate_action_allowed": {"type": "boolean"}, "deactivate_action_allowed": {"type": "boolean"}, "reset_confirmation_allowed": {"type": "boolean"}, "served_at": {"type": "string", "format": "date-time"}
+        }
+      },
+      "TestnetActivationCommandV1": {
+        "type": "object", "additionalProperties": false, "required": ["expected_version", "activation_view_digest", "reason"],
+        "properties": {"expected_version": {"type": "integer", "minimum": 0}, "activation_view_digest": {"$ref": "#/components/schemas/HashV1"}, "reason": {"type": "string", "minLength": 1, "maxLength": 512}}
+      },
+      "TestnetApprovalCommandV1": {
+        "type": "object", "additionalProperties": false,
+        "required": ["proposal_id", "decision", "expected_version", "testnet_order_preview_digest", "approval_input_digest", "reason"],
+        "properties": {"proposal_id": {"$ref": "#/components/schemas/HashV1"}, "decision": {"enum": ["APPROVE", "REJECT"]}, "expected_version": {"type": "integer", "minimum": 1}, "testnet_order_preview_digest": {"$ref": "#/components/schemas/HashV1"}, "approval_input_digest": {"$ref": "#/components/schemas/HashV1"}, "reason": {"type": "string", "minLength": 1, "maxLength": 512}}
+      },
+      "TestnetResetConfirmationCommandV1": {
+        "type": "object", "additionalProperties": false, "required": ["expected_version", "checkpoint_digest", "reason"],
+        "properties": {"expected_version": {"type": "integer", "minimum": 1}, "checkpoint_digest": {"$ref": "#/components/schemas/HashV1"}, "reason": {"type": "string", "minLength": 1, "maxLength": 512}}
+      },
+      "TestnetMutationReceiptV1": {
+        "type": "object", "additionalProperties": false, "required": ["intent_id", "result", "resource_version"],
+        "properties": {"intent_id": {"$ref": "#/components/schemas/HashV1"}, "result": {"enum": ["ACTIVATION_PENDING", "DEACTIVATED", "REVOKED", "RESET_CONFIRMATION_RECORDED", "ALREADY_RECORDED"]}, "resource_version": {"type": "integer", "minimum": 1}}
+      },
+      "TestnetApprovalReceiptV1": {
+        "type": "object", "additionalProperties": false, "required": ["result", "approval_id", "approval_decision", "approval_validity", "authorization_status", "execution_id"],
+        "properties": {"result": {"enum": ["REJECTED", "BLOCKED", "AUTHORIZATION_ISSUED", "COMMAND_QUEUED"]}, "approval_id": {"$ref": "#/components/schemas/HashV1"}, "approval_decision": {"enum": ["APPROVED", "REJECTED"]}, "approval_validity": {"enum": ["ACTIVE", "EXPIRED", "REVOKED", "INVALIDATED"]}, "authorization_status": {"enum": ["NOT_ISSUED", "ISSUED", "CONSUMED", "BLOCKED", "EXPIRED", "REVOKED", "INVALIDATED"]}, "execution_id": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"}}
+      },
+      "TestnetApprovalViewV1": {
+        "type": "object", "additionalProperties": false,
+        "required": ["environment", "account_binding_id", "account_generation", "proposal_id", "proposal_hash", "risk_decision_id", "risk_decision_hash", "risk_input_digest", "risk_verdict", "risk_policy_version", "preview_policy_version", "testnet_order_preview", "testnet_order_preview_digest", "approval_input_digest", "approval_id", "approval_decision", "approval_validity", "authorization_id", "authorization_status", "execution_id", "approval_ttl_seconds", "view_version", "reason_codes", "approve_action_allowed", "reject_action_allowed", "served_at"],
+        "properties": {"environment": {"const": "BINANCE_SPOT_TESTNET"}, "account_binding_id": {"$ref": "#/components/schemas/HashV1"}, "account_generation": {"type": "integer", "minimum": 1}, "proposal_id": {"$ref": "#/components/schemas/HashV1"}, "proposal_hash": {"$ref": "#/components/schemas/HashV1"}, "risk_decision_id": {"$ref": "#/components/schemas/HashV1"}, "risk_decision_hash": {"$ref": "#/components/schemas/HashV1"}, "risk_input_digest": {"$ref": "#/components/schemas/HashV1"}, "risk_verdict": {"enum": ["ALLOWED", "DENIED", "ERROR"]}, "risk_policy_version": {"const": "woozoo.testnet-risk-policy/v1"}, "preview_policy_version": {"const": "woozoo.testnet-order-preview-policy/v1"}, "testnet_order_preview": {"$ref": "testnet-order-preview.v1.json"}, "testnet_order_preview_digest": {"$ref": "#/components/schemas/HashV1"}, "approval_input_digest": {"$ref": "#/components/schemas/HashV1"}, "approval_id": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"}, "approval_decision": {"enum": ["APPROVED", "REJECTED", null]}, "approval_validity": {"enum": ["ACTIVE", "EXPIRED", "REVOKED", "INVALIDATED", null]}, "authorization_id": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"}, "authorization_status": {"enum": ["NOT_ISSUED", "ISSUED", "CONSUMED", "BLOCKED", "EXPIRED", "REVOKED", "INVALIDATED"]}, "execution_id": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"}, "approval_ttl_seconds": {"const": 300}, "view_version": {"type": "integer", "minimum": 1}, "reason_codes": {"type": "array", "items": {"type": "string", "pattern": "^[A-Z0-9_]{1,64}$"}, "uniqueItems": true}, "approve_action_allowed": {"type": "boolean"}, "reject_action_allowed": {"type": "boolean"}, "served_at": {"type": "string", "format": "date-time"}}
+      },
+      "TestnetExecutionViewV1": {
+        "type": "object", "additionalProperties": false,
+        "required": ["execution_id", "authorization_id", "command_id", "client_order_id", "environment", "account_generation", "command_status", "external_outcome", "order_status", "reconciliation_status", "reconciliation_checkpoint_id", "reset_state", "reason_codes", "submitted_at", "last_observed_at"],
+        "properties": {"execution_id": {"$ref": "#/components/schemas/HashV1"}, "authorization_id": {"$ref": "#/components/schemas/HashV1"}, "command_id": {"$ref": "#/components/schemas/HashV1"}, "client_order_id": {"type": "string", "pattern": "^wz8-[a-f0-9]{32}$"}, "environment": {"const": "BINANCE_SPOT_TESTNET"}, "account_generation": {"type": "integer", "minimum": 1}, "command_status": {"enum": ["QUEUED", "DISPATCHED", "UNKNOWN_OUTCOME", "RECONCILING", "FOUND", "REJECTED", "NOT_FOUND_CONFIRMED", "BLOCKED"]}, "external_outcome": {"enum": ["UNKNOWN", "FOUND", "REJECTED", "NOT_FOUND_CONFIRMED"]}, "order_status": {"enum": ["PENDING_SUBMIT", "NEW", "PARTIALLY_FILLED", "FILLED", "CANCELED", "EXPIRED", null]}, "reconciliation_status": {"enum": ["HEALTHY", "RUNNING", "FAILED", "RESET_SUSPECTED", "AWAITING_OPERATOR_CONFIRMATION", "UNKNOWN"]}, "reconciliation_checkpoint_id": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"}, "reset_state": {"enum": ["NONE", "SUSPECTED", "AWAITING_CONFIRMATION", "CONFIRMED"]}, "reason_codes": {"type": "array", "items": {"type": "string", "pattern": "^[A-Z0-9_]{1,64}$"}, "uniqueItems": true}, "submitted_at": {"type": ["string", "null"], "format": "date-time"}, "last_observed_at": {"type": ["string", "null"], "format": "date-time"}}
+      },
+      "AnalysisCommandV2": {
+        "type": "object", "additionalProperties": false, "required": ["symbol"],
+        "properties": {"symbol": {"enum": ["BTCUSDT", "ETHUSDT"]}}
+      },
+      "ApprovalCommandV1": {
+        "type": "object", "additionalProperties": false,
+        "required": ["proposal_id", "decision", "expected_version", "paper_order_preview_hash", "reason"],
+        "properties": {"proposal_id": {"$ref": "#/components/schemas/HashV1"}, "decision": {"enum": ["APPROVE", "REJECT"]}, "expected_version": {"type": "integer", "minimum": 1}, "paper_order_preview_hash": {"$ref": "#/components/schemas/HashV1"}, "reason": {"type": "string", "minLength": 1, "maxLength": 512}}
+      },
+      "VersionedReasonCommandV1": {
+        "type": "object", "additionalProperties": false, "required": ["expected_version", "reason"],
+        "properties": {"expected_version": {"type": "integer", "minimum": 1}, "reason": {"type": "string", "minLength": 1, "maxLength": 512}}
+      },
+      "KillActivationCommandV1": {
+        "type": "object", "additionalProperties": false, "required": ["expected_version", "reason"],
+        "properties": {"expected_version": {"type": "integer", "minimum": 0}, "reason": {"type": "string", "minLength": 1, "maxLength": 512}}
+      },
+      "KillRecoveryCommandV1": {
+        "type": "object", "additionalProperties": false, "required": ["expected_version", "activation_event_id", "incident_reference", "reason"],
+        "properties": {"expected_version": {"type": "integer", "minimum": 1}, "activation_event_id": {"$ref": "#/components/schemas/HashV1"}, "incident_reference": {"type": "string", "minLength": 1, "maxLength": 128}, "reason": {"type": "string", "minLength": 1, "maxLength": 512}}
+      },
+      "PaperOrderViewV1": {
+        "type": "object", "additionalProperties": false,
+        "required": ["order_id", "client_order_id", "authorization_id", "approval_id", "proposal_hash", "risk_decision_hash", "paper_order_preview_hash", "symbol", "side", "order_type", "time_in_force", "quantity", "limit_price", "filled_quantity", "status", "version"],
+        "properties": {"order_id": {"$ref": "#/components/schemas/HashV1"}, "client_order_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"}, "authorization_id": {"$ref": "#/components/schemas/HashV1"}, "approval_id": {"$ref": "#/components/schemas/HashV1"}, "proposal_hash": {"$ref": "#/components/schemas/HashV1"}, "risk_decision_hash": {"$ref": "#/components/schemas/HashV1"}, "paper_order_preview_hash": {"$ref": "#/components/schemas/HashV1"}, "symbol": {"enum": ["BTCUSDT", "ETHUSDT"]}, "side": {"enum": ["BUY", "SELL"]}, "order_type": {"const": "LIMIT"}, "time_in_force": {"const": "GTC"}, "quantity": {"type": "string"}, "limit_price": {"type": "string"}, "filled_quantity": {"type": "string"}, "status": {"enum": ["OPEN", "PARTIALLY_FILLED", "FILLED", "CANCELLED"]}, "version": {"type": "integer", "minimum": 1}}
+      },
+      "RiskDecisionViewV1": {
+        "type": "object", "additionalProperties": false,
+        "required": ["schema_version", "verdict", "risk_input_digest", "paper_order_preview_hash", "policy_version", "risk_decision_id", "risk_decision_hash", "proposal_id", "preview"],
+        "properties": {"schema_version": {"const": "woozoo.risk-decision/v1"}, "verdict": {"enum": ["ALLOWED", "DENIED", "ERROR"]}, "risk_input_digest": {"$ref": "#/components/schemas/HashV1"}, "paper_order_preview_hash": {"$ref": "#/components/schemas/HashV1"}, "policy_version": {"type": "string", "minLength": 1, "maxLength": 64}, "risk_decision_id": {"$ref": "#/components/schemas/HashV1"}, "risk_decision_hash": {"$ref": "#/components/schemas/HashV1"}, "proposal_id": {"$ref": "#/components/schemas/HashV1"}, "preview": {"$ref": "risk-input.v1.json#/$defs/preview"}}
+      },
+      "ApprovalCommandReceiptV1": {
+        "type": "object", "additionalProperties": false,
+        "required": ["result", "approval_id", "approval_status", "authorization_status", "order_id"],
+        "properties": {"result": {"enum": ["REJECTED", "BLOCKED", "AUTHORIZATION_ISSUED", "CONSUMED_ORDER_CREATED"]}, "approval_id": {"$ref": "#/components/schemas/HashV1"}, "approval_status": {"enum": ["APPROVED", "REJECTED"]}, "authorization_status": {"enum": ["ISSUED", "BLOCKED", "CONSUMED", null]}, "order_id": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"}}
+      },
+      "MutationReceiptV1": {
+        "type": "object", "additionalProperties": false, "required": ["result", "approval_id"],
+        "properties": {"result": {"enum": ["REVOKED", "ALREADY_REVOKED"]}, "approval_id": {"$ref": "#/components/schemas/HashV1"}}
+      },
+      "OrderMutationReceiptV1": {
+        "type": "object", "additionalProperties": false, "required": ["result", "order"],
+        "properties": {"result": {"enum": ["CANCELLED", "ALREADY_TERMINAL"]}, "order": {"$ref": "#/components/schemas/PaperOrderViewV1"}}
+      },
+      "PaperPositionViewV1": {
+        "type": "object", "additionalProperties": false, "required": ["available", "held"],
+        "properties": {"available": {"type": "string"}, "held": {"type": "string"}}
+      },
+      "PaperLedgerEntryViewV1": {
+        "type": "object", "additionalProperties": false,
+        "required": ["journal_id", "account", "asset", "side", "amount"],
+        "properties": {"journal_id": {"$ref": "#/components/schemas/HashV1"}, "line_no": {"type": "integer", "minimum": 0}, "account": {"type": "string", "minLength": 1}, "asset": {"type": "string", "minLength": 1}, "side": {"enum": ["DEBIT", "CREDIT"]}, "amount": {"type": "string"}}
+      },
+      "PaperPortfolioViewV1": {
+        "type": "object", "additionalProperties": false, "required": ["namespace", "portfolio_version", "ledger_version", "available_quote", "held_quote", "positions", "orders", "ledger_entries", "ledger_health", "reconciliation_health", "ledger_checkpoint_id", "reconciliation_as_of", "reconciliation_input_digest", "reconciliation_status", "checkpoint_authority_sequence", "current_authority_sequence", "ledger_status", "ledger_imbalance_count"],
+        "properties": {"namespace": {"const": "paper"}, "portfolio_version": {"type": "integer", "minimum": 0}, "ledger_version": {"type": "integer", "minimum": 0}, "available_quote": {"type": "string"}, "held_quote": {"type": "string"}, "positions": {"type": "object", "additionalProperties": false, "required": ["BTCUSDT", "ETHUSDT"], "properties": {"BTCUSDT": {"$ref": "#/components/schemas/PaperPositionViewV1"}, "ETHUSDT": {"$ref": "#/components/schemas/PaperPositionViewV1"}}}, "orders": {"type": "array", "items": {"$ref": "#/components/schemas/PaperOrderViewV1"}}, "ledger_entries": {"type": "array", "items": {"$ref": "#/components/schemas/PaperLedgerEntryViewV1"}}, "ledger_health": {"enum": ["HEALTHY", "FAILED"]}, "reconciliation_health": {"enum": ["HEALTHY", "FAILED"]}, "ledger_checkpoint_id": {"type": ["string", "null"], "maxLength": 128}, "reconciliation_as_of": {"type": ["string", "null"], "format": "date-time"}, "reconciliation_input_digest": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"}, "reconciliation_status": {"enum": ["HEALTHY", "FAILED", "MISSING", "STALE"]}, "checkpoint_authority_sequence": {"type": ["integer", "null"], "minimum": 0}, "current_authority_sequence": {"type": "integer", "minimum": 0}, "ledger_status": {"enum": ["BALANCED", "UNBALANCED"]}, "ledger_imbalance_count": {"type": "integer", "minimum": 0}}
+      },
+      "PaperWorkerViewV1": {
+        "type": "object", "additionalProperties": false,
+        "required": ["worker_name", "status", "instance_id", "started_at", "heartbeat_at", "last_progress_at", "last_result", "last_error_code", "stopped_at", "ready", "pending_authorizations", "pending_kill_activations"],
+        "properties": {"worker_name": {"const": "phase7-paper-authorization"}, "status": {"enum": ["MISSING", "STALE", "HEALTHY", "FAILED", "STOPPED"]}, "instance_id": {"type": ["string", "null"], "maxLength": 128}, "started_at": {"type": ["string", "null"], "format": "date-time"}, "heartbeat_at": {"type": ["string", "null"], "format": "date-time"}, "last_progress_at": {"type": ["string", "null"], "format": "date-time"}, "last_result": {"type": ["string", "null"], "maxLength": 64}, "last_error_code": {"type": ["string", "null"], "maxLength": 128}, "stopped_at": {"type": ["string", "null"], "format": "date-time"}, "ready": {"type": "boolean"}, "pending_authorizations": {"type": "integer", "minimum": 0}, "pending_kill_activations": {"type": "integer", "minimum": 0}}
+      },
+      "KillSwitchViewV1": {
+        "type": "object", "additionalProperties": false, "required": ["active", "version", "activation_event_id", "recovery_event_id", "cancellation_status", "cancellation_completed_at", "open_order_count", "data_status", "reconciliation_status", "ledger_status", "recovery_allowed", "paper_worker"],
+        "properties": {"active": {"type": "boolean"}, "version": {"type": "integer", "minimum": 0}, "activation_event_id": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"}, "recovery_event_id": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"}, "cancellation_status": {"enum": ["NOT_ACTIVE", "INCOMPLETE", "COMPLETE"]}, "cancellation_completed_at": {"type": ["string", "null"], "format": "date-time"}, "open_order_count": {"type": "integer", "minimum": 0}, "data_status": {"enum": ["HEALTHY", "UNHEALTHY"]}, "reconciliation_status": {"enum": ["HEALTHY", "MISSING", "UNHEALTHY"]}, "ledger_status": {"enum": ["BALANCED", "UNBALANCED"]}, "recovery_allowed": {"type": "boolean"}, "paper_worker": {"$ref": "#/components/schemas/PaperWorkerViewV1"}}
+      },
+      "KillSwitchCommandStateV1": {
+        "type": "object", "additionalProperties": false,
+        "required": ["active", "version", "activation_event_id"],
+        "properties": {"active": {"type": "boolean"}, "version": {"type": "integer", "minimum": 0}, "activation_event_id": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"}}
+      },
+      "KillActivationReceiptV1": {
+        "type": "object", "additionalProperties": false, "required": ["result", "kill_switch", "cancelled_order_ids"],
+        "properties": {"result": {"enum": ["ACTIVATED", "ALREADY_ACTIVE"]}, "kill_switch": {"$ref": "#/components/schemas/KillSwitchCommandStateV1"}, "cancelled_order_ids": {"type": "array", "items": {"$ref": "#/components/schemas/HashV1"}, "uniqueItems": true}}
+      },
+      "KillRecoveryReceiptV1": {
+        "type": "object", "additionalProperties": false, "required": ["result", "kill_switch"],
+        "properties": {"result": {"const": "RECOVERED"}, "kill_switch": {"$ref": "#/components/schemas/KillSwitchCommandStateV1"}}
+      },
+      "TradingRoomMarketV1": {
+        "type": "object", "additionalProperties": false, "required": ["symbol", "best_bid", "best_ask", "quality"],
+        "properties": {"symbol": {"enum": ["BTCUSDT", "ETHUSDT"]}, "best_bid": {"type": ["string", "null"]}, "best_ask": {"type": ["string", "null"]}, "quality": {"enum": ["HEALTHY", "STALE", "INVALID"]}}
+      },
+      "TradingRoomDashboardV1": {
+        "type": "object", "additionalProperties": false, "required": ["status", "trading_mode", "data_quality", "kill_switch", "reconciliation", "ledger", "markets", "open_order_count", "paper_worker"],
+        "properties": {"status": {"enum": ["READY", "HOLD"]}, "trading_mode": {"const": "paper"}, "data_quality": {"enum": ["HEALTHY", "STALE", "INVALID"]}, "kill_switch": {"$ref": "#/components/schemas/KillSwitchViewV1"}, "reconciliation": {"enum": ["HEALTHY", "FAILED"]}, "ledger": {"enum": ["HEALTHY", "FAILED"]}, "markets": {"type": "array", "items": {"$ref": "#/components/schemas/TradingRoomMarketV1"}, "minItems": 2, "maxItems": 2}, "open_order_count": {"type": "integer", "minimum": 0}, "paper_worker": {"$ref": "#/components/schemas/PaperWorkerViewV1"}}
+      },
+      "AuditDataValueV1": {
+        "oneOf": [
+          {"type": ["string", "number", "boolean", "null"]},
+          {"type": "array", "items": {"$ref": "#/components/schemas/AuditDataValueV1"}},
+          {"$ref": "#/components/schemas/AuditDataV1"}
+        ]
+      },
+      "AuditDataV1": {
+        "type": "object",
+        "propertyNames": {"not": {"pattern": "nonce|binding|session_digest|csrf_token_digest|origin_hash|credential|password|secret"}},
+        "additionalProperties": {"$ref": "#/components/schemas/AuditDataValueV1"}
+      },
+      "AuditEventV1": {
+        "type": "object", "additionalProperties": false, "required": ["sequence", "event_id", "event_type", "producer", "actor_id", "occurred_at", "data"],
+        "properties": {"sequence": {"type": "integer", "minimum": 1}, "event_id": {"$ref": "#/components/schemas/HashV1"}, "event_type": {"type": "string", "minLength": 1, "maxLength": 64}, "producer": {"type": "string", "minLength": 1, "maxLength": 64}, "actor_id": {"type": ["string", "null"], "minLength": 1, "maxLength": 128}, "occurred_at": {"type": "string", "format": "date-time"}, "data": {"$ref": "#/components/schemas/AuditDataV1"}}
+      },
+      "AuditPageV1": {
+        "type": "object", "additionalProperties": false, "required": ["events", "next_cursor"],
+        "properties": {"events": {"type": "array", "items": {"$ref": "#/components/schemas/AuditEventV1"}}, "next_cursor": {"type": "integer", "minimum": 0}}
+      }
+    },
+    "parameters": {
+      "OriginHeader": {"name": "Origin", "in": "header", "required": true, "schema": {"type": "string", "pattern": "^https://[^/]+$"}},
+      "CsrfHeader": {"name": "X-CSRF-Token", "in": "header", "required": true, "schema": {"type": "string", "minLength": 32, "maxLength": 256}},
+      "IdempotencyHeader": {"name": "Idempotency-Key", "in": "header", "required": true, "schema": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"}},
+      "IfMatchHeader": {"name": "If-Match", "in": "header", "required": true, "schema": {"type": "string", "pattern": "^(?:[0-9]+|W/[0-9]+|(?:W/)?\"[0-9]+\")$"}},
+      "HashRunId": {"name": "run_id", "in": "path", "required": true, "schema": {"$ref": "#/components/schemas/HashV1"}},
+      "HashRiskId": {"name": "risk_id", "in": "path", "required": true, "schema": {"$ref": "#/components/schemas/HashV1"}},
+      "HashProposalId": {"name": "proposal_id", "in": "path", "required": true, "schema": {"$ref": "#/components/schemas/HashV1"}},
+      "HashApprovalId": {"name": "approval_id", "in": "path", "required": true, "schema": {"$ref": "#/components/schemas/HashV1"}},
+      "HashOrderId": {"name": "order_id", "in": "path", "required": true, "schema": {"$ref": "#/components/schemas/HashV1"}}
+    },
+    "responses": {
+      "Phase7ErrorResponse": {"description": "closed browser command/query error", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Phase7ErrorV1"}}}}
+    },
+    "securitySchemes": {
+      "LocalOperatorSession": {"type": "apiKey", "in": "cookie", "name": "__Host-woozoo_session"},
+      "InternalServiceMutualTLS": {
+        "type": "mutualTLS",
+        "description": "Trusted ingress authenticates and injects the allowlisted internal service principal into the ASGI scope."
+      }
+    }
+  }
+}

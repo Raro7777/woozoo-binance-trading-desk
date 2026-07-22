@@ -1,0 +1,59 @@
+{
+  "schema_version": "woozoo.evidence.replay-manifest/v1",
+  "id": "EVID-007",
+  "status": "PASS",
+  "commands": [
+    [
+      "python",
+      [
+        "-m",
+        "uv",
+        "run",
+        "--locked",
+        "pytest",
+        "tests/safety/test_phase3_evidence_capabilities.py::test_evidence_worker_has_no_network_or_later_phase_capability",
+        "tests/safety/test_phase3_evidence_capabilities.py::test_phase_three_registers_only_the_approved_evidence_command_route",
+        "-q",
+        "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\phase-8\\.pytest-results\\EVID-007.xml"
+      ]
+    ]
+  ],
+  "source_revision": "binance-spot-api-docs@29c227d84058dd2be3fe3b42ab368d1d1ce910e5",
+  "policy_version": "woozoo.market.collector-policy/v1",
+  "fixture_manifest_sha256": "7ad31ec79946ab383176360ae3ee069135ea9d8758ad2e16c13d3811cc05ce40",
+  "fixed_seed": 0,
+  "timezone": "UTC",
+  "test_count": 2,
+  "evidence_recipe_version": "woozoo.evidence.closed-candles-approved-features/v1",
+  "execution_gate": {
+    "framework": "pytest-junit",
+    "tests": 2,
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "invocation_id": "27d0358c-f1d6-4481-a62a-db46f4ef7e6b",
+    "result_label": "EVID-007",
+    "command": [
+      "python",
+      [
+        "-m",
+        "uv",
+        "run",
+        "--locked",
+        "pytest",
+        "tests/safety/test_phase3_evidence_capabilities.py::test_evidence_worker_has_no_network_or_later_phase_capability",
+        "tests/safety/test_phase3_evidence_capabilities.py::test_phase_three_registers_only_the_approved_evidence_command_route",
+        "-q",
+        "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\phase-8\\.pytest-results\\EVID-007.xml"
+      ]
+    ],
+    "result_digest": "5dcca5f4d6db8bf171fbff8654e0a23002dd5fe13d83bab9614f59fa75f15710",
+    "run_id": "844a7f1fc751f55bc6f4e45c4a760b1ec14337ead482ca112ecf817730f766b0"
+  },
+  "git_commit": "cecbe3c7fe43dda466e645ec3c94edf0549fb380",
+  "git_tree": "edacc82ab76b5d762c7a868ac4cc50c4a6c164e6",
+  "working_tree_digest": "34bd3e667a3805f05275458a1e9fa7978513f3e66258d1d11c5932aecc6c7f3d",
+  "frozen_file_count": 554,
+  "output_digest": "664a9679b07462f171144c83961781e013471c22af264dbc4dfc75f77d81c3f5",
+  "recorded_at": "2026-07-21T19:25:33.526Z"
+}

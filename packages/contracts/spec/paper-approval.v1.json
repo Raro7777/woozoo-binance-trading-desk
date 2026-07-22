@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "woozoo.paper-approval/v1",
+  "title": "Phase 7 immutable human Paper approval decision",
+  "type": "object",
+  "additionalProperties": false,
+  "x-creation-phase": 7,
+  "x-activation-phase": 7,
+  "required": ["approval_id", "proposal_id", "proposal_hash", "risk_decision_id", "risk_decision_hash", "risk_input_digest", "risk_policy_version", "paper_order_preview", "paper_order_preview_hash", "actor_id", "session_binding_hash", "csrf_binding_hash", "origin_hash", "decision", "approval_nonce", "expected_kill_switch_version", "expected_portfolio_version", "expected_ledger_version", "decided_at", "expires_at", "payload_hash"],
+  "properties": {
+    "approval_id": {"$ref": "#/$defs/hash"},
+    "proposal_id": {"$ref": "#/$defs/hash"},
+    "proposal_hash": {"$ref": "#/$defs/hash"},
+    "risk_decision_id": {"$ref": "#/$defs/hash"},
+    "risk_decision_hash": {"$ref": "#/$defs/hash"},
+    "risk_input_digest": {"$ref": "#/$defs/hash"},
+    "risk_policy_version": {"type": "string", "minLength": 1, "maxLength": 64},
+    "paper_order_preview": {"$ref": "https://schemas.woozoo.local/risk-input/v1#/$defs/preview"},
+    "paper_order_preview_hash": {"$ref": "#/$defs/hash"},
+    "actor_id": {"const": "operator-local-1"},
+    "session_binding_hash": {"$ref": "#/$defs/hash"},
+    "csrf_binding_hash": {"$ref": "#/$defs/hash"},
+    "origin_hash": {"$ref": "#/$defs/hash"},
+    "decision": {"enum": ["APPROVED", "REJECTED"]},
+    "approval_nonce": {"$ref": "#/$defs/nonce"},
+    "expected_kill_switch_version": {"type": "integer", "minimum": 0},
+    "expected_portfolio_version": {"type": "integer", "minimum": 0},
+    "expected_ledger_version": {"type": "integer", "minimum": 0},
+    "decided_at": {"type": "string", "format": "date-time"},
+    "expires_at": {"type": "string", "format": "date-time"},
+    "payload_hash": {"$ref": "#/$defs/hash"}
+  },
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "nonce": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{31,127}$"}
+  }
+}

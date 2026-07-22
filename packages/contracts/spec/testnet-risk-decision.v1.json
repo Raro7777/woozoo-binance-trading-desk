@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "woozoo.testnet-risk-decision/v1",
+  "x-creation-phase": 8,
+  "x-activation-phase": 8,
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "namespace", "environment", "account_binding_id", "account_generation", "decision_id", "decision_hash", "risk_input_digest", "proposal_id", "proposal_hash", "testnet_order_preview_digest", "verdict", "ordered_reason_codes", "policy_version", "preview_policy_version", "decided_at", "expires_at"],
+  "properties": {
+    "schema_version": {"const": "woozoo.testnet-risk-decision/v1"},
+    "namespace": {"const": "testnet"},
+    "environment": {"const": "BINANCE_SPOT_TESTNET"},
+    "account_binding_id": {"$ref": "#/$defs/hash"},
+    "account_generation": {"type": "integer", "minimum": 1},
+    "decision_id": {"$ref": "#/$defs/hash"},
+    "decision_hash": {"$ref": "#/$defs/hash"},
+    "risk_input_digest": {"$ref": "#/$defs/hash"},
+    "proposal_id": {"$ref": "#/$defs/hash"},
+    "proposal_hash": {"$ref": "#/$defs/hash"},
+    "testnet_order_preview_digest": {"$ref": "#/$defs/hash"},
+    "verdict": {"enum": ["ALLOWED", "DENIED", "ERROR"]},
+    "ordered_reason_codes": {"type": "array", "items": {"type": "string", "pattern": "^[A-Z0-9_]{1,64}$"}, "uniqueItems": true},
+    "policy_version": {"const": "woozoo.testnet-risk-policy/v1"},
+    "preview_policy_version": {"const": "woozoo.testnet-order-preview-policy/v1"},
+    "decided_at": {"type": "string", "format": "date-time"},
+    "expires_at": {"type": "string", "format": "date-time"}
+  },
+  "$defs": {"hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}
+}

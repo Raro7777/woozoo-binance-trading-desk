@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "approval_id": "P2-TO-P3-20260719-01",
+  "from_phase": 2,
+  "to_phase": 3,
+  "approval_status": "approved",
+  "evidence_manifest": "docs/woozoo-trading-desk/phase-2/p2-acceptance-evidence-manifest.json",
+  "acceptance_evidence_digest": "2d9c8158b12de3ebe55f040fccfe0872d6a39e5368b737182bb500c96bb3368f",
+  "approval_prompt": "Phase 3 transition approval: approve P2 acceptance digest 2d9c8158b12de3ebe55f040fccfe0872d6a39e5368b737182bb500c96bb3368f",
+  "user_response": "P2 acceptance digest 2d9c8158b12de3ebe55f040fccfe0872d6a39e5368b737182bb500c96bb3368f 승인",
+  "binding_interpretation": "The user explicitly approved the exact Phase 2 acceptance evidence digest. This envelope authorizes only the Phase 2 to Phase 3 transition and does not authorize later phase transitions or prohibited capabilities.",
+  "approved_by": "user",
+  "approved_at": "2026-07-19T07:21:51Z",
+  "recorded_by": "codex-orchestrator",
+  "recorded_at": "2026-07-19T07:21:51Z"
+}

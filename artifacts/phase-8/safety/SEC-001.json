@@ -1,0 +1,64 @@
+{
+  "schema_version": "woozoo.agent.replay-manifest/v1",
+  "id": "SEC-001",
+  "status": "PASS",
+  "commands": [
+    [
+      "python",
+      [
+        "-m",
+        "uv",
+        "run",
+        "--locked",
+        "pytest",
+        "tests/safety/test_phase6_agent_boundaries.py::test_sec_001_has_no_real_provider_or_secret_configuration",
+        "-q",
+        "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\phase-8\\.pytest-results\\SEC-001.xml"
+      ]
+    ]
+  ],
+  "source_revision": "binance-spot-api-docs@29c227d84058dd2be3fe3b42ab368d1d1ce910e5",
+  "policy_version": "woozoo.market.collector-policy/v1",
+  "fixture_manifest_sha256": "7ad31ec79946ab383176360ae3ee069135ea9d8758ad2e16c13d3811cc05ce40",
+  "fixed_seed": 0,
+  "timezone": "UTC",
+  "test_count": 1,
+  "workflow_version": "woozoo.agent-workflow/v1",
+  "provider": "mock",
+  "model": "woozoo-deterministic-mock/v1",
+  "scenario_manifest_sha256": "333e8d522876e8055e8d33ae7cd5ec2b9e6933b73d7922725d88ee891b9877cc",
+  "network_enabled": false,
+  "tool_allowlist": [],
+  "runtime_namespace": "paper",
+  "scenario_input_digest": "6d7ffcd75ee166bd92429c1c38d1023b56f9b9ce6be071474eae3860805e6b7b",
+  "execution_gate": {
+    "framework": "pytest-junit",
+    "tests": 1,
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "invocation_id": "6463eb44-b24d-4660-8f6d-c9c97ec57e6c",
+    "result_label": "SEC-001",
+    "command": [
+      "python",
+      [
+        "-m",
+        "uv",
+        "run",
+        "--locked",
+        "pytest",
+        "tests/safety/test_phase6_agent_boundaries.py::test_sec_001_has_no_real_provider_or_secret_configuration",
+        "-q",
+        "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\phase-8\\.pytest-results\\SEC-001.xml"
+      ]
+    ],
+    "result_digest": "39d1473c473b08e61a2d46c4d304d567b46d961b446df9d551acf8e1feba866b",
+    "run_id": "167a275e43d18e7d5c1863786835ce2268d3d76eff1bee0f9dba69e0c99e6912"
+  },
+  "git_commit": "cecbe3c7fe43dda466e645ec3c94edf0549fb380",
+  "git_tree": "edacc82ab76b5d762c7a868ac4cc50c4a6c164e6",
+  "working_tree_digest": "34bd3e667a3805f05275458a1e9fa7978513f3e66258d1d11c5932aecc6c7f3d",
+  "frozen_file_count": 554,
+  "output_digest": "653b227e7653fb7452a1df57aeb69f68981efa147d753e165656a848e9b25b5e",
+  "recorded_at": "2026-07-21T19:26:02.446Z"
+}

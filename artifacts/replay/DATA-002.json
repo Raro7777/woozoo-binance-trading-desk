@@ -1,0 +1,62 @@
+{
+  "schema_version": "woozoo.market.replay-manifest/v1",
+  "id": "DATA-002",
+  "status": "PASS",
+  "commands": [
+    [
+      "python",
+      [
+        "-m",
+        "uv",
+        "run",
+        "--locked",
+        "pytest",
+        "tests/replay/test_market_data_replay.py::test_data_002_gap_is_observable_and_blocks_the_gapped_effect",
+        "tests/unit/test_market_data_completeness.py::test_closed_kline_interval_grid_gap_is_rejected",
+        "tests/unit/test_market_data_completeness.py::test_symbol_is_healthy_only_after_all_six_expected_streams_are_fresh",
+        "tests/integration/test_platform_infrastructure.py::test_postgres_restart_restores_closed_kline_grid_continuity",
+        "-q",
+        "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\DATA-002.xml"
+      ]
+    ]
+  ],
+  "source_revision": "binance-spot-api-docs@29c227d84058dd2be3fe3b42ab368d1d1ce910e5",
+  "policy_version": "woozoo.market.collector-policy/v1",
+  "fixture_manifest_sha256": "7ad31ec79946ab383176360ae3ee069135ea9d8758ad2e16c13d3811cc05ce40",
+  "fixed_seed": 0,
+  "timezone": "UTC",
+  "test_count": 4,
+  "execution_gate": {
+    "framework": "pytest-junit",
+    "tests": 4,
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "invocation_id": "54ae4469-2381-490b-bc25-39f0957b20ec",
+    "result_label": "DATA-002",
+    "command": [
+      "python",
+      [
+        "-m",
+        "uv",
+        "run",
+        "--locked",
+        "pytest",
+        "tests/replay/test_market_data_replay.py::test_data_002_gap_is_observable_and_blocks_the_gapped_effect",
+        "tests/unit/test_market_data_completeness.py::test_closed_kline_interval_grid_gap_is_rejected",
+        "tests/unit/test_market_data_completeness.py::test_symbol_is_healthy_only_after_all_six_expected_streams_are_fresh",
+        "tests/integration/test_platform_infrastructure.py::test_postgres_restart_restores_closed_kline_grid_continuity",
+        "-q",
+        "--junitxml=C:\\Users\\xxx\\woozoo-binance-trading-desk\\artifacts\\.pytest-results\\DATA-002.xml"
+      ]
+    ],
+    "result_digest": "832a0ed93bb2ac4da390a3d0b916d108400675c1f07b31dc5471d0c625c977bb",
+    "run_id": "c0191709276a0a4df86a786a56d8e7fd432623177cde5356621a6f2ca026b432"
+  },
+  "git_commit": "c0baf4cedd56818da0cc9d5718950b15eaf48b2b",
+  "git_tree": "6f66d2f761a689ab4ed98924b1485f78f7c25478",
+  "working_tree_digest": "fb55680be162ccb23ef0632e97c8880d0cb449b2bad59f1f6dc582d56d969bd4",
+  "frozen_file_count": 405,
+  "output_digest": "79fa448076afc5addb04a8777cda501cc381d0c7474983e9846a106e77a06535",
+  "recorded_at": "2026-07-21T13:38:06.154Z"
+}

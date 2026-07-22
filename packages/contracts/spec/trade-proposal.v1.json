@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "woozoo.trade-proposal/v1",
+  "title": "Phase 6 authoritative Evidence-bound TradeProposal",
+  "type": "object",
+  "additionalProperties": false,
+  "x-creation-phase": 6,
+  "x-activation-phase": 7,
+  "required": ["schema_version", "proposal_id", "proposal_version", "analysis_run_id", "evidence_id", "evidence_digest", "as_of", "knowledge_cutoff", "symbol", "side", "risk_eligible", "report_ids", "report_hashes", "evidence_item_ids", "thesis", "uncertainty", "invalidation_conditions", "confidence", "provider", "model", "prompt_manifest_hash", "workflow_version", "workflow_hash", "proposal_hash"],
+  "properties": {
+    "schema_version": {"const": "woozoo.trade-proposal/v1"},
+    "proposal_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "proposal_version": {"const": "v1"},
+    "analysis_run_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "evidence_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "evidence_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "as_of": {"type": "string", "format": "date-time"},
+    "knowledge_cutoff": {"type": "string", "format": "date-time"},
+    "symbol": {"enum": ["BTCUSDT", "ETHUSDT"]},
+    "side": {"enum": ["BUY", "SELL", "HOLD"]},
+    "risk_eligible": {"type": "boolean"},
+    "report_ids": {"type": "array", "minItems": 8, "maxItems": 8, "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-f0-9]{64}$"}},
+    "report_hashes": {"type": "array", "minItems": 8, "maxItems": 8, "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-f0-9]{64}$"}},
+    "evidence_item_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 128}},
+    "thesis": {"type": "string", "minLength": 1, "maxLength": 1024},
+    "uncertainty": {"type": "array", "minItems": 1, "maxItems": 8, "items": {"type": "string", "minLength": 1, "maxLength": 512}},
+    "invalidation_conditions": {"type": "array", "minItems": 1, "maxItems": 8, "items": {"type": "string", "minLength": 1, "maxLength": 512}},
+    "confidence": {"type": "string", "pattern": "^(0|0\\.[0-9]{1,6}|1(?:\\.0{1,6})?)$"},
+    "provider": {"const": "mock"},
+    "model": {"const": "woozoo-deterministic-mock/v1"},
+    "prompt_manifest_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "workflow_version": {"const": "woozoo.agent-workflow/v1"},
+    "workflow_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "proposal_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+  },
+  "allOf": [
+    {"if": {"properties": {"side": {"const": "HOLD"}}, "required": ["side"]}, "then": {"properties": {"risk_eligible": {"const": false}}}},
+    {"if": {"properties": {"side": {"enum": ["BUY", "SELL"]}}, "required": ["side"]}, "then": {"properties": {"risk_eligible": {"const": true}}}}
+  ]
+}
