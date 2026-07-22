@@ -281,9 +281,9 @@ try {
     proxy.listen(3443, "127.0.0.1", resolveListen);
   });
 
-  async function refresh(symbol, required) {
+  async function runRefresh(label, arguments_, required) {
     await new Promise((resolveRefresh, rejectRefresh) => {
-      const child = spawn("python", pythonArguments("tests/e2e/live_control_api.py", "--refresh-evidence", symbol), {
+      const child = spawn("python", pythonArguments("tests/e2e/live_control_api.py", ...arguments_), {
         cwd: root,
         stdio: "inherit",
         env: fixtureEnvironment,
@@ -296,9 +296,9 @@ try {
         refreshChildren.delete(child);
         if (!stopping && (error !== undefined || code !== 0)) {
           const detail = error instanceof Error ? error.message : String(code);
-          console.error(`[Testnet] ${symbol} 기록 재생 갱신 실패 (${detail})`);
+          console.error(`[Testnet] ${label} 기록 재생 갱신 실패 (${detail})`);
           if (required) {
-            rejectRefresh(new Error(`${symbol} 기록 재생을 준비하지 못했습니다.`));
+            rejectRefresh(new Error(`${label} 기록 재생을 준비하지 못했습니다.`));
             return;
           }
         }
@@ -310,17 +310,35 @@ try {
       });
     });
   }
+  async function refresh(symbol, required) {
+    await runRefresh(symbol, ["--refresh-evidence", symbol], required);
+  }
+  async function refreshMarket(required) {
+    await Promise.all(["BTCUSDT", "ETHUSDT"].map((symbol) => (
+      runRefresh(`${symbol} 시세`, ["--refresh-market", "--market-symbol", symbol], required)
+    )));
+  }
   async function refreshBoth(required) {
     await refresh("BTCUSDT", required);
     if (stopping) return;
+    await refreshMarket(required);
+    if (stopping) return;
     await refresh("ETHUSDT", required);
+    if (stopping) return;
+    await refreshMarket(required);
   }
   await refreshBoth(true);
   void (async () => {
+    let marketCyclesUntilEvidence = 75;
     while (!stopping) {
-      await new Promise((resolveDelay) => setTimeout(resolveDelay, 1_000));
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 250));
       if (stopping) break;
-      await refreshBoth(false);
+      await refreshMarket(false);
+      marketCyclesUntilEvidence -= 1;
+      if (marketCyclesUntilEvidence <= 0) {
+        await refreshBoth(false);
+        marketCyclesUntilEvidence = 75;
+      }
     }
   })();
 

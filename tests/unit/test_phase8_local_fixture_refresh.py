@@ -22,6 +22,11 @@ def test_local_fixture_refresh_primes_both_markets_before_reporting_ready() -> N
     assert "if (required)" in source
     assert 'await refresh("BTCUSDT", required);' in source
     assert 'await refresh("ETHUSDT", required);' in source
+    assert "await refreshMarket(required);" in source
+    assert '"--refresh-market"' in source
+    assert '"--market-symbol", symbol' in source
+    assert 'Promise.all(["BTCUSDT", "ETHUSDT"].map((symbol)' in source
+    assert source.count("marketCyclesUntilEvidence = 75;") == 2
     assert 'Promise.all(["BTCUSDT", "ETHUSDT"].map(refresh))' not in source
 
 
@@ -33,6 +38,15 @@ def test_fixture_refresh_recovers_the_recorded_collector_session() -> None:
     assert "def refresh_public_market(*, include_trade: bool)" in source
     assert "refresh_public_market(include_trade=True)" in source
     assert "refresh_public_market(include_trade=False)" in source
+    assert "def refresh_recorded_market(symbol: str | None = None)" in source
+    book_refresh = source.split("def refresh_recorded_market(symbol: str | None = None)", 1)[
+        1
+    ].split("def refresh_evidence(", 1)[0]
+    assert 'pipeline.last_sequence("trade", symbol)' not in book_refresh
+    assert "market_store.append_quality(" not in book_refresh
+    assert 'parser.add_argument("--refresh-market", action="store_true")' in source
+    assert 'parser.add_argument("--market-symbol", choices=("BTCUSDT", "ETHUSDT"))' in source
+    assert "return refresh_recorded_market(args.market_symbol)" in source
 
 
 def test_missing_current_book_has_a_clear_korean_operator_message() -> None:
@@ -42,6 +56,14 @@ def test_missing_current_book_has_a_clear_korean_operator_message() -> None:
         'RISK_BOOK_NOT_FOUND: "BTC·ETH 현재 호가가 아직 준비되지 않았습니다. 잠시 뒤 다시 시도하세요."'
         in source
     )
+    assert (
+        'BTC_BOOK_NOT_FOUND: "BTC 현재 호가가 아직 준비되지 않았습니다. 잠시 뒤 다시 시도하세요."'
+        in source
+    )
+    assert (
+        'ETH_BOOK_NOT_FOUND: "ETH 현재 호가가 아직 준비되지 않았습니다. 잠시 뒤 다시 시도하세요."'
+        in source
+    )
 
 
 def test_analysis_retries_only_the_transient_book_gap_with_one_idempotency_key() -> None:
@@ -49,7 +71,8 @@ def test_analysis_retries_only_the_transient_book_gap_with_one_idempotency_key()
     launcher_source = ANALYSIS_LAUNCHER.read_text("utf-8")
 
     assert "readonly code?: string" in api_source
-    assert 'reason.code === "RISK_BOOK_NOT_FOUND"' in launcher_source
+    assert '"RISK_BOOK_NOT_FOUND", "BTC_BOOK_NOT_FOUND", "ETH_BOOK_NOT_FOUND"' in launcher_source
+    assert "transientBookCodes.has(reason.code)" in launcher_source
     assert "const idempotencyKey = crypto.randomUUID();" in launcher_source
     assert "idempotencyKey," in launcher_source
-    assert "attempt < 2" in launcher_source
+    assert "attempt < 9" in launcher_source

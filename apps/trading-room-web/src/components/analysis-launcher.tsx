@@ -3,6 +3,8 @@
 import { useState, useSyncExternalStore } from "react";
 import { ApiError, apiCommand, textValue, type JsonRecord } from "../lib/api";
 
+const transientBookCodes = new Set(["RISK_BOOK_NOT_FOUND", "BTC_BOOK_NOT_FOUND", "ETH_BOOK_NOT_FOUND"]);
+
 export function AnalysisLauncher() {
   const [pending, setPending] = useState(false);
   const hydrated = useSyncExternalStore(() => () => undefined, () => true, () => false);
@@ -16,14 +18,14 @@ export function AnalysisLauncher() {
     try {
       const idempotencyKey = crypto.randomUUID();
       let result: JsonRecord | undefined;
-      for (let attempt = 0; attempt < 3; attempt += 1) {
+      for (let attempt = 0; attempt < 10; attempt += 1) {
         try {
           result = await apiCommand<JsonRecord>("/api/v1/analysis-runs", { symbol }, {
             idempotencyKey,
           });
           break;
         } catch (reason: unknown) {
-          if (!(reason instanceof ApiError && reason.code === "RISK_BOOK_NOT_FOUND" && attempt < 2)) {
+          if (!(reason instanceof ApiError && reason.code !== undefined && transientBookCodes.has(reason.code) && attempt < 9)) {
             throw reason;
           }
           setMessage("현재 BTC·ETH 호가를 안전하게 동기화하는 중입니다. 잠시만 기다려 주세요…");

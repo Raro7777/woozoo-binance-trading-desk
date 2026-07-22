@@ -82,6 +82,8 @@ const errorCodeLabels: Readonly<Record<string, string>> = {
   APPROVAL_NOT_FOUND: "Testnet 승인 기록을 찾을 수 없습니다.",
   EXECUTION_NOT_FOUND: "Testnet 실행 기록을 찾을 수 없습니다.",
   RISK_BOOK_NOT_FOUND: "BTC·ETH 현재 호가가 아직 준비되지 않았습니다. 잠시 뒤 다시 시도하세요.",
+  BTC_BOOK_NOT_FOUND: "BTC 현재 호가가 아직 준비되지 않았습니다. 잠시 뒤 다시 시도하세요.",
+  ETH_BOOK_NOT_FOUND: "ETH 현재 호가가 아직 준비되지 않았습니다. 잠시 뒤 다시 시도하세요.",
   PRODUCTION_AUTHORITY_UNAVAILABLE: "분석 또는 위험 판단 서비스가 일시적으로 준비되지 않았습니다. 잠시 뒤 다시 시도하세요.",
   VERSION_MISMATCH: "화면의 상태가 최신 버전이 아닙니다. 새로 고친 뒤 다시 시도하세요.",
 };

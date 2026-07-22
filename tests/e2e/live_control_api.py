@@ -543,6 +543,60 @@ def bootstrap_public_data() -> int:
     return 0
 
 
+def refresh_recorded_market(symbol: str | None = None) -> int:
+    """Keep the local recorded Risk book projections current."""
+
+    from market_data_worker.persistence import PostgresMarketStore
+    from market_data_worker.pipeline import CollectorPipeline
+    from market_data_worker.recovery import PostgresRestartRepository
+
+    market_url = _required_environment("MARKET_DATABASE_URL")
+    market_store = PostgresMarketStore(market_url)
+    snapshot = PostgresRestartRepository(market_url).load()
+    pipeline = CollectorPipeline(market_store)
+    pipeline.bootstrap_continuity(
+        snapshot.session_id,
+        snapshot.watermarks,
+        snapshot.last_sequences,
+        snapshot.stream_statuses,
+        snapshot.closed_kline_opens,
+    )
+    for raw in snapshot.pending_raw:
+        recovered = pipeline.recover_raw(raw)
+        if not recovered.accepted and recovered.reason != "duplicate":
+            raise RuntimeError(f"E2E_RAW_RECOVERY_FAILED:{raw.stream}:{recovered.reason}")
+
+    prices = {"BTCUSDT": "60000.00", "ETHUSDT": "3000.00"}
+
+    def refresh_books() -> None:
+        symbols = (symbol,) if symbol is not None else ("BTCUSDT", "ETHUSDT")
+        for refresh_symbol in symbols:
+            now = datetime.now(UTC)
+            sequence = (pipeline.last_sequence("book_ticker", refresh_symbol) or 0) + 1
+            price = prices[refresh_symbol]
+            result = pipeline.ingest(
+                snapshot.session_id,
+                f"{refresh_symbol.lower()}@bookTicker",
+                {
+                    "u": sequence,
+                    "s": refresh_symbol,
+                    "b": price,
+                    "B": "10.00000000",
+                    "a": "60000.01" if refresh_symbol == "BTCUSDT" else "3000.01",
+                    "A": "10.00000000",
+                },
+                now,
+            )
+            if not result.accepted:
+                raise RuntimeError(f"E2E_BOOK_REFRESH_REJECTED:{refresh_symbol}:{result.reason}")
+
+    # Keep this path book-only: each durable writer transaction is relatively
+    # expensive through the local Windows Docker proxy and Risk intentionally
+    # rejects either symbol once its recorded book is older than five seconds.
+    refresh_books()
+    return 0
+
+
 def refresh_evidence(
     symbol: str,
     non_crossing_buy_symbol: str | None = None,
@@ -685,6 +739,16 @@ def refresh_evidence(
         raise RuntimeError("E2E_RECORDED_BOOK_DRAIN_LIMIT")
 
     if not materialize_evidence:
+        market_store.append_quality(
+            QualityEvent(
+                QualityStatus.HEALTHY,
+                "e2e_refresh_complete",
+                "market_data",
+                datetime.now(UTC),
+                None,
+            )
+        )
+        refresh_public_market(include_trade=False)
         return 0
 
     # Keep the requested Evidence window point-in-time valid even when the full
@@ -900,6 +964,8 @@ def main() -> int:
     parser.add_argument("--testnet-gateway-user-data-gap-fake", action="store_true")
     parser.add_argument("--reconcile-once", action="store_true")
     parser.add_argument("--bootstrap-public-data", action="store_true")
+    parser.add_argument("--refresh-market", action="store_true")
+    parser.add_argument("--market-symbol", choices=("BTCUSDT", "ETHUSDT"))
     parser.add_argument("--refresh-evidence", choices=("BTCUSDT", "ETHUSDT"))
     parser.add_argument("--non-crossing-buy-book", choices=("BTCUSDT", "ETHUSDT"))
     parser.add_argument("--non-crossing-sell-book", choices=("BTCUSDT", "ETHUSDT"))
@@ -922,6 +988,8 @@ def main() -> int:
         return run_reconciliation_once()
     if args.bootstrap_public_data:
         return bootstrap_public_data()
+    if args.refresh_market:
+        return refresh_recorded_market(args.market_symbol)
     if args.refresh_evidence:
         return refresh_evidence(
             args.refresh_evidence,
