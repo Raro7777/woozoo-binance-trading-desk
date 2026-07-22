@@ -492,15 +492,32 @@ class PostgresAgentStore:
                     "SELECT payload FROM analysis_runs WHERE run_id=%s", (run_id,)
                 ).fetchone()
                 if existing is not None:
-                    if existing[0] != run:
-                        raise ValueError("ANALYSIS_RUN_IDEMPOTENCY_CONFLICT")
+                    # A run ID is deliberately the deterministic identity of an
+                    # immutable Evidence snapshot.  A later operator command can
+                    # select that same snapshot with a new command key.  Its
+                    # command timestamp is not part of the run identity, so the
+                    # freshly materialized audit timestamp must not turn a safe
+                    # replay into an idempotency conflict.  Keep the original
+                    # durable run as authority and bind the new command receipt
+                    # to that exact immutable result.
+                    stored_run = existing[0]
+                    if (
+                        not isinstance(stored_run, dict)
+                        or stored_run.get("run_id") != run_id
+                        or stored_run.get("evidence_id") != run["evidence_id"]
+                        or stored_run.get("evidence_digest") != run["evidence_digest"]
+                        or stored_run.get("namespace") != run["namespace"]
+                        or stored_run.get("outcome") not in {"COMPLETED", "HOLD"}
+                        or not isinstance(stored_run.get("audit_hash"), str)
+                    ):
+                        raise ValueError("ANALYSIS_RUN_RECORD_INVALID")
                     persisted = PersistedAnalysis(
                         created=False,
                         run_id=run_id,
-                        proposal_id=cast(str | None, run["proposal_id"]),
-                        audit_hash=cast(str, run["audit_hash"]),
-                        outcome=cast(str, run["outcome"]),
-                        hold_reason=cast(str | None, run["hold_reason"]),
+                        proposal_id=cast(str | None, stored_run.get("proposal_id")),
+                        audit_hash=cast(str, stored_run["audit_hash"]),
+                        outcome=cast(str, stored_run["outcome"]),
+                        hold_reason=cast(str | None, stored_run.get("hold_reason")),
                     )
                     if command_receipt is not None:
                         connection.execute(
@@ -515,9 +532,9 @@ class PostgresAgentStore:
                                 Jsonb(
                                     {
                                         "run_id": run_id,
-                                        "proposal_id": run["proposal_id"],
-                                        "audit_hash": run["audit_hash"],
-                                        "outcome": run["outcome"],
+                                        "proposal_id": stored_run.get("proposal_id"),
+                                        "audit_hash": stored_run["audit_hash"],
+                                        "outcome": stored_run["outcome"],
                                     }
                                 ),
                                 _timestamp(result.audit["audited_at"]),

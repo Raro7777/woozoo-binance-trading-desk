@@ -575,21 +575,31 @@ def refresh_recorded_market(symbol: str | None = None) -> int:
     symbols = (symbol,) if symbol is not None else ("BTCUSDT", "ETHUSDT")
 
     def refresh_live_public_books() -> None:
+        from concurrent.futures import ThreadPoolExecutor
+
         from market_data_worker.capabilities import PublicRestRequest, RestCapability, Symbol
         from market_data_worker.rest_collection import PublicRestCollector
         from market_data_worker.transport import PublicRestTransport
 
-        collector = PublicRestCollector(
-            PublicRestTransport(timeout_seconds=5),
-            market_store,
-            observed_clock=lambda: datetime.now(UTC),
-        )
-        for refresh_symbol in symbols:
+        def collect_one(refresh_symbol: str) -> tuple[str, object]:
+            collector = PublicRestCollector(
+                PublicRestTransport(timeout_seconds=5),
+                market_store,
+                observed_clock=lambda: datetime.now(UTC),
+            )
             result = collector.collect(
                 PublicRestRequest(RestCapability.BOOK_TICKER, Symbol(refresh_symbol)),
                 snapshot.session_id,
                 datetime.now(UTC),
             )
+            return refresh_symbol, result
+
+        # BTC and ETH must be observed in the same freshness window. A slow
+        # response for one symbol must not make the other stale before Risk
+        # assesses the pair.
+        with ThreadPoolExecutor(max_workers=len(symbols)) as executor:
+            results = tuple(executor.map(collect_one, symbols))
+        for refresh_symbol, result in results:
             if result.status_code != 200 or result.normalized_count != 1:
                 raise RuntimeError(
                     "E2E_PUBLIC_BOOK_REFRESH_FAILED:"
@@ -659,6 +669,13 @@ def refresh_evidence(
     prices = {"BTCUSDT": "60000.00", "ETHUSDT": "3000.00"}
 
     def refresh_public_market(*, include_trade: bool) -> None:
+        if os.environ.get("WOOZOO_LOCAL_PUBLIC_BOOKS") == "enabled":
+            # The local operator path must never overwrite a freshly collected
+            # public book with the deterministic browser fixture while it is
+            # materializing Evidence.  The fixture remains the CI default.
+            del include_trade
+            refresh_recorded_market()
+            return
         for offset, refresh_symbol in enumerate(("BTCUSDT", "ETHUSDT"), start=1):
             now = datetime.now(UTC) + timedelta(milliseconds=offset)
             event_ms = _milliseconds(now)

@@ -28,10 +28,9 @@ def test_local_fixture_refresh_primes_both_markets_before_reporting_ready() -> N
     assert 'pythonArguments("-m", "paper_engine.authorization_worker")' in source
     assert "await waitForPaperWorker(paperAuthorizationWorker);" in source
     assert '"--refresh-market"' in source
-    assert '"--market-symbol", symbol' in source
-    assert 'Promise.all(["BTCUSDT", "ETHUSDT"].map((symbol)' in source
-    assert source.count("marketCyclesUntilEvidence = 75;") == 2
-    assert 'Promise.all(["BTCUSDT", "ETHUSDT"].map(refresh))' not in source
+    assert 'runRefresh("public-books", ["--refresh-market"], required)' in source
+    assert source.count("marketCyclesUntilEvidence = 15;") == 2
+    assert "setTimeout(resolveDelay, 500)" in source
 
 
 def test_fixture_refresh_recovers_the_recorded_collector_session() -> None:
@@ -42,6 +41,8 @@ def test_fixture_refresh_recovers_the_recorded_collector_session() -> None:
     assert "def refresh_public_market(*, include_trade: bool)" in source
     assert "refresh_public_market(include_trade=True)" in source
     assert "refresh_public_market(include_trade=False)" in source
+    assert 'os.environ.get("WOOZOO_LOCAL_PUBLIC_BOOKS") == "enabled"' in source
+    assert "refresh_recorded_market()" in source
     assert "refresh_horizon = datetime.now(UTC)" in source
     assert "while next_open + delta <= refresh_horizon:" in source
     assert "evidence_as_of = refresh_horizon" in source
@@ -57,6 +58,8 @@ def test_fixture_refresh_recovers_the_recorded_collector_session() -> None:
     assert "PublicRestCollector" in book_refresh
     assert "PublicRestRequest(RestCapability.BOOK_TICKER" in book_refresh
     assert "PublicRestTransport" in book_refresh
+    assert "ThreadPoolExecutor" in book_refresh
+    assert "executor.map(collect_one, symbols)" in book_refresh
     assert "observed_clock=lambda: datetime.now(UTC)" in book_refresh
     assert (
         'fixture_prices = {"BTCUSDT": ("60000.00", "60000.01"), "ETHUSDT": ("3000.00", "3000.01")}'

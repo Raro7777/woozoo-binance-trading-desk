@@ -347,9 +347,7 @@ try {
     await runRefresh(symbol, ["--refresh-evidence", symbol], required);
   }
   async function refreshMarket(required) {
-    await Promise.all(["BTCUSDT", "ETHUSDT"].map((symbol) => (
-      runRefresh(`${symbol} 시세`, ["--refresh-market", "--market-symbol", symbol], required)
-    )));
+    await runRefresh("public-books", ["--refresh-market"], required);
   }
   async function refreshBoth(required) {
     await refresh("BTCUSDT", required);
@@ -362,15 +360,17 @@ try {
   }
   await refreshBoth(true);
   void (async () => {
-    let marketCyclesUntilEvidence = 75;
+    // Refresh both allowlisted public books in one process. This avoids the
+    // per-symbol startup delay that could exceed the Risk freshness boundary.
+    let marketCyclesUntilEvidence = 15;
     while (!stopping) {
-      await new Promise((resolveDelay) => setTimeout(resolveDelay, 250));
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 500));
       if (stopping) break;
       await refreshMarket(false);
       marketCyclesUntilEvidence -= 1;
       if (marketCyclesUntilEvidence <= 0) {
         await refreshBoth(false);
-        marketCyclesUntilEvidence = 75;
+        marketCyclesUntilEvidence = 15;
       }
     }
   })();

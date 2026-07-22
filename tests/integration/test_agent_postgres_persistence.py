@@ -769,6 +769,15 @@ def test_agent_persistence_is_atomic_idempotent_and_append_only() -> None:
             assert room_replay.status_code == 200
             assert room_replay.body["run_id"] == first.run_id
             assert room_replay.body["proposal_id"] == first.proposal_id
+            later_command = port.analyze_latest(
+                "BTCUSDT",
+                datetime(2026, 7, 20, 0, 1, tzinfo=UTC),
+                "later-command-for-same-evidence",
+                command_receipt.request_hash,
+            )
+            assert later_command.created is False
+            assert later_command.run_id == first.run_id
+            assert later_command.proposal_id == first.proposal_id
             with pytest.raises(CommandPortRejected, match="Agent analysis held") as conflict:
                 port.analyze_latest(
                     "ETHUSDT",
