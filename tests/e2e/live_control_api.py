@@ -568,6 +568,10 @@ def refresh_evidence(
         snapshot.stream_statuses,
         snapshot.closed_kline_opens,
     )
+    for raw in snapshot.pending_raw:
+        recovered = pipeline.recover_raw(raw)
+        if not recovered.accepted and recovered.reason != "duplicate":
+            raise RuntimeError(f"E2E_RAW_RECOVERY_FAILED:{raw.stream}:{recovered.reason}")
     prices = {"BTCUSDT": "60000.00", "ETHUSDT": "3000.00"}
     for offset, refresh_symbol in enumerate(("BTCUSDT", "ETHUSDT"), start=1):
         now = datetime.now(UTC) + timedelta(milliseconds=offset)
