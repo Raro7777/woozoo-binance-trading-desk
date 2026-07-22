@@ -67,8 +67,6 @@ services:
     read_only: true
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
-    depends_on:
-      control-api: { condition: service_started }
     healthcheck:
       test: ["CMD", "python", "-c", "import socket; socket.create_connection(('control-api', 8000), 2).close()"]
       interval: 2s
@@ -132,6 +130,7 @@ services:
       LLM_PROVIDER: mock
       LOCAL_OPERATOR_ORIGIN: ${LOCAL_OPERATOR_ORIGIN:-https://localhost:3443}
       LOCAL_OPERATOR_VERIFIER_FILE: /run/secrets/local_operator_verifier
+      PHASE8_CONTROL_API_TRUSTED_PROXY_HOST: control-api-loopback-proxy
     secrets:
       - woozoo_control_reader_password
       - woozoo_control_api_password
@@ -142,6 +141,7 @@ services:
     depends_on:
       phase8-bootstrap: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
+      control-api-loopback-proxy: { condition: service_started }
     networks: [authority-network, operator-network]
 
   testnet-execution-worker:

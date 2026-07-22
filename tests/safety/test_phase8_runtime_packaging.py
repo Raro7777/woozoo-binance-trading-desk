@@ -65,6 +65,8 @@ def test_phase8_runtime_is_authenticated_secretless_and_network_isolated() -> No
     assert "spot_testnet_signing_secret" not in control_api
     assert "spot_testnet_api_key" not in execution
     assert "spot_testnet_signing_secret" not in execution
+    assert "PHASE8_CONTROL_API_TRUSTED_PROXY_HOST: control-api-loopback-proxy" in control_api
+    assert "control-api-loopback-proxy: { condition: service_started }" in control_api
 
     postgres = _service_block(compose, "postgres")
     postgres_proxy = _service_block(compose, "postgres-loopback-proxy")
@@ -78,6 +80,11 @@ def test_phase8_runtime_is_authenticated_secretless_and_network_isolated() -> No
         assert "read_only: true" in proxy
         assert "cap_drop: [ALL]" in proxy
         assert "no-new-privileges:true" in proxy
+    assert "depends_on:\n      control-api:" not in control_proxy
+
+    entrypoint = (ROOT / "infra/runtime/phase8-entrypoint.py").read_text(encoding="utf-8")
+    assert '"--forwarded-allow-ips"' in entrypoint
+    assert '"--forwarded-allow-ips", "*"' not in entrypoint
 
 
 def test_phase8_workers_are_long_running_and_gateway_modes_are_concurrent() -> None:

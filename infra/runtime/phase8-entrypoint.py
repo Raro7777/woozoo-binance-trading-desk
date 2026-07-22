@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import ipaddress
 import os
 from pathlib import Path
+import socket
 import subprocess
 import sys
 from urllib.parse import quote
@@ -49,6 +51,34 @@ def _database_url(role: str, password_variable: str) -> str:
     database = os.environ.get("PHASE8_POSTGRES_DATABASE", "woozoo").strip()
     password = quote(_secret(password_variable), safe="")
     return f"postgresql://{role}:{password}@{host}:{port}/{database}?sslmode=disable"
+
+
+def _trusted_control_proxy_ip() -> str:
+    host = _required("PHASE8_CONTROL_API_TRUSTED_PROXY_HOST")
+    try:
+        resolved = {
+            str(address[4][0])
+            for address in socket.getaddrinfo(
+                host,
+                0,
+                family=socket.AF_INET,
+                type=socket.SOCK_STREAM,
+            )
+        }
+    except socket.gaierror as error:
+        raise SystemExit("trusted proxy address resolution failed") from error
+    if len(resolved) != 1:
+        raise SystemExit("trusted proxy must resolve to exactly one private IPv4 address")
+    proxy_ip = ipaddress.ip_address(next(iter(resolved)))
+    if (
+        not isinstance(proxy_ip, ipaddress.IPv4Address)
+        or not proxy_ip.is_private
+        or proxy_ip.is_loopback
+        or proxy_ip.is_link_local
+        or proxy_ip.is_unspecified
+    ):
+        raise SystemExit("trusted proxy must resolve to exactly one private IPv4 address")
+    return str(proxy_ip)
 
 
 def _stage_gateway_secret(source_variable: str, target_name: str) -> str:
@@ -140,6 +170,9 @@ def run_service(service: str) -> int:
             "0.0.0.0",
             "--port",
             "8000",
+            "--proxy-headers",
+            "--forwarded-allow-ips",
+            _trusted_control_proxy_ip(),
             "--no-access-log",
         ]
     elif service == "testnet-execution":
