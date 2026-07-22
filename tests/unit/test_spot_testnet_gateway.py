@@ -33,6 +33,11 @@ from spot_testnet_gateway.transport import (
 HASH = "a" * 64
 
 
+def write_gateway_secret(path: Path, value: str) -> None:
+    path.write_text(value, "ascii")
+    path.chmod(0o600)
+
+
 def enabled_values(key_file: Path, secret_file: Path) -> dict[str, str]:
     return {
         "TRADING_MODE": "paper",
@@ -158,8 +163,8 @@ def test_signed_query_is_deterministic_and_never_uses_float() -> None:
 def test_rest_transport_uses_exact_origin_no_retry_and_sanitizes_receipt(tmp_path: Path) -> None:
     key_file = tmp_path / "api-key"
     secret_file = tmp_path / "signing-secret"
-    key_file.write_text("fixture-api-key", "ascii")
-    secret_file.write_text("fixture-signing-secret", "ascii")
+    write_gateway_secret(key_file, "fixture-api-key")
+    write_gateway_secret(secret_file, "fixture-signing-secret")
     settings = GatewaySettings.from_mapping(enabled_values(key_file, secret_file))
     calls: list[object] = []
 
@@ -380,8 +385,8 @@ def test_user_data_transport_connects_only_to_pinned_url_and_validates_events(
 ) -> None:
     key_file = tmp_path / "api-key"
     secret_file = tmp_path / "signing-secret"
-    key_file.write_text("fixture-api-key", "ascii")
-    secret_file.write_text("fixture-signing-secret", "ascii")
+    write_gateway_secret(key_file, "fixture-api-key")
+    write_gateway_secret(secret_file, "fixture-signing-secret")
     settings = GatewaySettings.from_mapping(enabled_values(key_file, secret_file))
     connected: list[str] = []
     sent: list[dict[str, object]] = []
