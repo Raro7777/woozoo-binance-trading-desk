@@ -3,8 +3,12 @@ param()
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+[Console]::InputEncoding = [System.Text.UTF8Encoding]::new($false)
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+$OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 $repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
 $composeArguments = @("compose", "--env-file", ".env.phase8.local", "-f", "compose.phase8.yaml")
+$composeRuntimeArguments = $composeArguments + @("--profile", "runtime", "--profile", "testnet-gateway")
 
 function Assert-Command {
     param([Parameter(Mandatory = $true)][string]$Name)
@@ -37,7 +41,7 @@ try {
 
     Write-Host ""
     Write-Host "[Woozoo] 격리된 Testnet 서비스를 빌드하고 시작합니다." -ForegroundColor Cyan
-    & docker @composeArguments --profile runtime --profile testnet-gateway up --build -d --wait
+    & docker @composeRuntimeArguments up --build -d --wait
     if ($LASTEXITCODE -ne 0) {
         throw "Phase 8 Docker 서비스 시작에 실패했습니다."
     }
@@ -59,7 +63,14 @@ catch {
 finally {
     Set-Location -LiteralPath $repoRoot
     if (Test-Path -LiteralPath (Join-Path $repoRoot ".env.phase8.local")) {
-        & docker @composeArguments down 2>$null | Out-Null
+        $previousErrorActionPreference = $ErrorActionPreference
+        try {
+            $ErrorActionPreference = "Continue"
+            & docker @composeRuntimeArguments down 2>&1 | Out-Null
+        }
+        finally {
+            $ErrorActionPreference = $previousErrorActionPreference
+        }
     }
 }
 

@@ -99,6 +99,18 @@ docker compose --env-file .env.phase8.local -f compose.phase8.yaml logs --tail 1
 Get-NetTCPConnection -LocalPort 5438,8008,3001,3443 -ErrorAction SilentlyContinue
 ```
 
+### 포트 8008 대기 시간이 초과됨
+
+Phase 8은 내부 전용 DB·API 네트워크를 외부 통신 가능하게 바꾸지 않고, 비밀이 없는 loopback 프록시만 `127.0.0.1`에 연결합니다. 다음 두 프록시가 `healthy`인지 확인합니다.
+
+```powershell
+docker compose --env-file .env.phase8.local -f compose.phase8.yaml --profile runtime --profile testnet-gateway ps postgres-loopback-proxy control-api-loopback-proxy
+Test-NetConnection 127.0.0.1 -Port 5438
+Test-NetConnection 127.0.0.1 -Port 8008
+```
+
+두 포트의 `TcpTestSucceeded`가 `True`가 아니면 기존 실행 창을 닫고 `START_TESTNET.cmd`를 다시 실행합니다. 이 오류만으로 Testnet 키 파일을 삭제할 필요는 없습니다.
+
 ### 전체 컨테이너 상태 확인
 
 ```powershell

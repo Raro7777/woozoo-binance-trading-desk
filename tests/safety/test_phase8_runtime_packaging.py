@@ -1,9 +1,16 @@
 """Phase 8 deployment packaging must preserve authenticated process boundaries."""
 
 from pathlib import Path
+import re
 
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def _service_block(compose: str, name: str) -> str:
+    marker = f"\n  {name}:\n"
+    after = compose.split(marker, 1)[1]
+    return re.split(r"\n  (?=[a-z0-9-]+:\n)|\nnetworks:\n", after, maxsplit=1)[0]
 
 
 def test_phase8_runtime_is_authenticated_secretless_and_network_isolated() -> None:
@@ -24,6 +31,7 @@ def test_phase8_runtime_is_authenticated_secretless_and_network_isolated() -> No
 
     assert "authority-network:" in compose
     assert "operator-network:" in compose
+    assert "loopback-ingress-network:" in compose
     assert "exchange-egress-network:" in compose
     assert "internal: true" in compose
     assert 'ports:\n      - "127.0.0.1:' in compose
@@ -37,11 +45,16 @@ def test_phase8_runtime_is_authenticated_secretless_and_network_isolated() -> No
     assert "spot_testnet_signing_secret:\n    external: true" not in compose
     assert "NEXT_PUBLIC_" not in compose
 
-    control_api = compose.split("  control-api:", 1)[1].split("  testnet-execution-worker:", 1)[0]
-    execution = compose.split("  testnet-execution-worker:", 1)[1].split(
-        "  spot-testnet-gateway-command:", 1
-    )[0]
-    gateway = compose.split("  spot-testnet-gateway-command:", 1)[1].split("\nnetworks:", 1)[0]
+    control_api = _service_block(compose, "control-api")
+    execution = _service_block(compose, "testnet-execution-worker")
+    gateway = "\n".join(
+        _service_block(compose, service)
+        for service in (
+            "spot-testnet-gateway-command",
+            "spot-testnet-gateway-reconciliation",
+            "spot-testnet-gateway-user-data",
+        )
+    )
     assert "woozoo_testnet_execution_password" not in control_api
     assert "woozoo_spot_testnet_gateway_password" not in control_api
     assert "woozoo_control_api_password" not in execution
@@ -52,6 +65,19 @@ def test_phase8_runtime_is_authenticated_secretless_and_network_isolated() -> No
     assert "spot_testnet_signing_secret" not in control_api
     assert "spot_testnet_api_key" not in execution
     assert "spot_testnet_signing_secret" not in execution
+
+    postgres = _service_block(compose, "postgres")
+    postgres_proxy = _service_block(compose, "postgres-loopback-proxy")
+    control_proxy = _service_block(compose, "control-api-loopback-proxy")
+    assert "loopback-ingress-network" not in postgres
+    assert "loopback-ingress-network" not in control_api
+    for proxy in (postgres_proxy, control_proxy):
+        assert "loopback-ingress-network" in proxy
+        assert "secrets:" not in proxy
+        assert "SPOT_TESTNET_" not in proxy
+        assert "read_only: true" in proxy
+        assert "cap_drop: [ALL]" in proxy
+        assert "no-new-privileges:true" in proxy
 
 
 def test_phase8_workers_are_long_running_and_gateway_modes_are_concurrent() -> None:
@@ -73,6 +99,7 @@ def test_phase8_workers_are_long_running_and_gateway_modes_are_concurrent() -> N
 def test_phase8_runtime_images_do_not_share_python_import_roots() -> None:
     compose = (ROOT / "compose.phase8.yaml").read_text(encoding="utf-8")
     assert "phase8-control-api.Dockerfile" in compose
+    assert "phase8-loopback-proxy.Dockerfile" in compose
     assert "phase8-testnet-execution.Dockerfile" in compose
     assert "phase8-spot-testnet-gateway.Dockerfile" in compose
 
@@ -121,6 +148,18 @@ def test_local_phase8_secret_and_environment_files_are_git_ignored() -> None:
 
     assert ".secrets/" in ignore
     assert ".env.phase8.local" in ignore
+
+
+def test_phase8_launcher_stops_profile_services_without_masking_the_root_error() -> None:
+    launcher = (ROOT / "scripts" / "start-phase8-testnet.ps1").read_text(encoding="utf-8")
+    command_launcher = (ROOT / "START_TESTNET.cmd").read_text(encoding="utf-8")
+    attributes = (ROOT / ".gitattributes").read_text(encoding="utf-8")
+
+    assert "$composeRuntimeArguments" in launcher
+    assert "& docker @composeRuntimeArguments down" in launcher
+    assert '$ErrorActionPreference = "Continue"' in launcher
+    assert "chcp 65001 >nul" in command_launcher
+    assert "*.cmd text eol=crlf" in attributes
 
 
 def test_root_compose_is_unambiguously_a_loopback_test_fixture() -> None:

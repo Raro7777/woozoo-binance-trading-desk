@@ -24,8 +24,6 @@ services:
       timeout: 2s
       retries: 30
     volumes: [phase8_postgres_data:/var/lib/postgresql/data]
-    ports:
-      - "127.0.0.1:${PHASE8_POSTGRES_PORT:-5438}:5432"
     networks: [authority-network]
 
   redis:
@@ -37,6 +35,48 @@ services:
       timeout: 2s
       retries: 30
     networks: [authority-network]
+
+  postgres-loopback-proxy:
+    build:
+      context: .
+      dockerfile: infra/containers/phase8-loopback-proxy.Dockerfile
+    image: woozoo/phase8-loopback-proxy:local
+    restart: "unless-stopped"
+    command: ["--target", "postgres"]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    depends_on:
+      postgres: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('postgres', 5432), 2).close()"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    ports:
+      - "127.0.0.1:${PHASE8_POSTGRES_PORT:-5438}:5432"
+    networks: [authority-network, loopback-ingress-network]
+
+  control-api-loopback-proxy:
+    build:
+      context: .
+      dockerfile: infra/containers/phase8-loopback-proxy.Dockerfile
+    image: woozoo/phase8-loopback-proxy:local
+    restart: "unless-stopped"
+    command: ["--target", "control-api"]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    depends_on:
+      control-api: { condition: service_started }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('control-api', 8000), 2).close()"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    ports:
+      - "127.0.0.1:${PHASE8_CONTROL_API_PORT:-8008}:8000"
+    networks: [operator-network, loopback-ingress-network]
 
   phase8-bootstrap:
     <<: *python-service
@@ -102,8 +142,6 @@ services:
     depends_on:
       phase8-bootstrap: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
-    ports:
-      - "127.0.0.1:${PHASE8_CONTROL_API_PORT:-8008}:8000"
     networks: [authority-network, operator-network]
 
   testnet-execution-worker:
@@ -224,6 +262,7 @@ networks:
     internal: true
   operator-network:
     internal: true
+  loopback-ingress-network: {}
   exchange-egress-network: {}
 
 volumes:
