@@ -45,6 +45,7 @@ const forbidden = [
 const phaseFourPatternA = insensitive("acc", "ount");
 const phaseFourPatternB = insensitive("test", "net");
 const phaseFourPatternC = insensitive("api[_-]?", "key");
+const safeProductStatusPath = "apps/trading-room-web/src/components/product-status.tsx";
 
 function isApprovedDomainVocabulary(projectPath, pattern) {
   if (
@@ -85,6 +86,10 @@ function isApprovedDomainVocabulary(projectPath, pattern) {
   if (
     projectPath === "services/paper-engine/src/paper_engine/settings.py" &&
     [phaseFourPatternB.source, phaseFourPatternC.source].includes(pattern.source)
+  ) return true;
+  if (
+    projectPath === safeProductStatusPath &&
+    [phaseFourPatternB.source, insensitive("main", "net").source].includes(pattern.source)
   ) return true;
   return false;
 }

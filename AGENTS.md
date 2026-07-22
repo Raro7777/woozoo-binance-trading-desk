@@ -6,7 +6,9 @@
 
 **안전 포인터:** 모든 작업은 `.agents/skills/woozoo-safety-boundaries/SKILL.md`와 `.agents/skills/woozoo-phase-gates/SKILL.md`를 먼저 적용한다. Mainnet 비공개 주문, 실거래, 출금, 선물, 마진, 레버리지, 숏, 사람 승인 없는 외부 주문과 AI의 주문 도구 접근은 금지한다.
 
-**현재 단계:** `docs/woozoo-trading-desk/phase-state.json`이 유일한 단계 상태다. 명시적 사용자 승인과 단계 게이트 통과 없이 다음 Phase로 넘어가지 않는다.
+**현재 단계:** `docs/woozoo-trading-desk/phase-state.json`이 유일한 단계 상태다. Phase 8은 일시 중단되었고 PR #8의 Phase 7 Paper MVP 정리 모드가 활성화되어 있다. 중단 중에는 Testnet 구현을 진행하지 않는다.
+
+**Paper MVP 정리 모드:** 일반 기능·버그·문서·UI 변경은 `구현 → 관련 테스트 → 자체 검토 → Draft PR 보고`로 완료한다. 파일별 SHA-256 승인, 테스트별 JSON artifact, 반복 acceptance digest, 동일 엔진 다중 재검토, 매 작업의 외부 리뷰, 사소한 UI 변경의 Phase 승인은 요구하지 않는다. 과거 Manifest와 Evidence는 삭제하지 않고 감사 이력으로만 보존한다. 금융 원장, Risk Engine, 주문 멱등성, Kill Switch, Testnet 주문, Mainnet 전환은 강화 검증 대상으로 유지한다. 세부 정본은 `docs/DEVELOPMENT_WORKFLOW_KO.md`다.
 
 **기본 실행 모드:** 이후 애플리케이션 설정의 기본은 `TRADING_MODE=paper`다. 값이 없거나 알 수 없으면 fail-closed하고, Mainnet private/live로 fallback하지 않는다.
 
@@ -21,18 +23,19 @@
 5. **데이터 무결성:** raw append와 provenance를 보존하고 `event_time`, `received_at`, `as_of`, `knowledge_cutoff`, watermark·quality를 구분한다. 미래 오염·gap·schema 오류·raw 저장 실패를 정상으로 숨기지 않는다.
 6. **Engineering:** 계약과 불변조건을 먼저 고정하고 작은 typed 변경으로 구현한다. inbox/domain/ledger/outbox 원자성, idempotency, immutable event·ledger와 reversal+replacement를 유지한다.
 7. **Security:** 비밀은 브라우저·로그·prompt·tool·fixture에 넣지 않고 최소권한 process에만 둔다. Phase 1~7에는 Testnet/private schema·config·dependency·egress·capability가 0이어야 한다.
-8. **Workflow:** 매 작업 전 `phase-state.json`과 현재 acceptance를 확인하고 승인된 Phase 범위만 변경한다. Phase별 `codex/phase-{n}-{slug}` 브랜치, RED→GREEN→refactor, diff self-review, 역할 분리 safety QA와 리뷰 증거를 사용한다.
-9. **Definition of Done:** 관련 코드·계약·문서·테스트·운영 증거가 함께 갱신되고 필수 manifest가 전건 PASS여야 한다. `UNVERIFIED`, 금지 capability, 비밀 노출, 원장 불균형, 미추적 요구가 하나라도 있으면 완료가 아니다.
-10. **품질 명령:** 해당 Phase에서 생성이 승인된 뒤 루트 `pnpm bootstrap`, `pnpm env:init`, `pnpm lint`, `pnpm typecheck`, `pnpm test:unit`, `pnpm test:contracts`, `pnpm test:safety`, `pnpm test:integration`, `pnpm test:property`, `pnpm test:replay`, `pnpm test:failure`, `pnpm test:e2e`, `pnpm build`, `pnpm ci`를 정본으로 사용한다. `pnpm ci`는 현재 Phase의 필수 명령 전부를 포함한다. 존재하지 않거나 실행하지 않은 명령은 PASS로 기록하지 않는다.
+8. **Workflow:** 작업 전 `phase-state.json`을 확인하고 별도 브랜치에서 작은 typed 변경, 관련 테스트, diff self-review, Draft PR 보고를 사용한다. 강화 검증 대상은 역할 분리 safety QA를 추가한다.
+9. **Definition of Done:** 일반 변경은 구현·관련 테스트·자체 검토·Draft PR 보고가 완료 조건이다. 금지 capability, 비밀 노출, 원장 불균형, 미검증 안전 변경은 언제나 완료가 아니다.
+10. **품질 명령:** 루트 `pnpm test:core`, `pnpm test:safety`, `pnpm test:integration`, `pnpm test:e2e`, `pnpm ci`를 정본으로 사용한다. Property·Replay·Failure 테스트는 Core 또는 Safety에 포함한다. 일반 CI는 Phase Manifest나 acceptance artifact digest가 오래되었다는 이유만으로 실패시키지 않는다.
 
-**Codex 어댑터:** `.codex/agents/*.toml`의 전문 에이전트를 병렬 subagent로 사용한다. architect·builder·safety QA는 보고서 텍스트만 반환하고, 오케스트레이터만 `_workspace/{phase}_{agent}_{artifact}` 계약으로 단계별 산출물을 영속화한다. Codex 내부 교차검토는 별도 `_workspace/internal-reviews/` 경로를 쓰되 같은 단일 persistence-owner 원칙을 따른다. 동시 실행은 기본 3개를 넘지 않는다.
+**Codex 어댑터:** 전문 에이전트와 `_workspace/` 리뷰 증거는 강화 검증 대상 또는 사용자가 명시적으로 요청한 작업에만 사용한다. 일반 Paper MVP 유지보수에는 필수가 아니다. 사용할 때는 오케스트레이터만 산출물을 영속화하며 동시 실행은 기본 3개를 넘지 않는다.
 
-**리뷰 정책:** 일반 대조 검토는 Codex 전용 `woozoo-codex-cross-reviewer`가 읽기 전용·분리 컨텍스트에서 수행한다. 이는 동일 엔진 내부 검토이므로 외부 독립 리뷰가 아니며 safety QA를 대체하지 않는다. Claude reviewer는 사용하지 않고, 외부 엔진은 프로젝트 선택기가 허용한 agy/Gemini만 사용한다. 없거나 실패하면 `external-review-unavailable`을 기록한다.
+**리뷰 정책:** 일반 변경은 diff 자체 검토로 충분하다. 강화 검증 대상은 역할 분리 safety QA를 수행하고 필요할 때 Codex 내부 교차검토를 보조로 사용한다. 동일 엔진 검토는 외부 독립 리뷰가 아니며 safety QA를 대체하지 않는다. 외부 리뷰는 Phase 전환, 거래소 주문 경계, 보안·금융 중대 변경 또는 사용자의 명시 요청에만 사용한다.
 
 **변경 이력:**
 
 | 날짜 | 변경 내용 | 대상 | 사유 |
 |------|-----------|------|------|
+| 2026-07-22 | Phase 8 일시 중단, Paper MVP 일반 개발·테스트·리뷰 절차 단순화 | 하네스·CI | 실제 제품 확인과 개발 속도를 높이되 금융·거래 안전 게이트는 유지 |
 | 2026-07-19 | Claude 일반 검토를 제거하고 Codex 전용 내부 교차검토 역할·외부 리뷰 분리 정책 추가 | 하네스 리뷰 경로 | 같은 엔진 한계를 숨기지 않으면서 Codex 중심 검토를 표준화 |
 | 2026-07-19 | 외부 대조 리뷰 후 산출물 규약·Phase 0 테스트 경계·P0 추적·분리형 갱신 어댑터 보강 | 하네스 정책 | 재실행 모호성, 단계 월경과 잘못된 factory 파일 주입 방지 |
 | 2026-07-19 | 초기 듀얼 런타임 하네스 포인터 등록 | 전체 | Phase 0 안전한 개발 준비 |

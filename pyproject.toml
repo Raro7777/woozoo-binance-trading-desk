@@ -30,6 +30,9 @@ dev = [
 [tool.pytest.ini_options]
 pythonpath = ["packages/python/platform-core/src", "services/control-api/src", "services/market-data-worker/src", "services/evidence-worker/src", "services/paper-engine/src", "services/risk-engine/src", "services/agent-orchestrator/src", "tests/unit", "tests/integration"]
 testpaths = ["tests"]
+markers = [
+  "legacy_acceptance: historical Phase manifest or digest verification excluded from normal product CI",
+]
 
 [tool.ruff]
 target-version = "py313"

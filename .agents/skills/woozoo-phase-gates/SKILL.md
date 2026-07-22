@@ -7,6 +7,10 @@ description: "Woozoo의 모든 설계·구현·테스트·수정 요청에서 �
 
 `docs/woozoo-trading-desk/phase-state.json`을 단계 상태의 유일한 권위로 사용한다. 대화나 코드에 더 높은 Phase가 언급되어도 상태 파일과 명시적 사용자 승인이 없으면 진행하지 않는다.
 
+## 일시 중단·유지보수 규칙
+
+`status=paused`이고 `maintenance_mode.active=true`이면 허용된 target Phase의 기존 제품 정리·버그 수정·문서·UI·실행성 개선은 새 Phase 전환이 아니다. 이 작업에는 파일별 digest나 Phase 승인 대신 구현, 관련 테스트, 자체 검토, Draft PR 보고를 적용한다. `maintenance_mode.forbidden_scope`와 전체 safety boundary는 계속 강제한다. 중단된 Phase의 기능은 구현하지 않는다.
+
 ## 범위 판정
 
 1. 현재 Phase와 `allowed_change_scope`, `forbidden_change_scope`를 읽는다.

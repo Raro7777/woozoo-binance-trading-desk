@@ -2,8 +2,44 @@
   "schema_version": 1,
   "project": "woozoo-binance-trading-desk",
   "current_phase": 8,
-  "status": "active",
-  "updated_at": "2026-07-21T18:54:34Z",
+  "status": "paused",
+  "updated_at": "2026-07-22T00:01:46Z",
+  "maintenance_mode": {
+    "active": true,
+    "target_phase": 7,
+    "target_branch": "codex/phase-7-trading-room",
+    "purpose": "paper_mvp_cleanup_and_runnable_local_verification",
+    "ordinary_change_definition_of_done": [
+      "implementation_complete",
+      "relevant_tests_pass",
+      "diff_self_review_complete",
+      "draft_pr_report_updated"
+    ],
+    "ordinary_change_not_required": [
+      "file_sha256_user_approval",
+      "per_test_json_artifact",
+      "acceptance_digest",
+      "same_engine_multi_review",
+      "external_review_per_change",
+      "phase_approval_for_minor_ui_change"
+    ],
+    "enhanced_test_areas": [
+      "financial_ledger",
+      "risk_engine",
+      "duplicate_order_prevention",
+      "kill_switch",
+      "testnet_orders",
+      "future_mainnet_transition"
+    ],
+    "forbidden_scope": [
+      "phase_8_testnet_gateway_implementation",
+      "exchange_credentials",
+      "mainnet_private_or_live_trading",
+      "withdrawal_futures_margin_leverage_or_short",
+      "new_investment_strategy"
+    ],
+    "historical_manifest_and_evidence_policy": "preserve_read_only_not_required_for_ordinary_ci"
+  },
   "transition_policy": "monotonic_explicit_approval_only",
   "acceptance_contract_ref": "woozoo-phase-gates#phase-8",
   "acceptance_contract_runtime_paths": {
@@ -127,6 +163,14 @@
       "at": "2026-07-21T18:54:34Z",
       "evidence_digest": "a7d13e1d04f80bbcee94bcdad997357aa191e6510739a7e3415edd5d25ad194f",
       "approval_ref": "docs/woozoo-trading-desk/phase-7/p7-to-p8-transition-approval.json"
+    },
+    {
+      "from_phase": 8,
+      "to_phase": 8,
+      "event": "phase_8_paused_for_phase_7_paper_mvp_cleanup",
+      "at": "2026-07-22T00:01:46Z",
+      "evidence_digest": null,
+      "approval_ref": "user_instruction_2026-07-22"
     }
   ]
 }

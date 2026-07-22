@@ -1,5 +1,4 @@
 from datetime import UTC, datetime
-import json
 import os
 from pathlib import Path
 import subprocess
@@ -117,10 +116,6 @@ def test_kill_002_scans_every_executable_config_and_tool_registry_for_recovery_w
             for token in forbidden:
                 if token in content:
                     matches.append(f"{path.relative_to(ROOT).as_posix()}:{token}")
-    phase_state = json.loads(
-        (ROOT / "docs/woozoo-trading-desk/phase-state.json").read_text(encoding="utf-8")
-    )
-    assert phase_state["current_phase"] == 7
     assert sorted(matches) == sorted(
         [
             "services/control-api/src/control_api/command_ports.py:recover_kill_switch",

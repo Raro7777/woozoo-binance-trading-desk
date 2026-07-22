@@ -9,6 +9,7 @@ import { approvalActionIssues, renderedPreviewFields } from "../../apps/trading-
 import { approvalActionAvailability } from "../../apps/trading-room-web/src/components/approval-view";
 import { localizedNarrative } from "../../apps/trading-room-web/src/components/analysis-view";
 import { killSwitchPresentation } from "../../apps/trading-room-web/src/components/operations-console";
+import { latestAnalysisAt, publicDataPresentation } from "../../apps/trading-room-web/src/components/product-status";
 import { diagnosticLabel, statusLabel, statusTone } from "../../apps/trading-room-web/src/components/ui";
 
 const root = resolve(import.meta.dirname, "../..");
@@ -33,6 +34,22 @@ test("PLAT-UI-STATUS translates Phase 7 failure states and fails unknown values 
   assert.equal(killSwitchPresentation({ active: true, status: "ACTIVE" }), "ACTIVE");
   assert.equal(localizedNarrative("Untrusted English narrative"), "분석 서술을 한국어로 표시할 수 없습니다.");
   assert.equal(localizedNarrative("BTC 근거에 결합된 관찰입니다."), "BTC 근거에 결합된 관찰입니다.");
+});
+
+test("PLAT-UI-PRODUCT-STATUS distinguishes recorded data, analysis time, and fail-closed states", () => {
+  const market = (quality: "healthy" | "degraded" | "stale" | "invalid") => ({
+    api_version: "v1", request_id: "request", correlation_id: "correlation", served_at: "2026-07-20T12:00:00Z",
+    data: { symbol: "BTCUSDT" as const, price: "60000.00", event_time: "2026-07-20T12:00:00Z", received_at: "2026-07-20T12:00:00Z", quality, quality_reasons: [], watermark: { session_id: "session", stream: "bookTicker", last_sequence: 1, observed_at: "2026-07-20T12:00:00Z" } },
+    meta: { resource_version: null, next_cursor: null },
+  });
+  assert.equal(publicDataPresentation([market("healthy"), market("healthy")]), "HEALTHY");
+  assert.equal(publicDataPresentation([market("healthy"), market("stale")]), "DELAYED");
+  assert.equal(publicDataPresentation([market("healthy"), market("invalid")]), "STOPPED");
+  assert.equal(latestAnalysisAt({ events: [
+    { event_type: "analysis.run.completed.v1", occurred_at: "2026-07-20T11:00:00Z" },
+    { event_type: "paper.order.filled.v1", occurred_at: "2026-07-20T13:00:00Z" },
+    { event_type: "analysis.run.completed.v1", occurred_at: "2026-07-20T12:00:00Z" },
+  ] }), "2026-07-20T12:00:00Z");
 });
 
 const canonicalApprovalView = {
@@ -265,7 +282,7 @@ test("PLAT-001 serves the Phase 7 Trading Room routes without configuration disc
     assert.match(body, /우주 트레이딩룸/);
     assert.match(body, /모의투자 전용/);
     assert.match(body, /트레이딩룸 본문으로 건너뛰기/);
-    assert.doesNotMatch(body, /postgresql:|redis:|TRADING_MODE|testnet|api[_-]?key/i);
+    assert.doesNotMatch(body, /postgresql:|redis:\/\/|TRADING_MODE|api[_-]?key|credential|signature/i);
 
     const routes = [
       "/login",
@@ -281,7 +298,13 @@ test("PLAT-001 serves the Phase 7 Trading Room routes without configuration disc
       const routeBody = await routeResponse.text();
       assert.match(routeBody, /우주 트레이딩룸/);
       assert.match(routeBody, /보류|로그인|서버 확정 상태를 불러오는 중/);
-      assert.doesNotMatch(routeBody, /postgresql:|redis:|TRADING_MODE|testnet|api[_-]?key/i);
+      assert.doesNotMatch(routeBody, /postgresql:|redis:\/\/|TRADING_MODE|api[_-]?key|credential|signature/i);
+      if (route === "/operations") {
+        assert.match(routeBody, /Testnet/);
+        assert.match(routeBody, /비활성/);
+        assert.match(routeBody, /Mainnet/);
+        assert.match(routeBody, /지원 안 함/);
+      }
     }
   } finally {
     await stopWeb(web);

@@ -7,6 +7,19 @@ description: "Woozoo Binance Trading Desk의 Phase 0~9 설계·구현·테스트
 
 Woozoo 개발 작업을 현재 승인된 Phase 안에서 분해하고, 전문 에이전트의 산출물을 안전 게이트로 통합한다.
 
+## Paper MVP 정리 모드 우선 규칙
+
+`phase-state.json`의 `maintenance_mode.active=true`이면 이 절이 아래의 일반 Phase 마감·증거 절차보다 우선한다.
+
+- Phase 8 구현을 중단하고 `codex/phase-7-trading-room`의 Paper MVP만 유지보수한다.
+- 일반 변경 완료 기준은 구현, 관련 테스트, diff 자체 검토, Draft PR 보고다.
+- 일반 변경에 `_workspace` 산출물, 파일별 digest, JSON acceptance artifact, 다중 Codex 검토, 외부 리뷰, Phase 승인 기록을 요구하지 않는다.
+- 금융 원장, Risk Engine, 주문 멱등성, Kill Switch, Testnet 주문, Mainnet 전환만 강화 검증 대상으로 분류한다.
+- 과거 Manifest와 Evidence는 보존하지만 일반 CI 입력으로 갱신하지 않는다.
+- `docs/DEVELOPMENT_WORKFLOW_KO.md`와 `pnpm test:core|safety|integration|e2e`를 운영 정본으로 사용한다.
+
+이 모드는 Phase를 되돌리거나 올리는 전환이 아니다. 안전 경계는 그대로 적용한다.
+
 ## 시작 전 필수 로드
 
 1. `docs/woozoo-trading-desk/phase-state.json`

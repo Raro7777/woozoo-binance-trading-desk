@@ -5,6 +5,8 @@ import asyncio
 import hashlib
 import json
 
+import pytest
+
 from market_data_worker.replay import ReplayResult, load_recorded_events, replay_recorded_events
 from market_data_worker.runner import run_market_data
 from market_data_worker.types import QualityStatus
@@ -47,6 +49,7 @@ def test_data_002_gap_is_observable_and_blocks_the_gapped_effect() -> None:
     assert before.digest != after.digest
 
 
+@pytest.mark.legacy_acceptance
 def test_phase_two_scenario_manifest_is_closed_and_matches_the_fixture() -> None:
     manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
     directory_digest = hashlib.sha256()

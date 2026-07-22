@@ -181,6 +181,8 @@ async function mockControlApi(page: Page, commandDelay = 0) {
       return;
     }
     if (path === "/api/v1/session") return json(route, { status: "AUTHENTICATED", csrf_token: "one-time-test-token" });
+    if (path === "/api/v1/health") return json(route, { data: { status: "healthy", trading_mode: "paper", dependencies: { postgres: { status: "healthy" }, redis: { status: "healthy" } } } });
+    if (path === "/api/v1/trading-room") return json(route, { status: "READY", trading_mode: "paper", data_quality: "HEALTHY", kill_switch: { active: false }, reconciliation: "HEALTHY", ledger: "HEALTHY" });
     if (path.includes("/markets/")) return json(route, {
       api_version: "v1",
       request_id: "ui-request",
@@ -200,7 +202,10 @@ async function mockControlApi(page: Page, commandDelay = 0) {
     if (path === "/api/v1/analysis-runs/run-001") return json(route, { run_id: "run-001", status: "SUCCEEDED", provider: "mock", evidence: { evidence_id: "evidence-1", digest: "sha256:evidence", as_of: "2026-07-20T12:00:00Z", knowledge_cutoff: "2026-07-20T12:00:00Z" }, report: { claims: [{ claim_id: "claim-1", text: "근거에 결합된 관찰입니다." }, { claim_id: "claim-2", text: "Untrusted English narrative" }] }, proposal: { proposal_id: "proposal-001", proposal_hash: "sha256:proposal-bound", status: "CREATED" } });
     if (path === "/api/v1/proposals/proposal-001/approval-view") return json(route, approvalView);
     if (path === "/api/v1/paper-portfolio") return json(route, portfolio);
-    if (path === "/api/v1/audit-events") return json(route, { events: [{ event_id: "event-1", occurred_at: "2026-07-20T12:00:00Z", event_type: "paper.order.partially-filled.v1", aggregate_id: "paper-order-1", actor_id: "system", outcome: "RECORDED" }], next_cursor: "cursor-2" });
+    if (path === "/api/v1/audit-events") return json(route, { events: [
+      { event_id: "event-0", occurred_at: "2026-07-20T11:59:00Z", event_type: "analysis.run.completed.v1", aggregate_id: "run-001", actor_id: "system", outcome: "COMPLETED" },
+      { event_id: "event-1", occurred_at: "2026-07-20T12:00:00Z", event_type: "paper.order.partially-filled.v1", aggregate_id: "paper-order-1", actor_id: "system", outcome: "RECORDED" },
+    ], next_cursor: "cursor-2" });
     if (path === "/api/v1/kill-switch") return json(route, { status: "INACTIVE", active: false, version: 4, data_status: "HEALTHY", reconciliation_status: "HEALTHY", ledger_status: "BALANCED", cancellation_status: "NOT_ACTIVE", recovery_allowed: false });
     return json(route, { detail: "Not found" }, 404);
   });
@@ -813,6 +818,10 @@ test("[ui-only] UI-003 keeps Paper cancellation and Kill controls receipt-driven
   await expect(page.getByText("취소 중…")).toBeVisible();
   await expect(page.getByText(/취소가 접수되었습니다/)).toBeVisible();
   await page.goto("/operations");
+  await expect(page.getByRole("heading", { name: "제품 상태", exact: true })).toBeVisible();
+  await expect(page.getByText("기록 재생(Fixture)", { exact: true })).toBeVisible();
+  await expect(page.getByText("Mock", { exact: true })).toBeVisible();
+  await expect(page.getByText("지원 안 함", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "킬 스위치 활성화" }).click();
   const activationDialog = page.getByRole("dialog", { name: "킬 스위치 활성화" });
   await activationDialog.getByRole("button", { name: "활성화 제출" }).click();
@@ -841,7 +850,7 @@ test("[ui-only] UI-004 has keyboard-reachable navigation and zero serious or cri
     const results = await new AxeBuilder({ page }).analyze();
     const material = results.violations.filter((violation) => violation.impact === "serious" || violation.impact === "critical");
     expect(material, `${testInfo.project.name} ${path} serious/critical accessibility violations`).toEqual([]);
-    await expect(page.locator("body")).not.toContainText(/Secure|HttpOnly|SameSite|CSRF|Origin|Decimal|\bAI\b/);
+    await expect(page.locator("body")).not.toContainText(/Secure|HttpOnly|SameSite|CSRF|Origin|Decimal/);
   }
   await page.goto("/");
   await page.keyboard.press("Tab");

@@ -1,4 +1,4 @@
-name: Phase 1 quality
+name: Paper MVP quality
 
 on:
   pull_request:
@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  phase-1-quality:
+  paper-mvp-quality:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -26,12 +26,5 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Install Playwright Chromium
         run: pnpm exec playwright install --with-deps chromium
-      - name: Run the Phase 1 quality gate
+      - name: Run Core, Safety, Integration, and E2E
         run: pnpm run ci
-      - name: Upload scenario evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: phase-1-scenarios
-          path: artifacts/
-          if-no-files-found: error
