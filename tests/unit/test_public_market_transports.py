@@ -11,6 +11,7 @@ from market_data_worker.capabilities import (
     StreamKind,
     Symbol,
 )
+from market_data_worker.persistence import market_projection_price
 from market_data_worker.transport import PublicRestTransport, PublicWebSocketTransport
 from market_data_worker.transport import default_get
 
@@ -45,6 +46,16 @@ def test_rest_transport_accepts_only_a_typed_get_without_authentication_inputs()
 
     assert response.payload == [{"id": 1}]
     assert calls == [("https://data-api.binance.vision/api/v3/trades?symbol=BTCUSDT", 10.0)]
+
+
+def test_book_ticker_projects_the_decimal_midpoint_as_the_display_price() -> None:
+    assert (
+        market_projection_price(
+            "book_ticker",
+            {"bid_price": "65942.91000000", "ask_price": "65942.92000000"},
+        )
+        == "65942.91500000"
+    )
 
 
 def test_default_rest_transport_ignores_proxy_environment_and_redirects(monkeypatch: Any) -> None:

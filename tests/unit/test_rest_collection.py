@@ -70,6 +70,36 @@ def test_rest_response_and_item_provenance_are_durable_before_normalization() ->
     assert store.normalized_events[0].raw_payload_hash == store.raw_events[2].payload_hash
 
 
+def test_live_rest_receipt_clock_is_sampled_after_transport_returns() -> None:
+    store = InMemoryMarketStore()
+    request_started_at = datetime(2026, 7, 19, tzinfo=UTC)
+    response_received_at = request_started_at + timedelta(seconds=4)
+    transport_finished = False
+
+    def get(_uri: str, _timeout: float) -> Response:
+        nonlocal transport_finished
+        transport_finished = True
+        return Response()
+
+    def observed_clock() -> datetime:
+        assert transport_finished is True
+        return response_received_at
+
+    collector = PublicRestCollector(
+        PublicRestTransport(get=get),
+        store,
+        observed_clock=observed_clock,
+    )
+    collector.collect(
+        PublicRestRequest(RestCapability.TRADES, Symbol.BTCUSDT),
+        "018f7000-0000-7000-8000-000000000001",
+        request_started_at,
+    )
+
+    assert {raw.received_at for raw in store.raw_events} == {response_received_at}
+    assert store.normalized_events[0].received_at == response_received_at
+
+
 class FutureKlineResponse:
     status_code = 200
     headers: dict[str, str] = {}

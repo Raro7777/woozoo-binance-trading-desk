@@ -544,11 +544,14 @@ def bootstrap_public_data() -> int:
 
 
 def refresh_recorded_market(symbol: str | None = None) -> int:
-    """Keep the local recorded Risk book projections current."""
+    """Refresh the local Risk books from Binance's keyless public REST API."""
 
+    from market_data_worker.capabilities import PublicRestRequest, RestCapability, Symbol
     from market_data_worker.persistence import PostgresMarketStore
     from market_data_worker.pipeline import CollectorPipeline
     from market_data_worker.recovery import PostgresRestartRepository
+    from market_data_worker.rest_collection import PublicRestCollector
+    from market_data_worker.transport import PublicRestTransport
 
     market_url = _required_environment("MARKET_DATABASE_URL")
     market_store = PostgresMarketStore(market_url)
@@ -566,33 +569,27 @@ def refresh_recorded_market(symbol: str | None = None) -> int:
         if not recovered.accepted and recovered.reason != "duplicate":
             raise RuntimeError(f"E2E_RAW_RECOVERY_FAILED:{raw.stream}:{recovered.reason}")
 
-    prices = {"BTCUSDT": "60000.00", "ETHUSDT": "3000.00"}
-
     def refresh_books() -> None:
         symbols = (symbol,) if symbol is not None else ("BTCUSDT", "ETHUSDT")
+        collector = PublicRestCollector(
+            PublicRestTransport(timeout_seconds=5),
+            market_store,
+            observed_clock=lambda: datetime.now(UTC),
+        )
         for refresh_symbol in symbols:
-            now = datetime.now(UTC)
-            sequence = (pipeline.last_sequence("book_ticker", refresh_symbol) or 0) + 1
-            price = prices[refresh_symbol]
-            result = pipeline.ingest(
+            result = collector.collect(
+                PublicRestRequest(RestCapability.BOOK_TICKER, Symbol(refresh_symbol)),
                 snapshot.session_id,
-                f"{refresh_symbol.lower()}@bookTicker",
-                {
-                    "u": sequence,
-                    "s": refresh_symbol,
-                    "b": price,
-                    "B": "10.00000000",
-                    "a": "60000.01" if refresh_symbol == "BTCUSDT" else "3000.01",
-                    "A": "10.00000000",
-                },
-                now,
+                datetime.now(UTC),
             )
-            if not result.accepted:
-                raise RuntimeError(f"E2E_BOOK_REFRESH_REJECTED:{refresh_symbol}:{result.reason}")
+            if result.status_code != 200 or result.normalized_count != 1:
+                raise RuntimeError(
+                    "E2E_PUBLIC_BOOK_REFRESH_FAILED:"
+                    f"{refresh_symbol}:{result.status_code}:{result.normalized_count}"
+                )
 
-    # Keep this path book-only: each durable writer transaction is relatively
-    # expensive through the local Windows Docker proxy and Risk intentionally
-    # rejects either symbol once its recorded book is older than five seconds.
+    # Preserve the exact response, response item, derived book payload, and
+    # normalized row so Risk never trusts a browser-supplied market value.
     refresh_books()
     return 0
 

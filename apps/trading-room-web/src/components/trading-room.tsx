@@ -12,13 +12,14 @@ import { Field, Panel, Status } from "./ui";
 
 function MarketCard({ symbol, value }: Readonly<{ symbol: string; value: MarketStatusEnvelopeV1 }>) {
   const { data } = value;
-  const streamLabel = data.watermark.stream === "bookTicker" ? "최우선 호가" : "알 수 없는 시장 자료";
+  const isBookTicker = data.watermark.stream.endsWith("@bookTicker");
+  const streamLabel = isBookTicker ? "Binance 공개 최우선 호가" : "알 수 없는 시장 자료";
   const watermarkText = `${streamLabel} · #${data.watermark.last_sequence}`;
   return (
     <Panel title={symbol}>
       <div className="hero-status"><Status value={data.quality} /></div>
       <dl className="field-list">
-        <Field label="가격" value={data.price} mono />
+        <Field label={isBookTicker ? "호가 중간값" : "가격"} value={data.price} mono />
         <Field label="이벤트 시각" value={data.event_time} />
         <Field label="수신 시각" value={data.received_at} />
         <Field label="워터마크" value={watermarkText} mono />

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Callable
 
 from .capabilities import PublicRestRequest, RestCapability
 from .failures import RateLimitGuard
@@ -27,10 +27,12 @@ class PublicRestCollector:
         transport: PublicRestTransport,
         store: MarketStore,
         rate_limit: RateLimitGuard | None = None,
+        observed_clock: Callable[[], datetime] | None = None,
     ) -> None:
         self._transport = transport
         self._store = store
         self._rate_limit = rate_limit or RateLimitGuard()
+        self._observed_clock = observed_clock
 
     def collect(
         self, request: PublicRestRequest, session_id: str, received_at: datetime
@@ -38,12 +40,19 @@ class PublicRestCollector:
         if not self._rate_limit.may_call(received_at):
             raise RuntimeError("public REST call is blocked by Retry-After")
         response = self._transport.fetch(request)
-        self._rate_limit.observe(response.status_code, response.headers, received_at)
+        # A live request can spend several seconds in DNS/TLS/network I/O.  Its
+        # durable received_at must describe receipt, not request start, or the
+        # five-second Risk freshness gate could expire before persistence ends.
+        observed_at = self._observed_clock() if self._observed_clock is not None else received_at
+        if observed_at.tzinfo is None:
+            raise ValueError("public REST observed clock must return an aware datetime")
+        observed_at = observed_at.astimezone(UTC)
+        self._rate_limit.observe(response.status_code, response.headers, observed_at)
         response_raw = make_raw_event(
             session_id,
             f"rest:{request.capability.value}",
             response.raw_bytes,
-            received_at,
+            observed_at,
             record_kind="rest_response",
             symbol_hint=request.symbol.value if request.symbol is not None else None,
         )
@@ -73,7 +82,7 @@ class PublicRestCollector:
                 session_id,
                 f"rest-item:{request.capability.value}:{index}",
                 item,
-                received_at,
+                observed_at,
                 record_kind="rest_item",
                 parent_raw_event_id=response_raw.raw_event_id,
                 symbol_hint=request.symbol.value if request.symbol is not None else None,
@@ -81,18 +90,18 @@ class PublicRestCollector:
             if not self._store.append_raw(raw_item):
                 continue
             raw_count += 1
-            if self._is_incomplete_kline(request, item, received_at):
+            if self._is_incomplete_kline(request, item, observed_at):
                 self._store.append_quality(
                     QualityEvent(
                         QualityStatus.INVALID,
                         "kline_incomplete",
                         raw_item.stream,
-                        received_at,
+                        observed_at,
                         raw_item.raw_event_id,
                     )
                 )
                 continue
-            translated = self._translate(request, item, received_at)
+            translated = self._translate(request, item, observed_at)
             if translated is None:
                 continue
             stream, payload = translated
@@ -100,7 +109,7 @@ class PublicRestCollector:
                 session_id,
                 stream,
                 payload,
-                received_at,
+                observed_at,
                 record_kind="rest_item",
                 parent_raw_event_id=raw_item.raw_event_id,
             )

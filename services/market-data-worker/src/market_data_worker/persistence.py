@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import datetime
+from decimal import Decimal
 import hashlib
 import json
 from uuid import NAMESPACE_URL, uuid5
@@ -17,6 +19,21 @@ from .types import NormalizedMarketEvent, QualityEvent, RawMarketEvent
 
 def _iso(value: datetime | None) -> str | None:
     return None if value is None else value.isoformat().replace("+00:00", "Z")
+
+
+def market_projection_price(event_type: str, payload: Mapping[str, object]) -> str | None:
+    """Return the authoritative display price without binary floating point."""
+
+    direct = payload.get("price") or payload.get("close")
+    if isinstance(direct, str):
+        return direct
+    if event_type != "book_ticker":
+        return None
+    bid = payload.get("bid_price")
+    ask = payload.get("ask_price")
+    if not isinstance(bid, str) or not isinstance(ask, str):
+        return None
+    return format((Decimal(bid) + Decimal(ask)) / Decimal(2), "f")
 
 
 def _event_payload(
@@ -192,7 +209,7 @@ class PostgresMarketStore:
             "last_sequence": event.stream_watermark.last_sequence,
             "observed_at": event.stream_watermark.observed_at.isoformat().replace("+00:00", "Z"),
         }
-        price = event.payload.get("price") or event.payload.get("close")
+        price = market_projection_price(event.event_type, event.payload)
         with psycopg.connect(self._database_url) as connection:
             connection.execute(
                 "SELECT pg_advisory_xact_lock(hashtextextended('market-authority-v1',0))"

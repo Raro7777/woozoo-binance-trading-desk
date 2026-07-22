@@ -75,7 +75,7 @@ def test_phase8_clean_downgrade_upgrade_round_trip(postgres: None) -> None:
     run(sys.executable, "-m", "alembic", "upgrade", "head")
     with psycopg.connect(DATABASE_URL) as connection:
         assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == (
-            "20260722_0008",
+            "20260722_0009",
         )
 
 

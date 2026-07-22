@@ -44,6 +44,13 @@ def test_fixture_refresh_recovers_the_recorded_collector_session() -> None:
     ].split("def refresh_evidence(", 1)[0]
     assert 'pipeline.last_sequence("trade", symbol)' not in book_refresh
     assert "market_store.append_quality(" not in book_refresh
+    assert "PublicRestCollector" in book_refresh
+    assert "PublicRestRequest(RestCapability.BOOK_TICKER" in book_refresh
+    assert "PublicRestTransport" in book_refresh
+    assert "observed_clock=lambda: datetime.now(UTC)" in book_refresh
+    assert '"60000.00"' not in book_refresh
+    assert '"3000.00"' not in book_refresh
+    assert "E2E_PUBLIC_BOOK_REFRESH_FAILED" in book_refresh
     assert 'parser.add_argument("--refresh-market", action="store_true")' in source
     assert 'parser.add_argument("--market-symbol", choices=("BTCUSDT", "ETHUSDT"))' in source
     assert "return refresh_recorded_market(args.market_symbol)" in source
