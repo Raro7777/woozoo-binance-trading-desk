@@ -13,7 +13,7 @@ const environmentPath = resolve(root, ".env.phase8.local");
 const temporaryRoot = await mkdtemp(join(tmpdir(), "woozoo-phase8-https-"));
 const children = new Set();
 let proxy;
-let refreshChild;
+const refreshChildren = new Set();
 let stopping = false;
 
 function readEnvironment(text) {
@@ -158,7 +158,7 @@ async function removeTemporaryRoot() {
 async function stop(exitCode = 0) {
   if (stopping) return;
   stopping = true;
-  terminate(refreshChild);
+  for (const child of refreshChildren) terminate(child);
   for (const child of children) terminate(child);
   if (proxy !== undefined) await new Promise((resolveClose) => proxy.close(() => resolveClose()));
   await removeTemporaryRoot();
@@ -281,26 +281,46 @@ try {
     proxy.listen(3443, "127.0.0.1", resolveListen);
   });
 
-  async function refresh(symbol) {
-    await new Promise((resolveRefresh) => {
-      refreshChild = spawn("python", pythonArguments("tests/e2e/live_control_api.py", "--refresh-evidence", symbol), {
+  async function refresh(symbol, required) {
+    await new Promise((resolveRefresh, rejectRefresh) => {
+      const child = spawn("python", pythonArguments("tests/e2e/live_control_api.py", "--refresh-evidence", symbol), {
         cwd: root,
         stdio: "inherit",
         env: fixtureEnvironment,
       });
-      refreshChild.once("exit", (code) => {
-        if (!stopping && code !== 0) console.error(`[Testnet] ${symbol} 기록 재생 갱신 실패 (${code})`);
-        refreshChild = undefined;
+      refreshChildren.add(child);
+      let settled = false;
+      function finish(code, error) {
+        if (settled) return;
+        settled = true;
+        refreshChildren.delete(child);
+        if (!stopping && (error !== undefined || code !== 0)) {
+          const detail = error instanceof Error ? error.message : String(code);
+          console.error(`[Testnet] ${symbol} 기록 재생 갱신 실패 (${detail})`);
+          if (required) {
+            rejectRefresh(new Error(`${symbol} 기록 재생을 준비하지 못했습니다.`));
+            return;
+          }
+        }
         resolveRefresh();
+      }
+      child.once("error", (error) => finish(undefined, error));
+      child.once("exit", (code) => {
+        finish(code, undefined);
       });
     });
   }
+  async function refreshBoth(required) {
+    await refresh("BTCUSDT", required);
+    if (stopping) return;
+    await refresh("ETHUSDT", required);
+  }
+  await refreshBoth(true);
   void (async () => {
     while (!stopping) {
-      await refresh("BTCUSDT");
-      if (stopping) break;
-      await refresh("ETHUSDT");
       await new Promise((resolveDelay) => setTimeout(resolveDelay, 1_000));
+      if (stopping) break;
+      await refreshBoth(false);
     }
   })();
 

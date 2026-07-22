@@ -555,6 +555,7 @@ def refresh_evidence(
     from market_data_worker.persistence import PostgresMarketStore
     from market_data_worker.pipeline import CollectorPipeline
     from market_data_worker.recovery import PostgresRestartRepository
+    from market_data_worker.types import QualityEvent, QualityStatus
 
     market_url = _required_environment("MARKET_DATABASE_URL")
     paper_url = _required_environment("PAPER_DATABASE_URL")
@@ -573,60 +574,65 @@ def refresh_evidence(
         if not recovered.accepted and recovered.reason != "duplicate":
             raise RuntimeError(f"E2E_RAW_RECOVERY_FAILED:{raw.stream}:{recovered.reason}")
     prices = {"BTCUSDT": "60000.00", "ETHUSDT": "3000.00"}
-    for offset, refresh_symbol in enumerate(("BTCUSDT", "ETHUSDT"), start=1):
-        now = datetime.now(UTC) + timedelta(milliseconds=offset)
-        event_ms = _milliseconds(now)
-        trade_sequence = (pipeline.last_sequence("trade", refresh_symbol) or 0) + 1
-        book_sequence = (pipeline.last_sequence("book_ticker", refresh_symbol) or 0) + 1
-        lower = refresh_symbol.lower()
-        public_price = prices[refresh_symbol]
-        best_bid = public_price
-        best_ask = "60000.01" if refresh_symbol == "BTCUSDT" else "3000.01"
-        if refresh_symbol == non_crossing_buy_symbol:
-            # Preserve the outstanding BUY used by the later Kill journey while
-            # still recording a fresh, healthy, real public-book observation.
-            public_price = "61000.00" if refresh_symbol == "BTCUSDT" else "3100.00"
+
+    def refresh_public_market(*, include_trade: bool) -> None:
+        for offset, refresh_symbol in enumerate(("BTCUSDT", "ETHUSDT"), start=1):
+            now = datetime.now(UTC) + timedelta(milliseconds=offset)
+            event_ms = _milliseconds(now)
+            lower = refresh_symbol.lower()
+            public_price = prices[refresh_symbol]
             best_bid = public_price
-            best_ask = "61000.01" if refresh_symbol == "BTCUSDT" else "3100.01"
-        if refresh_symbol == non_crossing_sell_symbol:
-            # Preserve an outstanding SELL by keeping the public bid below its
-            # limit while still refreshing both authoritative market streams.
-            public_price = "59000.00" if refresh_symbol == "BTCUSDT" else "2900.00"
-            best_bid = public_price
-            best_ask = "59000.01" if refresh_symbol == "BTCUSDT" else "2900.01"
-        trade = pipeline.ingest(
-            snapshot.session_id,
-            f"{lower}@trade",
-            {
-                "e": "trade",
-                "E": event_ms,
-                "s": refresh_symbol,
-                "t": trade_sequence,
-                "p": public_price,
-                "q": "0.01000000",
-                "T": event_ms,
-                "m": False,
-                "M": True,
-            },
-            now,
-        )
-        book = pipeline.ingest(
-            snapshot.session_id,
-            f"{lower}@bookTicker",
-            {
-                "u": book_sequence,
-                "s": refresh_symbol,
-                "b": best_bid,
-                "B": "10.00000000",
-                "a": best_ask,
-                "A": "10.00000000",
-            },
-            now,
-        )
-        if not trade.accepted or not book.accepted:
-            raise RuntimeError(
-                f"E2E_BOOK_REFRESH_REJECTED:{refresh_symbol}:{trade.reason or book.reason}"
+            best_ask = "60000.01" if refresh_symbol == "BTCUSDT" else "3000.01"
+            if refresh_symbol == non_crossing_buy_symbol:
+                # Preserve the outstanding BUY used by the later Kill journey while
+                # still recording a fresh, healthy, real public-book observation.
+                public_price = "61000.00" if refresh_symbol == "BTCUSDT" else "3100.00"
+                best_bid = public_price
+                best_ask = "61000.01" if refresh_symbol == "BTCUSDT" else "3100.01"
+            if refresh_symbol == non_crossing_sell_symbol:
+                # Preserve an outstanding SELL by keeping the public bid below its
+                # limit while still refreshing both authoritative market streams.
+                public_price = "59000.00" if refresh_symbol == "BTCUSDT" else "2900.00"
+                best_bid = public_price
+                best_ask = "59000.01" if refresh_symbol == "BTCUSDT" else "2900.01"
+            trade = None
+            if include_trade:
+                trade_sequence = (pipeline.last_sequence("trade", refresh_symbol) or 0) + 1
+                trade = pipeline.ingest(
+                    snapshot.session_id,
+                    f"{lower}@trade",
+                    {
+                        "e": "trade",
+                        "E": event_ms,
+                        "s": refresh_symbol,
+                        "t": trade_sequence,
+                        "p": public_price,
+                        "q": "0.01000000",
+                        "T": event_ms,
+                        "m": False,
+                        "M": True,
+                    },
+                    now,
+                )
+            book_sequence = (pipeline.last_sequence("book_ticker", refresh_symbol) or 0) + 1
+            book = pipeline.ingest(
+                snapshot.session_id,
+                f"{lower}@bookTicker",
+                {
+                    "u": book_sequence,
+                    "s": refresh_symbol,
+                    "b": best_bid,
+                    "B": "10.00000000",
+                    "a": best_ask,
+                    "A": "10.00000000",
+                },
+                now,
             )
+            if (trade is not None and not trade.accepted) or not book.accepted:
+                reason = trade.reason if trade is not None and trade.reason else book.reason
+                raise RuntimeError(f"E2E_BOOK_REFRESH_REJECTED:{refresh_symbol}:{reason}")
+
+    refresh_public_market(include_trade=True)
 
     # Drain the same inbound-less Paper worker path before Risk snapshots the
     # account. A non-crossing book still creates an immutable NO_FILL effect;
@@ -732,6 +738,20 @@ def refresh_evidence(
                 )
             next_open += delta
 
+    # A local process restart can leave the durable replay collector marked
+    # stale/invalid even though the immutable rows and continuity are intact.
+    # Only restore HEALTHY after both books and all requested candle windows
+    # have been refreshed through the real writer authority.
+    market_store.append_quality(
+        QualityEvent(
+            QualityStatus.HEALTHY,
+            "e2e_refresh_complete",
+            "market_data",
+            datetime.now(UTC),
+            None,
+        )
+    )
+
     now = datetime.now(UTC)
     materialize_evidence_command(
         {
@@ -745,6 +765,10 @@ def refresh_evidence(
         knowledge_cutoff=now,
         created_at=now,
     )
+    # Evidence materialization can be slower than the five-second recorded-book
+    # Risk window. End every refresh with a book-only pass so the UI never
+    # advertises an analysis action against already-expired fixture books.
+    refresh_public_market(include_trade=False)
     return 0
 
 

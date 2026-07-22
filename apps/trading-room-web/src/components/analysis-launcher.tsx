@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useSyncExternalStore } from "react";
-import { apiCommand, textValue, type JsonRecord } from "../lib/api";
+import { ApiError, apiCommand, textValue, type JsonRecord } from "../lib/api";
 
 export function AnalysisLauncher() {
   const [pending, setPending] = useState(false);
@@ -14,7 +14,23 @@ export function AnalysisLauncher() {
     setError(false);
     setMessage(`근거에 결합된 ${symbol} 분석을 요청하는 중…`);
     try {
-      const result = await apiCommand<JsonRecord>("/api/v1/analysis-runs", { symbol });
+      const idempotencyKey = crypto.randomUUID();
+      let result: JsonRecord | undefined;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          result = await apiCommand<JsonRecord>("/api/v1/analysis-runs", { symbol }, {
+            idempotencyKey,
+          });
+          break;
+        } catch (reason: unknown) {
+          if (!(reason instanceof ApiError && reason.code === "RISK_BOOK_NOT_FOUND" && attempt < 2)) {
+            throw reason;
+          }
+          setMessage("현재 BTC·ETH 호가를 안전하게 동기화하는 중입니다. 잠시만 기다려 주세요…");
+          await new Promise((resolveDelay) => setTimeout(resolveDelay, 2_000));
+        }
+      }
+      if (result === undefined) throw new Error("분석 요청이 완료되지 않았습니다.");
       const runId = textValue(result, "run_id");
       if (runId === undefined) throw new Error("수락된 분석 응답에 실행 ID가 없습니다.");
       setMessage("분석이 접수되었습니다. 서버 확정 실행 상태를 여는 중…");

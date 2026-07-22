@@ -2,6 +2,7 @@ export class ApiError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    readonly code?: string,
   ) {
     super(message);
     this.name = "ApiError";
@@ -80,16 +81,24 @@ const errorCodeLabels: Readonly<Record<string, string>> = {
   PROPOSAL_NOT_FOUND: "Testnet 검토가 가능한 제안을 찾을 수 없습니다.",
   APPROVAL_NOT_FOUND: "Testnet 승인 기록을 찾을 수 없습니다.",
   EXECUTION_NOT_FOUND: "Testnet 실행 기록을 찾을 수 없습니다.",
+  RISK_BOOK_NOT_FOUND: "BTC·ETH 현재 호가가 아직 준비되지 않았습니다. 잠시 뒤 다시 시도하세요.",
+  PRODUCTION_AUTHORITY_UNAVAILABLE: "분석 또는 위험 판단 서비스가 일시적으로 준비되지 않았습니다. 잠시 뒤 다시 시도하세요.",
   VERSION_MISMATCH: "화면의 상태가 최신 버전이 아닙니다. 새로 고친 뒤 다시 시도하세요.",
 };
 
-function errorMessage(body: unknown, fallback: string): string {
+function errorCode(body: unknown): string | undefined {
   if (isRecord(body)) {
     const nested = isRecord(body.error) ? body.error : isRecord(body.detail) ? body.detail : body;
     const code = nested.code;
-    if (typeof code === "string" && code.length > 0) {
-      return errorCodeLabels[code] ?? "알 수 없는 서버 오류로 요청을 처리할 수 없습니다.";
-    }
+    if (typeof code === "string" && code.length > 0) return code;
+  }
+  return undefined;
+}
+
+function errorMessage(body: unknown, fallback: string): string {
+  const code = errorCode(body);
+  if (code !== undefined) {
+    return errorCodeLabels[code] ?? `서버가 요청을 안전하게 보류했습니다 (${code}).`;
   }
   return fallback;
 }
@@ -101,7 +110,13 @@ export async function apiGet<T = unknown>(path: `/api/v1/${string}`): Promise<T>
     headers: { Accept: "application/json" },
   });
   const body = await responseBody(response);
-  if (!response.ok) throw new ApiError(errorMessage(body, `요청에 실패했습니다 (${response.status})`), response.status);
+  if (!response.ok) {
+    throw new ApiError(
+      errorMessage(body, `요청에 실패했습니다 (${response.status})`),
+      response.status,
+      errorCode(body),
+    );
+  }
   return body as T;
 }
 
@@ -137,7 +152,11 @@ export async function apiCommand<T = unknown>(
   });
   const responseValue = await responseBody(response);
   if (!response.ok) {
-    throw new ApiError(errorMessage(responseValue, `명령이 접수되지 않았습니다 (${response.status})`), response.status);
+    throw new ApiError(
+      errorMessage(responseValue, `명령이 접수되지 않았습니다 (${response.status})`),
+      response.status,
+      errorCode(responseValue),
+    );
   }
   return responseValue as T;
 }
