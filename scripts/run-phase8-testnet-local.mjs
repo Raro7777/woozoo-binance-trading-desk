@@ -210,8 +210,31 @@ const fixtureEnvironment = {
   AGENT_DATABASE_URL: urls.woozoo_agent_orchestrator,
   RISK_DATABASE_URL: urls.woozoo_risk_engine,
   PAPER_DATABASE_URL: urls.woozoo_paper_engine,
+  // This is deliberately scoped to the local operator launcher. CI/E2E keeps
+  // replay books so financial browser journeys stay deterministic.
+  WOOZOO_LOCAL_PUBLIC_BOOKS: "enabled",
   PYTHONPATH: pythonPath,
 };
+
+async function waitForPaperWorker(child) {
+  const deadline = Date.now() + 30_000;
+  const earlyExit = (code) => {
+    throw new Error(`Paper authorization worker exited during startup (${code}).`);
+  };
+  while (Date.now() < deadline) {
+    if (child.exitCode !== null) earlyExit(child.exitCode);
+    const probe = spawnSync("python", pythonArguments("-c", [
+      "import os,sys,psycopg",
+      "with psycopg.connect(os.environ['PAPER_DATABASE_URL']) as connection:",
+      "    row=connection.execute(\"SELECT status,heartbeat_at > CURRENT_TIMESTAMP - INTERVAL '10 seconds' FROM paper_authorization_worker_state WHERE worker_name='phase7-paper-authorization'\").fetchone()",
+      "sys.exit(0 if row == ('RUNNING', True) else 3)",
+    ].join("\n")), { cwd: root, stdio: ["ignore", "ignore", "inherit"], env: fixtureEnvironment });
+    if (probe.status === 0) return;
+    if (probe.status !== 3) throw new Error("Paper authorization worker status could not be verified.");
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 150));
+  }
+  throw new Error("Timed out waiting for Paper authorization worker health.");
+}
 
 try {
   await waitForPort(Number(required(configuration, "PHASE8_CONTROL_API_PORT")));
@@ -234,6 +257,16 @@ try {
       env: fixtureEnvironment,
     });
   }
+
+  // Paper approval is a durable one-time authorization.  The worker must be
+  // alive before the local UI is reported ready, otherwise an approval would
+  // remain pending with no financial authority able to consume it.
+  const paperAuthorizationWorker = start(
+    "python",
+    pythonArguments("-m", "paper_engine.authorization_worker"),
+    fixtureEnvironment,
+  );
+  await waitForPaperWorker(paperAuthorizationWorker);
 
   const nextCli = resolve(webApp, "node_modules/next/dist/bin/next");
   checked(process.execPath, [nextCli, "build", webApp], { env: process.env });

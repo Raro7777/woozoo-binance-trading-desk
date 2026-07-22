@@ -336,10 +336,10 @@ test("[live] E2E-001 HTTPS approval, automatic Paper partial fill, and operator 
   await page.reload();
   await expect(page.getByText("정상", { exact: true }).first()).toBeVisible();
   const expectedBtcPrice = testInfo.project.name === "mobile-chromium"
-    ? "59000.000000000000000000"
-    : "60000.000000000000000000";
+    ? "59000.005000000000000000"
+    : "60000.005000000000000000";
   await expect(page.getByText(expectedBtcPrice, { exact: true }).first()).toBeVisible();
-  await expect(page.getByText("3000.000000000000000000", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("3000.005000000000000000", { exact: true }).first()).toBeVisible();
   await expect(page.locator(".field", { hasText: "워터마크" }).first()).toContainText("#");
   await expect(page.locator(".field", { hasText: "연결" }).first()).not.toContainText("정보 없음");
   const analysisResponsePromise = page.waitForResponse((response) =>

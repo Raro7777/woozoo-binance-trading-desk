@@ -544,14 +544,17 @@ def bootstrap_public_data() -> int:
 
 
 def refresh_recorded_market(symbol: str | None = None) -> int:
-    """Refresh the local Risk books from Binance's keyless public REST API."""
+    """Refresh Risk books without making the deterministic E2E suite network-dependent.
 
-    from market_data_worker.capabilities import PublicRestRequest, RestCapability, Symbol
+    The local operator launcher opts in to keyless Binance public REST via
+    ``WOOZOO_LOCAL_PUBLIC_BOOKS=enabled``.  CI and ordinary E2E runs retain
+    their fixed, provenance-complete replay books so partial-fill and Kill
+    Switch journeys remain deterministic.
+    """
+
     from market_data_worker.persistence import PostgresMarketStore
     from market_data_worker.pipeline import CollectorPipeline
     from market_data_worker.recovery import PostgresRestartRepository
-    from market_data_worker.rest_collection import PublicRestCollector
-    from market_data_worker.transport import PublicRestTransport
 
     market_url = _required_environment("MARKET_DATABASE_URL")
     market_store = PostgresMarketStore(market_url)
@@ -569,8 +572,13 @@ def refresh_recorded_market(symbol: str | None = None) -> int:
         if not recovered.accepted and recovered.reason != "duplicate":
             raise RuntimeError(f"E2E_RAW_RECOVERY_FAILED:{raw.stream}:{recovered.reason}")
 
-    def refresh_books() -> None:
-        symbols = (symbol,) if symbol is not None else ("BTCUSDT", "ETHUSDT")
+    symbols = (symbol,) if symbol is not None else ("BTCUSDT", "ETHUSDT")
+
+    def refresh_live_public_books() -> None:
+        from market_data_worker.capabilities import PublicRestRequest, RestCapability, Symbol
+        from market_data_worker.rest_collection import PublicRestCollector
+        from market_data_worker.transport import PublicRestTransport
+
         collector = PublicRestCollector(
             PublicRestTransport(timeout_seconds=5),
             market_store,
@@ -588,9 +596,33 @@ def refresh_recorded_market(symbol: str | None = None) -> int:
                     f"{refresh_symbol}:{result.status_code}:{result.normalized_count}"
                 )
 
-    # Preserve the exact response, response item, derived book payload, and
-    # normalized row so Risk never trusts a browser-supplied market value.
-    refresh_books()
+    if os.environ.get("WOOZOO_LOCAL_PUBLIC_BOOKS") == "enabled":
+        # Preserve the exact response, response item, derived book payload,
+        # and normalized row so Risk never trusts a browser-supplied value.
+        refresh_live_public_books()
+        return 0
+
+    fixture_prices = {"BTCUSDT": ("60000.00", "60000.01"), "ETHUSDT": ("3000.00", "3000.01")}
+    for offset, refresh_symbol in enumerate(symbols, start=1):
+        now = datetime.now(UTC) + timedelta(milliseconds=offset)
+        bid, ask = fixture_prices[refresh_symbol]
+        result = pipeline.ingest(
+            snapshot.session_id,
+            f"{refresh_symbol.lower()}@bookTicker",
+            {
+                "u": (pipeline.last_sequence("book_ticker", refresh_symbol) or 0) + 1,
+                "s": refresh_symbol,
+                "b": bid,
+                "B": "10.00000000",
+                "a": ask,
+                "A": "10.00000000",
+            },
+            now,
+        )
+        if not result.accepted:
+            raise RuntimeError(
+                f"E2E_FIXTURE_BOOK_REFRESH_REJECTED:{refresh_symbol}:{result.reason}"
+            )
     return 0
 
 
@@ -813,7 +845,11 @@ def refresh_evidence(
         )
     )
 
-    now = datetime.now(UTC)
+    # Bind Evidence to the horizon immediately after the terminal candle
+    # refresh.  Materialization itself can take longer than one minute on a
+    # cold machine; using a later wall-clock value would incorrectly mark an
+    # otherwise complete immutable window as stale.
+    evidence_as_of = datetime.now(UTC)
     materialize_evidence_command(
         {
             "TRADING_MODE": "paper",
@@ -822,9 +858,9 @@ def refresh_evidence(
         idempotency_key=f"e2e-refresh-{symbol.lower()}-{uuid4()}",
         service_principal="internal-evidence-scheduler",
         symbol=symbol,
-        as_of=now,
-        knowledge_cutoff=now,
-        created_at=now,
+        as_of=evidence_as_of,
+        knowledge_cutoff=evidence_as_of,
+        created_at=evidence_as_of,
     )
     # Evidence materialization can be slower than the five-second recorded-book
     # Risk window. End every refresh with a book-only pass so the UI never

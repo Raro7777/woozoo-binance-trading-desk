@@ -23,6 +23,10 @@ def test_local_fixture_refresh_primes_both_markets_before_reporting_ready() -> N
     assert 'await refresh("BTCUSDT", required);' in source
     assert 'await refresh("ETHUSDT", required);' in source
     assert "await refreshMarket(required);" in source
+    assert 'WOOZOO_LOCAL_PUBLIC_BOOKS: "enabled"' in source
+    assert "async function waitForPaperWorker(child)" in source
+    assert 'pythonArguments("-m", "paper_engine.authorization_worker")' in source
+    assert "await waitForPaperWorker(paperAuthorizationWorker);" in source
     assert '"--refresh-market"' in source
     assert '"--market-symbol", symbol' in source
     assert 'Promise.all(["BTCUSDT", "ETHUSDT"].map((symbol)' in source
@@ -44,12 +48,17 @@ def test_fixture_refresh_recovers_the_recorded_collector_session() -> None:
     ].split("def refresh_evidence(", 1)[0]
     assert 'pipeline.last_sequence("trade", symbol)' not in book_refresh
     assert "market_store.append_quality(" not in book_refresh
+    assert 'os.environ.get("WOOZOO_LOCAL_PUBLIC_BOOKS") == "enabled"' in book_refresh
+    assert "def refresh_live_public_books()" in book_refresh
     assert "PublicRestCollector" in book_refresh
     assert "PublicRestRequest(RestCapability.BOOK_TICKER" in book_refresh
     assert "PublicRestTransport" in book_refresh
     assert "observed_clock=lambda: datetime.now(UTC)" in book_refresh
-    assert '"60000.00"' not in book_refresh
-    assert '"3000.00"' not in book_refresh
+    assert (
+        'fixture_prices = {"BTCUSDT": ("60000.00", "60000.01"), "ETHUSDT": ("3000.00", "3000.01")}'
+        in book_refresh
+    )
+    assert "E2E_FIXTURE_BOOK_REFRESH_REJECTED" in book_refresh
     assert "E2E_PUBLIC_BOOK_REFRESH_FAILED" in book_refresh
     assert 'parser.add_argument("--refresh-market", action="store_true")' in source
     assert 'parser.add_argument("--market-symbol", choices=("BTCUSDT", "ETHUSDT"))' in source
