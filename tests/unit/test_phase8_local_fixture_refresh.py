@@ -42,6 +42,10 @@ def test_fixture_refresh_recovers_the_recorded_collector_session() -> None:
     assert "def refresh_public_market(*, include_trade: bool)" in source
     assert "refresh_public_market(include_trade=True)" in source
     assert "refresh_public_market(include_trade=False)" in source
+    assert "refresh_horizon = datetime.now(UTC)" in source
+    assert "while next_open + delta <= refresh_horizon:" in source
+    assert "evidence_as_of = refresh_horizon" in source
+    assert "evidence_knowledge_cutoff = datetime.now(UTC)" in source
     assert "def refresh_recorded_market(symbol: str | None = None)" in source
     book_refresh = source.split("def refresh_recorded_market(symbol: str | None = None)", 1)[
         1

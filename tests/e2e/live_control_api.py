@@ -788,11 +788,15 @@ def refresh_evidence(
         "1h": timedelta(hours=1),
         "4h": timedelta(hours=4),
     }
+    # Freeze one horizon for the complete refresh.  Calling ``now`` in the
+    # loop condition makes a slow first refresh chase the moving clock and
+    # can leave the 1m terminal candle just outside the later Evidence cutoff.
+    refresh_horizon = datetime.now(UTC)
     kline_sequence = pipeline.last_sequence("kline", symbol) or 0
     for interval, delta in intervals.items():
         last_open = snapshot.closed_kline_opens[(symbol, interval)]
         next_open = last_open + delta
-        while next_open + delta <= datetime.now(UTC):
+        while next_open + delta <= refresh_horizon:
             kline_sequence += 1
             close = next_open + delta
             received_at = datetime.now(UTC)
@@ -849,7 +853,11 @@ def refresh_evidence(
     # refresh.  Materialization itself can take longer than one minute on a
     # cold machine; using a later wall-clock value would incorrectly mark an
     # otherwise complete immutable window as stale.
-    evidence_as_of = datetime.now(UTC)
+    evidence_as_of = refresh_horizon
+    # Candles collected for the frozen market horizon are received while this
+    # loop is running.  They are valid at ``as_of`` but not knowable until the
+    # collection finishes, so keep the knowledge cutoff separate.
+    evidence_knowledge_cutoff = datetime.now(UTC)
     materialize_evidence_command(
         {
             "TRADING_MODE": "paper",
@@ -859,8 +867,8 @@ def refresh_evidence(
         service_principal="internal-evidence-scheduler",
         symbol=symbol,
         as_of=evidence_as_of,
-        knowledge_cutoff=evidence_as_of,
-        created_at=evidence_as_of,
+        knowledge_cutoff=evidence_knowledge_cutoff,
+        created_at=evidence_knowledge_cutoff,
     )
     # Evidence materialization can be slower than the five-second recorded-book
     # Risk window. End every refresh with a book-only pass so the UI never
