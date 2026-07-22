@@ -77,6 +77,26 @@ function start(command, args, environment) {
   return child;
 }
 
+function openLocalBrowser() {
+  if (process.env.WOOZOO_OPEN_BROWSER !== "1") return;
+  const target = "https://localhost:3443";
+  const launch = process.platform === "win32"
+    ? [process.env.ComSpec ?? "cmd.exe", ["/d", "/s", "/c", "start", "", target]]
+    : process.platform === "darwin"
+      ? ["open", [target]]
+      : ["xdg-open", [target]];
+  const browser = spawn(launch[0], launch[1], {
+    cwd: root,
+    detached: true,
+    stdio: "ignore",
+    windowsHide: false,
+  });
+  browser.once("error", (error) => {
+    console.error(`[Paper MVP] 브라우저 자동 열기 실패: ${error.message}`);
+  });
+  browser.unref();
+}
+
 function waitForPort(port, child) {
   return new Promise((resolveReady, reject) => {
     const deadline = Date.now() + 60_000;
@@ -250,6 +270,7 @@ try {
   console.log("[Paper MVP] 화면: https://localhost:3443");
   console.log("[Paper MVP] 데이터: BTC·ETH 기록 재생(Fixture), AI: Mock, 거래 모드: PAPER");
   console.log("[Paper MVP] 종료: 이 창에서 Ctrl+C (DB/Redis 데이터는 유지)\n");
+  openLocalBrowser();
 } catch (error) {
   console.error(`[Paper MVP] 시작 실패: ${error instanceof Error ? error.message : String(error)}`);
   await stop(1);

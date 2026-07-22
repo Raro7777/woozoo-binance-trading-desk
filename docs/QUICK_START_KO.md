@@ -2,6 +2,16 @@
 
 이 안내서는 Windows PowerShell 기준이다. 기본 실행은 **실제 Binance 실시간 데이터가 아닌 BTC·ETH 기록 재생(Fixture)** 과 **실제 LLM이 아닌 Mock AI**를 사용한다. 거래소 계정이나 API Key는 필요하지 않으며 실제 주문은 발생하지 않는다.
 
+## 가장 쉬운 방법: 더블클릭 한 번
+
+1. Docker Desktop을 실행한다.
+2. 저장소 폴더의 `START_PAPER_MVP.cmd`를 더블클릭한다.
+3. 처음 한 번만 검은 창에서 사용할 로그인 비밀번호를 두 번 입력한다. 입력 문자는 화면에 표시되지 않는다.
+4. 준비가 끝나면 브라우저가 `https://localhost:3443`으로 자동 실행된다.
+5. 앱을 끌 때는 검은 창에서 `Ctrl+C`를 누른다. Docker 컨테이너까지 끄려면 `STOP_PAPER_MVP.cmd`를 더블클릭한다.
+
+실행 파일이 의존성 설치, `.env.local` 생성, 비밀번호 verifier 생성, PostgreSQL·Redis 시작, DB 초기화, 서버 실행을 순서대로 처리한다. 비밀번호는 채팅에 보내거나 명령줄에 적지 않는다. 아래 절차는 수동 실행이나 오류 해결이 필요할 때만 사용한다.
+
 ## 1. 필요한 프로그램
 
 - Git
@@ -24,7 +34,7 @@ git switch codex/phase-7-trading-room
 git switch --track origin/codex/phase-7-trading-room
 ```
 
-## 2. 의존성과 환경변수 준비
+## 2. 의존성과 환경변수 준비(수동 실행)
 
 ```powershell
 corepack enable
@@ -43,7 +53,7 @@ corepack pnpm env:init
 
 이 값을 Testnet이나 Mainnet 값으로 바꾸지 않는다. 잘못된 거래 모드나 데이터·AI 설정은 실행기가 시작을 거부한다.
 
-## 3. 최초 로그인 비밀번호 준비
+## 3. 최초 로그인 비밀번호 준비(수동 실행)
 
 다음 명령은 입력 내용을 화면에 표시하지 않는다. 비밀번호를 저장소 밖의 Windows 임시 파일에 잠시 쓰고 Argon2id verifier를 만든 뒤 즉시 임시 파일을 지운다.
 
@@ -64,7 +74,7 @@ Remove-Item -LiteralPath $secretFile
 
 이 작업은 최초 한 번만 한다. 이후 로그인에는 방금 정한 비밀번호를 사용한다. verifier 파일은 `.secrets/`에 있으며 Git에 포함되지 않는다.
 
-## 4. Docker, DB, 서버 실행
+## 4. Docker, DB, 서버 실행(수동 실행)
 
 아래 한 명령이 PostgreSQL·Redis를 시작하고, DB migration과 기록 재생 데이터를 준비한 뒤 FastAPI·Paper worker·웹·로컬 HTTPS 프록시를 실행한다.
 
@@ -135,6 +145,8 @@ https://localhost:3443
 ```powershell
 corepack pnpm paper:mvp:stop
 ```
+
+Windows에서는 저장소 폴더의 `STOP_PAPER_MVP.cmd`를 더블클릭해도 같은 작업을 한다. DB 데이터와 로그인 설정은 삭제되지 않는다.
 
 다시 시작할 때는 다음 한 명령만 실행한다.
 
